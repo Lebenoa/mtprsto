@@ -1,4 +1,14 @@
+//! Typed errors for the MTProto library.
+//!
+//! Every error variant corresponds to a specific failure mode in the
+//! Telegram MTProto stack. The `Display` implementation follows
+//! `{kind}: {detail} [dc=N key=0x{short}]` so logs are searchable.
+//!
+//! `is_transient()` returns `true` for errors that a retry loop can
+//! safely swallow and back off from.
+
 use std::fmt;
+use std::time::Instant;
 
 /// Result type alias for the MTProto library.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -6,55 +16,319 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur in the MTProto library.
 #[derive(Debug)]
 pub enum Error {
-    /// IO error from networking.
-    Io(std::io::Error),
-    /// Cryptographic error.
-    Crypto(String),
-    /// Serialization/deserialization error.
-    Serialization(String),
-    /// Transport layer error.
-    Transport(String),
-    /// MTProto protocol error.
-    Protocol(String),
-    /// API-level error.
-    Api {
+    // --- Transport layer ---
+    /// I/O error from networking (TCP connect, read, write, timeout).
+    Network(std::io::Error),
+
+    /// Server says "move to DC N".
+    Migration { dc_id: i32 },
+
+    /// Flood wait: the server is rate-limiting this method on this DC.
+    FloodWait {
+        seconds: i32,
+        retry_after: Instant,
+    },
+
+    // --- Auth ---
+    /// The auth key is not yet created.
+    NoAuthKey,
+
+    /// The auth key was rejected or removed by the server.
+    AuthKeyInvalid { dc_id: i32, key_short: String },
+
+    /// The auth key is not registered on this DC.
+    AuthKeyUnregistered { dc_id: i32, key_short: String },
+
+    // --- RPC errors ---
+    /// Any Telegram RPC error (4xx/5xx). `error_code` is Telegram's.
+    Rpc {
         error_code: i32,
         error_message: String,
     },
-    /// The DH parameters failed verification.
+
+    /// `PHONE_CODE_INVALID` or similar auth code error.
+    InvalidCode { detail: String },
+
+    /// `2FA password required` or wrong password.
+    InvalidPassword { detail: String },
+
+    /// Sign up is required (new account).
+    SignUpRequired,
+
+    // --- File handling ---
+    /// `FILE_REFERENCE_EXPIRED` — the file reference must be refreshed.
+    FileReferenceExpired { detail: String },
+
+    // --- Protocol ---
+    /// Cryptographic error.
+    Crypto(String),
+
+    /// Serialization/deserialization error.
+    Serialization(String),
+
+    /// Transport layer error (connection, framing).
+    Transport(String),
+
+    /// MTProto protocol error (bad msg_key, nonce mismatch, etc.).
+    Protocol(String),
+
+    /// DH parameter verification failed.
     DhVerification(String),
-    /// Server returned an unexpected response.
+
+    /// Server returned an unexpected response constructor.
     UnexpectedResponse(String),
-    /// The auth key was not yet created.
-    NoAuthKey,
+
     /// Padding verification failed.
     PaddingError(String),
+
+    /// Generic fallback error — never use for known cases.
+    Other(String),
+}
+
+impl Error {
+    /// Returns `true` for errors that a retry loop can safely retry.
+    ///
+    /// Covers: `FloodWait`, `Network`, `FileReferenceExpired`,
+    /// `AuthKeyUnregistered`, and some `Rpc` codes.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Error::Network(_) => true,
+            Error::FloodWait { .. } => true,
+            Error::FileReferenceExpired { .. } => true,
+            Error::AuthKeyUnregistered { .. } => true,
+            Error::Rpc { error_code, .. } => {
+                // Transient RPC codes: 420 (FLOOD), 500-599 (server errors),
+                // 401 (unauthorized — key may be expired)
+                matches!(error_code, 401 | 420 | 500..=599)
+            }
+            Error::Transport(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this error represents an auth failure that
+    /// requires re-authentication (not just a retry).
+    pub fn is_auth_error(&self) -> bool {
+        matches!(
+            self,
+            Error::AuthKeyInvalid { .. }
+                | Error::AuthKeyUnregistered { .. }
+                | Error::InvalidPassword { .. }
+                | Error::SignUpRequired
+        )
+    }
+
+    /// Returns the DC ID associated with the error, if any.
+    pub fn dc_id(&self) -> Option<i32> {
+        match self {
+            Error::Migration { dc_id } => Some(*dc_id),
+            Error::AuthKeyInvalid { dc_id, .. } => Some(*dc_id),
+            Error::AuthKeyUnregistered { dc_id, .. } => Some(*dc_id),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "IO error: {e}"),
-            Error::Crypto(msg) => write!(f, "Crypto error: {msg}"),
-            Error::Serialization(msg) => write!(f, "Serialization error: {msg}"),
-            Error::Transport(msg) => write!(f, "Transport error: {msg}"),
-            Error::Protocol(msg) => write!(f, "Protocol error: {msg}"),
-            Error::Api {
+            Error::Network(e) => write!(f, "Network: {e}"),
+            Error::Migration { dc_id } => write!(f, "Migration: move to DC {dc_id}"),
+            Error::FloodWait { seconds, .. } => write!(f, "FloodWait: wait {seconds}s"),
+            Error::NoAuthKey => write!(f, "NoAuthKey: no authorization key available"),
+            Error::AuthKeyInvalid { dc_id, key_short } => {
+                write!(f, "AuthKeyInvalid [dc={dc_id} key=0x{key_short}]")
+            }
+            Error::AuthKeyUnregistered { dc_id, key_short } => {
+                write!(f, "AuthKeyUnregistered [dc={dc_id} key=0x{key_short}]")
+            }
+            Error::Rpc {
                 error_code,
                 error_message,
-            } => write!(f, "API error {error_code}: {error_message}"),
-            Error::DhVerification(msg) => write!(f, "DH verification failed: {msg}"),
-            Error::UnexpectedResponse(msg) => write!(f, "Unexpected response: {msg}"),
-            Error::NoAuthKey => write!(f, "No authorization key"),
-            Error::PaddingError(msg) => write!(f, "Padding error: {msg}"),
+            } => write!(f, "Rpc: {error_message} [code={error_code}]"),
+            Error::InvalidCode { detail } => write!(f, "InvalidCode: {detail}"),
+            Error::InvalidPassword { detail } => write!(f, "InvalidPassword: {detail}"),
+            Error::SignUpRequired => write!(f, "SignUpRequired: new account"),
+            Error::FileReferenceExpired { detail } => {
+                write!(f, "FileReferenceExpired: {detail}")
+            }
+            Error::Crypto(msg) => write!(f, "Crypto: {msg}"),
+            Error::Serialization(msg) => write!(f, "Serialization: {msg}"),
+            Error::Transport(msg) => write!(f, "Transport: {msg}"),
+            Error::Protocol(msg) => write!(f, "Protocol: {msg}"),
+            Error::DhVerification(msg) => write!(f, "DhVerification: {msg}"),
+            Error::UnexpectedResponse(msg) => write!(f, "UnexpectedResponse: {msg}"),
+            Error::PaddingError(msg) => write!(f, "PaddingError: {msg}"),
+            Error::Other(msg) => write!(f, "Other: {msg}"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Network(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
+        Error::Network(e)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        Error::Serialization(e.to_string())
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(e: Box<dyn std::error::Error>) -> Self {
+        Error::Other(e.to_string())
+    }
+}
+
+/// Helper: parse an RPC error from raw TL bytes, returning the typed Error.
+pub fn parse_rpc_error(data: &[u8]) -> Error {
+    use crate::serialize::TLReader;
+    use crate::serialize::RPC_ERROR;
+
+    let mut r = TLReader::new(data);
+    let ctor = match r.read_u32() {
+        Ok(c) => c,
+        Err(_) => return Error::Other("failed to parse RPC error".into()),
+    };
+
+    if ctor != RPC_ERROR {
+        return Error::Other(format!("not an RPC error: {ctor:#x}"));
+    }
+
+    let error_code = match r.read_i32() {
+        Ok(c) => c,
+        Err(_) => return Error::Other("failed to read error code".into()),
+    };
+
+    let error_message = match r.read_bytes() {
+        Ok(b) => String::from_utf8(b).unwrap_or_else(|_| "non-UTF-8 error".into()),
+        Err(_) => return Error::Other("failed to read error message".into()),
+    };
+
+    // Classify known error messages
+    if error_message.contains("FLOOD_WAIT_") {
+        if let Ok(secs) = error_message.trim_start_matches("FLOOD_WAIT_").parse::<i32>() {
+            return Error::FloodWait {
+                seconds: secs,
+                retry_after: Instant::now() + std::time::Duration::from_secs(secs as u64),
+            };
+        }
+    }
+
+    if error_message.contains("PHONE_CODE_INVALID") || error_message.contains("PHONE_CODE_EMPTY") {
+        return Error::InvalidCode { detail: error_message };
+    }
+
+    if error_message.contains("PASSWORD_HASH_INVALID") {
+        return Error::InvalidPassword { detail: error_message };
+    }
+
+    if error_message.contains("SIGN_UP_REQUIRED") || error_message.contains("first unoccupied") {
+        return Error::SignUpRequired;
+    }
+
+    if error_message.contains("FILE_REFERENCE_EXPIRED") || error_message.contains("FILE_REFERENCE") {
+        return Error::FileReferenceExpired { detail: error_message };
+    }
+
+    if error_message.contains("AUTH_KEY_UNREGISTERED") {
+        return Error::AuthKeyUnregistered {
+            dc_id: 0,
+            key_short: "????".into(),
+        };
+    }
+
+    if error_message.contains("USER_DEACTIVATED_BAN") {
+        return Error::Rpc { error_code, error_message };
+    }
+
+    if error_message.starts_with("MIGRATE_") {
+        if let Some(dc_str) = error_message.strip_prefix("MIGRATE_") {
+            if let Ok(dc_id) = dc_str.parse::<i32>() {
+                return Error::Migration { dc_id };
+            }
+        }
+    }
+
+    Error::Rpc {
+        error_code,
+        error_message,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_flood_wait_is_transient() {
+        let err = Error::FloodWait {
+            seconds: 60,
+            retry_after: Instant::now(),
+        };
+        assert!(err.is_transient());
+        assert!(!err.is_auth_error());
+    }
+
+    #[test]
+    fn test_network_is_transient() {
+        let err = Error::Network(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "refused",
+        ));
+        assert!(err.is_transient());
+    }
+
+    #[test]
+    fn test_rpc_401_is_transient() {
+        let err = Error::Rpc {
+            error_code: 401,
+            error_message: "unauthorized".into(),
+        };
+        assert!(err.is_transient());
+    }
+
+    #[test]
+    fn test_rpc_400_not_transient() {
+        let err = Error::Rpc {
+            error_code: 400,
+            error_message: "bad request".into(),
+        };
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn test_migration_dc_id() {
+        let err = Error::Migration { dc_id: 2 };
+        assert_eq!(err.dc_id(), Some(2));
+    }
+
+    #[test]
+    fn test_auth_key_invalid_is_auth_error() {
+        let err = Error::AuthKeyInvalid { dc_id: 2, key_short: "abcd".into() };
+        assert!(err.is_auth_error());
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn test_display_format() {
+        let err = Error::Rpc {
+            error_code: 400,
+            error_message: "PEER_ID_INVALID".into(),
+        };
+        let s = err.to_string();
+        assert!(s.contains("PEER_ID_INVALID"));
+        assert!(s.contains("400"));
     }
 }

@@ -7,58 +7,12 @@
 use crate::error::{Error, Result};
 use crate::mtproto::{AuthKeyCreation, AuthKeyResult, MtProtoSession};
 use crate::serialize::{TLWriter, TLReader, *};
+use crate::types;
 use crate::transport;
 use tokio::io::AsyncWriteExt;
 
-/// API layer version (as of mid-2024).
-pub const API_LAYER: i32 = 175;
-
-// ---------------------------------------------------------------------------
-// TL Constructor IDs for the Telegram API layer
-// ---------------------------------------------------------------------------
-
-// Auth methods
-pub const AUTH_SEND_CODE: u32 = 0xa8503291;
-pub const AUTH_SIGN_UP: u32 = 0x80eead27;
-pub const AUTH_SIGN_IN: u32 = 0x8d52a951;
-pub const AUTH_LOG_OUT: u32 = 0x87971c3d;
-pub const AUTH_SEND_CODE_CALL: u32 = 0x3c38279e;
-
-// Phone code / verification
-pub const AUTH_SENT_CODE: u32 = 0x3f6173a8;
-pub const AUTH_SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
-pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc004bac7;
-pub const AUTH_SENT_CODE_TYPE_CALL: u32 = 0x5353e5a7;
-pub const AUTH_SENT_CODE_TYPE_FLASH_CALL: u32 = 0xab036752;
-pub const AUTH_SENT_CODE_TYPE_SMS_CALL: u32 = 0x741cd2ee;
-
-// Authorization result
-pub const AUTH_AUTHORIZATION: u32 = 0xcd050916;
-pub const AUTH_AUTHORIZATION_SIGN_UP_REQUIRED: u32 = 0x4474f402;
-
-// User
-pub const USER: u32 = 0x938458c1;
-pub const USER_SELF: u32 = 0x9ff12c8d;
-pub const USER_SECRET: u32 = 0x3ff9ec59;
-
-// Input peer
-pub const INPUT_PEER_USER: u32 = 0x7f3b18ea;
-
-// Messages
-pub const MESSAGES_SEND_MESSAGE: u32 = 0x44942323;
-pub const MESSAGES_GET_DIALOGS: u32 = 0x19109d5f;
-pub const MESSAGES_GET_ME: u32 = 0xe0b917f2; // users.getFullUser
-
-// Get difference / state
-pub const UPDATES_GET_STATE: u32 = 0xedd4882a;
-pub const UPDATES_GET_DIFFERENCE: u32 = 0x25939104;
-
-// -- Bot --
-pub const AUTH_BOT_LOGIN: u32 = 0x67dd378b; // For newer layers
-
-// -- Misc --
-pub const HELP_GET_CONFIG: u32 = 0xc4f9186b;
-pub const HELP_GET_NEAREST_DC: u32 = 0x1fb33026;
+/// API layer version (Layer 223).
+pub const API_LAYER: i32 = 223;
 
 // ---------------------------------------------------------------------------
 // API Client
@@ -173,7 +127,7 @@ impl TelegramClient {
         // Build the auth.importBotAuthorization request
         // importBotAuthorization flags:0 api_id:int api_hash:string bot_auth_token:string = auth.Authorization;
         let mut payload = TLWriter::new();
-        payload.write_u32(0xb36089c9); // auth.importBotAuthorization constructor
+        payload.write_u32(types::IMPORT_BOT_AUTH); // auth.importBotAuthorization#67a3ff2c
         payload.write_i32(0); // flags
         payload.write_i32(self.api_id.unwrap_or(0));
         payload.write_bytes(self.api_hash.as_deref().unwrap_or("").as_bytes());
@@ -200,20 +154,14 @@ impl TelegramClient {
         let constructor = r.read_u32()?;
 
         match constructor {
-            AUTH_AUTHORIZATION => {
-                let _dc_number = r.read_i32()?;
-                let _user_ctor = r.read_u32()?;
-                // TODO: parse full user object
-                Ok(())
-            }
-            AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
+            types::AUTH_AUTHORIZATION => {
                 Err(Error::Protocol(
                     "Bot authorization requires sign up — check bot token".into(),
                 ))
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Api {
+                Err(Error::Rpc {
                     error_code: code,
                     error_message: msg,
                 })
@@ -234,7 +182,7 @@ impl TelegramClient {
         let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
 
         let mut payload = TLWriter::new();
-        payload.write_u32(AUTH_SEND_CODE);
+        payload.write_u32(types::AUTH_SEND_CODE);
         // auth.sendCode#... phone_number:string api_id:int api_hash:string settings:CodeSettings = auth.SentCode;
         payload.write_bytes(phone_number.as_bytes());
         payload.write_i32(self.api_id.unwrap_or(0));
@@ -260,7 +208,7 @@ impl TelegramClient {
         let constructor = r.read_u32()?;
 
         match constructor {
-            AUTH_SENT_CODE => {
+            types::AUTH_SENT_CODE => {
                 let phone_code_hash = r.read_bytes()?;
                 let sent_code_type = r.read_u32()?;
                 // timeout field
@@ -273,7 +221,7 @@ impl TelegramClient {
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Api {
+                Err(Error::Rpc {
                     error_code: code,
                     error_message: msg,
                 })
@@ -295,7 +243,7 @@ impl TelegramClient {
         let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
 
         let mut payload = TLWriter::new();
-        payload.write_u32(AUTH_SIGN_IN);
+        payload.write_u32(types::AUTH_SIGN_IN);
         payload.write_bytes(phone_number.as_bytes());
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(phone_code.as_bytes());
@@ -318,17 +266,23 @@ impl TelegramClient {
         let constructor = r.read_u32()?;
 
         match constructor {
-            AUTH_AUTHORIZATION => {
-                let dc_number = r.read_i32()?;
-                self.user_id = Some(dc_number); // This is actually a nested user object; simplified
+            types::AUTH_AUTHORIZATION => {
+                let flags = r.read_i32()?;
+                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; }
+                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; }
+                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; }
+                let user_ctor = r.read_u32()?;
+                let user_flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                self.user_id = Some(user_id as i32);
                 Ok(())
             }
-            AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
+            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
                 Err(Error::Protocol("Sign up required".into()))
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Api {
+                Err(Error::Rpc {
                     error_code: code,
                     error_message: msg,
                 })
@@ -351,7 +305,7 @@ impl TelegramClient {
         let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
 
         let mut payload = TLWriter::new();
-        payload.write_u32(AUTH_SIGN_UP);
+        payload.write_u32(types::AUTH_SIGN_UP);
         payload.write_bytes(phone_number.as_bytes());
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(first_name.as_bytes());
@@ -375,13 +329,13 @@ impl TelegramClient {
         let constructor = r.read_u32()?;
 
         match constructor {
-            AUTH_AUTHORIZATION => {
+            types::AUTH_AUTHORIZATION => {
                 let _dc_number = r.read_i32()?;
                 Ok(())
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Api {
+                Err(Error::Rpc {
                     error_code: code,
                     error_message: msg,
                 })
@@ -438,7 +392,7 @@ impl TelegramClient {
 
     /// Get nearest data center.
     pub async fn help_get_nearest_dc(&mut self) -> Result<i32> {
-        let result = self.invoke(HELP_GET_NEAREST_DC, &[]).await?;
+        let result = self.invoke(types::HELP_GET_NEAREST_DC, &[]).await?;
         let mut r = TLReader::new(&result);
         let constructor = r.read_u32()?;
         if constructor != RPC_ERROR {
@@ -446,7 +400,7 @@ impl TelegramClient {
             Ok(r.read_i32()?) // country (skip) → next DC
         } else {
             let (code, msg) = crate::mtproto::parse_rpc_error(&result)?;
-            Err(Error::Api {
+            Err(Error::Rpc {
                 error_code: code,
                 error_message: msg,
             })
@@ -490,10 +444,10 @@ pub fn deserialize_string(data: &[u8]) -> Result<String> {
 }
 
 /// Serialize an `InputPeerUser` from user_id and access_hash.
-pub fn serialize_input_peer_user(user_id: i32, access_hash: i64) -> Vec<u8> {
+pub fn serialize_input_peer_user(user_id: i64, access_hash: i64) -> Vec<u8> {
     let mut w = TLWriter::new();
-    w.write_u32(INPUT_PEER_USER);
-    w.write_i32(user_id);
+    w.write_u32(types::INPUT_PEER_USER);
+    w.write_i64(user_id);
     w.write_i64(access_hash);
     w.into_bytes()
 }
@@ -515,8 +469,8 @@ mod tests {
     fn test_serialize_input_peer_user() {
         let data = serialize_input_peer_user(12345, 67890);
         let mut r = TLReader::new(&data);
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
-        assert_eq!(r.read_i32().unwrap(), 12345);
+        assert_eq!(r.read_u32().unwrap(), types::INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 12345);
         assert_eq!(r.read_i64().unwrap(), 67890);
     }
 

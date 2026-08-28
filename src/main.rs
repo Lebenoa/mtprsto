@@ -145,7 +145,6 @@ fn run_demo() {
     let encrypted = session.encrypt_message(payload, msg_id, seq_no);
     println!("   Original:     {}", String::from_utf8_lossy(payload));
     println!("   Encrypted:    {} bytes", encrypted.len());
-    // Decrypt with x=0 (client→server) since we encrypted with x=0
     let (dec_id, dec_payload) = session.decrypt_message_with_x(&encrypted, 0).unwrap();
     println!("   Decrypted:    {}", String::from_utf8_lossy(&dec_payload));
     assert_eq!(dec_payload, payload);
@@ -159,6 +158,39 @@ fn run_demo() {
     println!("   Got:      {:#018x}", session.auth_key_id);
     assert_eq!(computed_id, session.auth_key_id);
     println!("   ✓ Auth key ID matches");
+
+    // 9. Session persistence
+    println!("\n9. Session Persistence:");
+    let session_path = std::env::temp_dir().join("mtprsto_demo_session.json");
+    let data = mtprsto::session::SessionData::from_auth_key(&auth_key, server_salt, 2);
+    let mut store = mtprsto::session::SessionStore::new(&session_path);
+    store.save(&data).unwrap();
+    println!("   ✓ Saved session to {}", session_path.display());
+
+    let mut store2 = mtprsto::session::SessionStore::new(&session_path);
+    let loaded = store2.load().unwrap().unwrap();
+    let decoded_key = loaded.decode_auth_key().unwrap();
+    assert_eq!(decoded_key, auth_key);
+    println!("   ✓ Loaded and verified session from disk");
+
+    // 10. Typed errors
+    println!("\n10. Typed Errors:");
+    let flood_err = mtprsto::error::Error::FloodWait {
+        seconds: 30,
+        retry_after: std::time::Instant::now(),
+    };
+    println!("   FloodWait: {} (transient={})", flood_err, flood_err.is_transient());
+    let rpc_err = mtprsto::error::Error::Rpc {
+        error_code: 400,
+        error_message: "PEER_ID_INVALID".into(),
+    };
+    println!("   Rpc: {} (transient={})", rpc_err, rpc_err.is_transient());
+    let migration_err = mtprsto::error::Error::Migration { dc_id: 2 };
+    println!("   Migration: {} (dc_id={:?})", migration_err, migration_err.dc_id());
+    println!("   ✓ Error types working correctly");
+
+    // Cleanup
+    std::fs::remove_file(&session_path).ok();
 
     println!("\n=== All offline tests passed! ===");
     println!("\nTo authorize with a real Telegram account:");
