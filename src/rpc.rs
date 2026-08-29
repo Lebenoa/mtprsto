@@ -43,7 +43,7 @@
 //! - `help.getNearestDc` 0x1fb33026
 
 use crate::error::{Error, Result};
-use crate::serialize::{TLWriter, TLReader, RPC_ERROR, RPC_RESULT, GZIP_PACKED};
+use crate::serialize::{TLWriter, TLReader, RPC_ERROR, RPC_RESULT};
 use crate::types::*;
 use crate::serialize::VECTOR as TL_VECTOR;
 
@@ -53,7 +53,13 @@ use crate::serialize::VECTOR as TL_VECTOR;
 
 /// Build `messages.sendMessage` payload.
 ///
-/// `messages.sendMessage#44942323 flags:# ...`
+/// Schema (layer 223): `messages.sendMessage#545cd15a flags:# no_webpage:flags.1?true
+/// silent:flags.5?true background:flags.6?true clear_draft:flags.7?true
+/// noforwards:flags.14?true update_stickersets_order:flags.15?true
+/// invert_media:flags.16?true allow_paid_floodskip:flags.19?true peer:InputPeer
+/// reply_to:flags.0?InputReplyTo message:string random_id:long
+/// reply_markup:flags.2?ReplyMarkup entities:flags.3?Vector<MessageEntity>
+/// schedule_date:flags.10?int ...`
 pub fn build_send_message(
     peer: &InputPeer,
     message: &str,
@@ -61,19 +67,25 @@ pub fn build_send_message(
     schedule_date: Option<i32>,
 ) -> Vec<u8> {
     let mut flags: i32 = 0;
-    if reply_to_msg_id.is_some() { flags |= 1 << 3; }
+    if reply_to_msg_id.is_some() { flags |= 1 << 0; } // reply_to:flags.0
     if schedule_date.is_some() { flags |= 1 << 10; }
 
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_SEND_MESSAGE);
     w.write_i32(flags);
     peer.write_to(&mut w);
-    w.write_bytes(message.as_bytes());
+    // reply_to:flags.0?InputReplyTo — sits between peer and message
     if let Some(reply_id) = reply_to_msg_id {
-        // MessageReplyHeader: flags:# reply_to_msg_id:long
-        w.write_i32(1 << 0); // flags for reply_to_msg_id
-        w.write_i64(reply_id);
+        // inputReplyToMessage#869fbe10 flags:# reply_to_msg_id:int
+        w.write_u32(INPUT_REPLY_TO_MESSAGE);
+        w.write_i32(0); // inner flags (no top_msg_id/quote/...)
+        w.write_i32(reply_id as i32);
     }
+    w.write_bytes(message.as_bytes());
+    // random_id:long
+    w.write_i64(rand::random::<i64>());
+    // reply_markup:flags.2 (none) — omitted, flag not set
+    // entities:flags.3 (none) — omitted, flag not set
     if let Some(date) = schedule_date {
         w.write_i32(date);
     }
@@ -81,6 +93,9 @@ pub fn build_send_message(
 }
 
 /// Build `messages.getDialogs` payload.
+/// Schema (layer 223): `messages.getDialogs#a0f4cb4f flags:# exclude_pinned:flags.0?true
+/// folder_id:flags.1?int offset_date:int offset_id:int offset_peer:InputPeer
+/// limit:int hash:long = messages.Dialogs;`
 pub fn build_get_dialogs(
     offset_date: i32,
     offset_id: i32,
@@ -90,13 +105,13 @@ pub fn build_get_dialogs(
     w.write_u32(MESSAGES_GET_DIALOGS);
     w.write_i32(0); // flags
     w.write_i32(offset_date);
+    w.write_i32(offset_id);
     // InputPeerEmpty for offset_peer
     w.write_u32(INPUT_PEER_EMPTY);
-    w.write_i32(offset_id);
     w.write_i32(limit);
+    w.write_i64(0); // hash:long (no hash check)
     w.into_bytes()
 }
-
 /// Build `messages.getHistory` payload.
 pub fn build_get_history(
     peer: &InputPeer,
@@ -380,7 +395,7 @@ pub fn build_get_file(
     w.write_u32(UPLOAD_GET_FILE);
     // Simplified: write location as InputFileLocation
     match location {
-        FileLocation::VolumeId { volume_id, local_id, secret, reference, dc_id } => {
+        FileLocation::VolumeId { volume_id, local_id, secret, reference, dc_id: _ } => {
             w.write_u32(0xdfdaabe1); // inputFileLocation
             w.write_i64(*volume_id);
             w.write_i32(*local_id);
@@ -426,11 +441,11 @@ pub fn parse_dialogs(data: &[u8]) -> Result<Dialogs> {
     match ctor {
         MESSAGES_DIALOGS => {
             // Parse dialogs vector
-            let v_ctor = r.read_u32()?;
+            let _v_ctor = r.read_u32()?;
             let count = r.read_i32()?;
-            let mut dialogs = Vec::new();
+            let dialogs: Vec<Dialog> = Vec::new();
             for _ in 0..count {
-                let d_ctor = r.read_u32()?;
+                let _d_ctor = r.read_u32()?;
                 // Simplified: skip dialog bytes
                 while r.remaining() > 0 {
                     let _ = r.read_i32()?;
@@ -481,6 +496,26 @@ mod tests {
         assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
         assert_eq!(r.read_i64().unwrap(), 123);
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "hello");
+        // random_id (i64) must be present
+        let _random_id = r.read_i64().unwrap();
+    }
+
+    #[test]
+    fn test_build_send_message_reply_layout() {
+        // reply_to must sit between peer and message, serialized as
+        // inputReplyToMessage#869fbe10 flags:# reply_to_msg_id:int
+        let peer = InputPeer::UserFromId { user_id: UserId(1) };
+        let payload = build_send_message(&peer, "hi", Some(42), None);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MESSAGE);
+        assert_eq!(r.read_i32().unwrap(), 1 << 0); // reply_to flag
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_u32().unwrap(), INPUT_REPLY_TO_MESSAGE);
+        assert_eq!(r.read_i32().unwrap(), 0); // inner flags
+        assert_eq!(r.read_i32().unwrap(), 42); // reply_to_msg_id
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "hi");
+        let _random_id = r.read_i64().unwrap();
     }
 
     #[test]
@@ -504,9 +539,10 @@ mod tests {
         assert_eq!(r.read_u32().unwrap(), MESSAGES_GET_DIALOGS);
         assert_eq!(r.read_i32().unwrap(), 0); // flags
         assert_eq!(r.read_i32().unwrap(), 0); // offset_date
+        assert_eq!(r.read_i32().unwrap(), 0); // offset_id
         assert_eq!(r.read_u32().unwrap(), INPUT_PEER_EMPTY); // offset_peer
-        assert_eq!(r.read_i32().unwrap(), 0); // offset_id (now i32)
         assert_eq!(r.read_i32().unwrap(), 10); // limit
+        assert_eq!(r.read_i64().unwrap(), 0); // hash
     }
 
     #[test]

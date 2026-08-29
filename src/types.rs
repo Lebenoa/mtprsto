@@ -8,7 +8,7 @@
 //! SenderPool, and every RPC call all depend on these types.
 
 use crate::error::{Error, Result};
-use crate::serialize::{TLWriter, TLReader, *};
+use crate::serialize::{TLWriter, TLReader};
 use std::fmt;
 
 // ===========================================================================
@@ -209,12 +209,9 @@ impl InputUser {
 /// A reference to a channel/supergroup for API calls.
 #[derive(Debug, Clone)]
 pub enum InputChannel {
-    /// Channel with access hash.
+    /// inputChannel#f35aec28 channel_id:long access_hash:long
     Channel { channel_id: ChannelId, access_hash: AccessHash },
-    /// Legacy: channel by ID only.
-    FromId { channel_id: ChannelId },
 }
-
 impl InputChannel {
     pub fn write_to(&self, w: &mut TLWriter) {
         match self {
@@ -222,10 +219,6 @@ impl InputChannel {
                 w.write_u32(INPUT_CHANNEL);
                 w.write_i64(channel_id.0);
                 w.write_i64(access_hash.0);
-            }
-            InputChannel::FromId { channel_id } => {
-                w.write_u32(INPUT_CHANNEL_FROM_ID);
-                w.write_i64(channel_id.0);
             }
         }
     }
@@ -240,10 +233,6 @@ impl InputChannel {
                     channel_id: ChannelId(channel_id),
                     access_hash: AccessHash(access_hash),
                 })
-            }
-            INPUT_CHANNEL_FROM_ID => {
-                let channel_id = r.read_i64()?;
-                Ok(InputChannel::FromId { channel_id: ChannelId(channel_id) })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputChannel constructor {other:#x}"
@@ -273,15 +262,13 @@ impl InputFile {
     pub fn write_to(&self, w: &mut TLWriter) {
         match self {
             InputFile::Id { id, parts, name, md5_checksum } => {
-                let flags: i32 = if md5_checksum.is_some() { 1 << 2 } else { 0 };
+                // inputFile#f52ff27f id:long parts:int name:string md5_checksum:string
+                // md5_checksum is UNCONDITIONAL (no flags field).
                 w.write_u32(INPUT_FILE);
                 w.write_i64(*id);
                 w.write_i32(*parts);
                 w.write_bytes(name.as_bytes());
-                if let Some(md5) = md5_checksum {
-                    w.write_bytes(md5.as_bytes());
-                }
-                let _ = flags;
+                w.write_bytes(md5_checksum.as_deref().unwrap_or("").as_bytes());
             }
             InputFile::Big { id, parts, name } => {
                 w.write_u32(INPUT_FILE_BIG);
@@ -370,7 +357,7 @@ impl ReplyMarkup {
                 if *single_use { flags |= 1 << 1; }
                 if *selective { flags |= 1 << 2; }
                 if *persistent { flags |= 1 << 4; }
-                w.write_u32(REPLY_KEYBOARD_markup);
+                w.write_u32(REPLY_KEYBOARD_MARKUP);
                 w.write_i32(flags);
                 w.write_u32(VECTOR);
                 w.write_i32(rows.len() as i32);
@@ -421,6 +408,9 @@ impl KeyboardButton {
 // ===========================================================================
 
 /// A Telegram user.
+// The full-user variant is inherently wide; boxing would complicate every
+// match for no real-world win — the enum is built once per response.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum User {
     /// Full user with all fields.
@@ -491,7 +481,11 @@ impl User {
         let ctor = r.read_u32()?;
         match ctor {
             USER => {
+                // user#31774388 flags:# ... flags2:# ... id:long ...
+                // The flags2 word is ALWAYS serialized (before id) — it
+                // keys its own conditional fields.
                 let flags = r.read_i32()?;
+                let _flags2 = r.read_i32()?;
                 let id = UserId(r.read_i64()?);
                 let access_hash = if flags & (1 << 0) != 0 {
                     Some(AccessHash(r.read_i64()?))
@@ -768,23 +762,7 @@ pub struct ChatBannedRights {
 #[derive(Debug, Clone)]
 pub enum Message {
     /// Full message.
-    Message {
-        id: MsgId,
-        from_id: Option<Peer>,
-        peer_id: Peer,
-        date: i32,
-        message: String,
-        media: Option<MessageMedia>,
-        reply_markup: Option<ReplyMarkup>,
-        entities: Vec<MessageEntity>,
-        views: Option<i32>,
-        edit_date: Option<i32>,
-        post: bool,
-        grouped_id: Option<i64>,
-        via_bot_id: Option<UserId>,
-        reply_to: Option<ReplyHeader>,
-        edit_hide: bool,
-    },
+    Message(Box<MessageFull>),
     /// Empty message (deleted or not found).
     Empty { id: MsgId },
     /// Service message (channel actions, etc.).
@@ -798,37 +776,60 @@ pub enum Message {
     },
 }
 
+/// Payload of [`Message::Message`] — boxed to keep the enum small.
+#[derive(Debug, Clone)]
+pub struct MessageFull {
+    pub id: MsgId,
+    pub from_id: Option<Peer>,
+    pub peer_id: Peer,
+    pub date: i32,
+    pub message: String,
+    pub media: Option<MessageMedia>,
+    pub reply_markup: Option<ReplyMarkup>,
+    pub entities: Vec<MessageEntity>,
+    pub views: Option<i32>,
+    pub edit_date: Option<i32>,
+    pub post: bool,
+    pub grouped_id: Option<i64>,
+    pub via_bot_id: Option<UserId>,
+    pub reply_to: Option<ReplyHeader>,
+    pub edit_hide: bool,
+}
+
 impl Message {
     pub fn id(&self) -> MsgId {
         match self {
-            Message::Message { id, .. } | Message::Empty { id } | Message::Service { id, .. } => *id,
+            Message::Message(full) => full.id,
+            Message::Empty { id } | Message::Service { id, .. } => *id,
         }
     }
 
     pub fn text(&self) -> &str {
         match self {
-            Message::Message { message, .. } => message,
+            Message::Message(full) => &full.message,
             _ => "",
         }
     }
 
     pub fn peer_id(&self) -> &Peer {
         match self {
-            Message::Message { peer_id, .. } | Message::Service { peer_id, .. } => peer_id,
+            Message::Message(full) => &full.peer_id,
+            Message::Service { peer_id, .. } => peer_id,
             Message::Empty { .. } => &Peer::None,
         }
     }
 
     pub fn from_id(&self) -> Option<&Peer> {
         match self {
-            Message::Message { from_id, .. } | Message::Service { from_id, .. } => from_id.as_ref(),
+            Message::Message(full) => full.from_id.as_ref(),
+            Message::Service { from_id, .. } => from_id.as_ref(),
             _ => None,
         }
     }
 
     pub fn media(&self) -> Option<&MessageMedia> {
         match self {
-            Message::Message { media, .. } => media.as_ref(),
+            Message::Message(full) => full.media.as_ref(),
             _ => None,
         }
     }
@@ -898,11 +899,11 @@ impl Message {
                     None
                 };
                 let edit_hide = flags & (1 << 21) != 0;
-                Ok(Message::Message {
+                Ok(Message::Message(Box::new(MessageFull {
                     id, from_id, peer_id, date, message: message_text,
                     media, reply_markup, entities, views, edit_date,
                     post, grouped_id, via_bot_id, reply_to, edit_hide,
-                })
+                })))
             }
             MESSAGE_EMPTY => {
                 let id = MsgId(r.read_i64()?);
@@ -1030,7 +1031,7 @@ impl MessageMedia {
                     let _ttl_seconds = r.read_i32()?;
                 }
                 let photo = Photo::read_from(r)?;
-                let caption = if flags & (1 << 7) != 0 {
+                let _caption = if flags & (1 << 7) != 0 {
                     String::from_utf8(r.read_bytes()?)?
                 } else {
                     String::new()
@@ -1235,7 +1236,7 @@ pub enum WebPage {
 
 impl WebPage {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
+        let _ctor = r.read_u32()?;
         let id = r.read_i64()?;
         while r.remaining() > 0 {
             let _ = r.read_i32()?;
@@ -1322,7 +1323,6 @@ impl Peer {
                 let channel_id = r.read_i64()?;
                 Ok(Peer::Channel { channel_id: ChannelId(channel_id) })
             }
-            PEER_SELF => Ok(Peer::User { user_id: UserId(0) }), // self-peer
             other => Err(Error::Serialization(format!(
                 "unknown Peer constructor {other:#x}"
             ))),
@@ -1335,6 +1335,8 @@ impl Peer {
 // ===========================================================================
 
 /// An update from Telegram's update channel.
+// Same rationale as `User`: the vectors dominate either way.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Updates {
     /// Full updates with users and chats.
@@ -1392,7 +1394,7 @@ impl Updates {
                 let _date = r.read_i32()?;
                 let seq = r.read_i32()?;
                 // updates vector
-                let v_ctor = r.read_u32()?;
+                let _v_ctor = r.read_u32()?;
                 let count = r.read_i32()?;
                 let mut updates = Vec::new();
                 for _ in 0..count {
@@ -1421,7 +1423,8 @@ impl Updates {
                 Ok(Updates::Updates { updates: Vec::new(), users: Vec::new(), chats: Vec::new(), date: 0, seq: 0 })
             }
             UPDATE_SHORT_SENT_MESSAGE => {
-                let id = MsgId(r.read_i64()?);
+                // updateShortSentMessage#9015e101 id:int pts:int pts_count:int date:int
+                let id = MsgId(r.read_i32()? as i64);
                 let pts = r.read_i32()?;
                 let pts_count = r.read_i32()?;
                 let date = r.read_i32()?;
@@ -1531,7 +1534,7 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum SendMessageResult {
     /// Updates containing the sent message.
-    Updates(Updates),
+    Updates(Box<Updates>),
     /// Short sent message response (newer layers).
     ShortSentMessage {
         id: MsgId,
@@ -1602,9 +1605,11 @@ pub const INPUT_USER_SELF: u32 = 0xf7c1b13f;
 pub const INPUT_USER: u32 = 0xf21158c6;
 pub const INPUT_USER_FROM_ID: u32 = 0x1da448e2;
 
+pub const INPUT_REPLY_TO_MESSAGE: u32 = 0x869fbe10;
+pub const INPUT_REPLY_TO_MONOFORUM: u32 = 0x76ab27de;
 // --- Input channel (Layer 223) ---
-pub const INPUT_CHANNEL: u32 = 0x8ca8325d; // TODO: verify from schema
-pub const INPUT_CHANNEL_FROM_ID: u32 = 0xfe8c69d2; // TODO: verify from schema
+pub const INPUT_CHANNEL: u32 = 0xf35aec28;
+pub const INPUT_CHANNEL_FROM_MESSAGE: u32 = 0x5b934f9d; // inputChannelFromMessage
 
 // --- Input file (Layer 223) ---
 pub const INPUT_FILE: u32 = 0xf52ff27f;
@@ -1612,8 +1617,12 @@ pub const INPUT_FILE_BIG: u32 = 0xfa4f0bb5;
 pub const INPUT_FILE_STORY_DOCUMENT: u32 = 0x62dc8b48;
 
 // --- Input document (Layer 223) ---
-pub const INPUT_DOCUMENT: u32 = 0x18cb7c6c; // TODO: verify from schema
-pub const INPUT_DOCUMENT_EMPTY: u32 = 0x1c88f79e; // TODO: verify from schema
+pub const INPUT_DOCUMENT: u32 = 0x1abfb575;
+pub const INPUT_DOCUMENT_EMPTY: u32 = 0x72f0eaae; // inputDocumentEmpty
+/// document#8fd32c0b (Layer 223)
+pub const DOCUMENT: u32 = 0x8fd32c0b;
+/// documentEmpty#3631cf4c id:long
+pub const DOCUMENT_EMPTY: u32 = 0x3631cf4c;
 
 // --- User (Layer 223) ---
 pub const USER: u32 = 0x31774388;
@@ -1685,10 +1694,10 @@ pub const PEER_CHAT: u32 = 0x36c6019a;
 pub const PEER_CHANNEL: u32 = 0xa2a5371e;
 
 // --- Updates (Layer 223) ---
-pub const UPDATES: u32 = 0x74ecd4e; // TODO: verify from schema
+pub const UPDATES: u32 = 0x74ae4240;
 pub const UPDATE_SHORT: u32 = 0x78d4dec1; // TODO: verify from schema
 pub const UPDATES_COMBINED: u32 = 0x725b04c3; // TODO: verify from schema
-pub const UPDATE_SHORT_SENT_MESSAGE: u32 = 0x11f101d3; // TODO: verify from schema
+pub const UPDATE_SHORT_SENT_MESSAGE: u32 = 0x9015e101;
 
 // --- Update events (Layer 223) ---
 pub const UPDATE_NEW_MESSAGE: u32 = 0x1f2b0afd;
@@ -1698,11 +1707,10 @@ pub const UPDATE_READ_HISTORY_OUTBOX: u32 = 0x2f2f21bf;
 pub const UPDATE_CHANNEL_TOO_LONG: u32 = 0x108d941f;
 pub const UPDATE_EDIT_MESSAGE: u32 = 0xe40370a3;
 pub const UPDATE_WEB_PAGE: u32 = 0x7f891213;
-
-// --- Reply markup ---
+/// replyKeyboardMarkup#350284c2
+pub const REPLY_KEYBOARD_MARKUP: u32 = 0x350284c2;
 pub const FORCE_REPLY: u32 = 0x86872538;
 pub mod inline_keyboard_markup { pub const CONSTRUCTOR_ID: u32 = 0x158b2380; }
-pub const REPLY_KEYBOARD_markup: u32 = 0x350284c2;
 
 // --- Keyboard buttons ---
 pub const KEYBOARD_BUTTON: u32 = 0x683a5c46;
@@ -1746,10 +1754,10 @@ pub const AUTH_CHECK_PASSWORD: u32 = 0xd18b4d16; // TODO: verify
 pub const IMPORT_BOT_AUTH: u32 = 0x67a3ff2c;
 
 // --- Messages methods ---
-pub const MESSAGES_SEND_MESSAGE: u32 = 0x44942323;
+pub const MESSAGES_SEND_MESSAGE: u32 = 0x545cd15a;
 pub const MESSAGES_SEND_MEDIA: u32 = 0xb8d0afdf;
 pub const MESSAGES_SEND_MULTI_MEDIA: u32 = 0xb6f3e0c0;
-pub const MESSAGES_GET_DIALOGS: u32 = 0x19109d5f;
+pub const MESSAGES_GET_DIALOGS: u32 = 0xa0f4cb4f;
 pub const MESSAGES_GET_HISTORY: u32 = 0xdc3f8240;
 pub const MESSAGES_GET_MESSAGES: u32 = 0x63c66506;
 pub const MESSAGES_GET_BOT_CALLBACK_ANSWER: u32 = 0x934a4ee1;
@@ -1763,6 +1771,12 @@ pub const MESSAGES_SEND_CALLBACK_DATA: u32 = 0x934a4ee1;
 // --- Users ---
 pub const USERS_GET_FULL_USER: u32 = 0xe0b917f2;
 pub const USERS_GET_USERS: u32 = 0x0d91a548;
+/// users.userFull#d69e83e0 full_user:UserFull chats:Vector<Chat> users:Vector<User>
+pub const USERS_USER_FULL: u32 = 0xd69e83e0;
+/// contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> chats:Vector<Chat> users:Vector<User>
+pub const CONTACTS_FOUND: u32 = 0xb3134d19;
+/// updates.state#a56c2a3e pts:int qts:int date:int seq:int unread_count:int
+pub const UPDATES_STATE: u32 = 0xa56c2a3e;
 
 // --- Contacts ---
 pub const CONTACTS_RESOLVE_USERNAME: u32 = 0xf93ccba3;
@@ -1963,5 +1977,22 @@ mod tests {
         deduped.sort();
         deduped.dedup();
         assert_eq!(ids.len(), deduped.len(), "duplicate constructor IDs detected");
+    }
+
+    #[test]
+    fn test_user_read_parses_flags2_before_id() {
+        // user#31774388 always serializes TWO flag words before id:long.
+        // A bot-auth response typically has flags=0x4000 (bot flag),
+        // flags2=0, id=777.
+        let mut w = TLWriter::new();
+        w.write_u32(USER); // 0x31774388
+        w.write_i32(1 << 14); // flags: bot=true
+        w.write_i32(0); // flags2 (must be consumed here)
+        w.write_i64(777); // id
+        // access_hash:flags.0 not set — nothing follows
+        let mut r = TLReader::new(w.as_bytes());
+        let user = User::read_from(&mut r).unwrap();
+        assert_eq!(user.id().0, 777, "flags2 word must be consumed before id");
+        assert!(user.is_bot());
     }
 }

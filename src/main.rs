@@ -89,8 +89,9 @@ fn run_demo() {
     let key = [0x42u8; 32];
     let iv = [0x24u8; 32];
     let mut plaintext = b"This is a test message for AES-IGE encryption.".to_vec();
-    while plaintext.len() % 16 != 0 {
-        plaintext.push(0);
+    let pad = 16 - (plaintext.len() % 16);
+    if pad != 16 {
+        plaintext.resize(plaintext.len() + pad, 0);
     }
     let mut ciphertext = plaintext.clone();
     crypto::aes_ige_encrypt(&mut ciphertext, &key, &iv).unwrap();

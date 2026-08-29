@@ -185,53 +185,39 @@ impl From<std::string::FromUtf8Error> for Error {
     }
 }
 
-impl From<Box<dyn std::error::Error>> for Error {
-    fn from(e: Box<dyn std::error::Error>) -> Self {
-        Error::Other(e.to_string())
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Serialization(format!("JSON: {e}"))
     }
 }
 
-/// Helper: parse an RPC error from raw TL bytes, returning the typed Error.
-pub fn parse_rpc_error(data: &[u8]) -> Error {
-    use crate::serialize::TLReader;
-    use crate::serialize::RPC_ERROR;
-
-    let mut r = TLReader::new(data);
-    let ctor = match r.read_u32() {
-        Ok(c) => c,
-        Err(_) => return Error::Other("failed to parse RPC error".into()),
-    };
-
-    if ctor != RPC_ERROR {
-        return Error::Other(format!("not an RPC error: {ctor:#x}"));
+impl From<base64::DecodeSliceError> for Error {
+    fn from(e: base64::DecodeSliceError) -> Self {
+        Error::Serialization(format!("base64: {e}"))
     }
+}
 
-    let error_code = match r.read_i32() {
-        Ok(c) => c,
-        Err(_) => return Error::Other("failed to read error code".into()),
-    };
-
-    let error_message = match r.read_bytes() {
-        Ok(b) => String::from_utf8(b).unwrap_or_else(|_| "non-UTF-8 error".into()),
-        Err(_) => return Error::Other("failed to read error message".into()),
-    };
-
+/// Classify an RPC error into a typed `Error` from its code and message.
+///
+/// The raw TL parsing lives in `mtproto::parse_rpc_error`; this performs
+/// the message-based classification (FloodWait, Migration, auth errors…).
+pub fn classify_rpc_error(error_code: i32, error_message: &str) -> Error {
     // Classify known error messages
-    if error_message.contains("FLOOD_WAIT_") {
-        if let Ok(secs) = error_message.trim_start_matches("FLOOD_WAIT_").parse::<i32>() {
-            return Error::FloodWait {
-                seconds: secs,
-                retry_after: Instant::now() + std::time::Duration::from_secs(secs as u64),
-            };
-        }
+    if let Some(secs_str) = error_message.strip_prefix("FLOOD_WAIT_")
+        && let Ok(secs) = secs_str.parse::<i32>()
+    {
+        return Error::FloodWait {
+            seconds: secs,
+            retry_after: Instant::now() + std::time::Duration::from_secs(secs as u64),
+        };
     }
 
     if error_message.contains("PHONE_CODE_INVALID") || error_message.contains("PHONE_CODE_EMPTY") {
-        return Error::InvalidCode { detail: error_message };
+        return Error::InvalidCode { detail: error_message.to_string() };
     }
 
     if error_message.contains("PASSWORD_HASH_INVALID") {
-        return Error::InvalidPassword { detail: error_message };
+        return Error::InvalidPassword { detail: error_message.to_string() };
     }
 
     if error_message.contains("SIGN_UP_REQUIRED") || error_message.contains("first unoccupied") {
@@ -239,7 +225,7 @@ pub fn parse_rpc_error(data: &[u8]) -> Error {
     }
 
     if error_message.contains("FILE_REFERENCE_EXPIRED") || error_message.contains("FILE_REFERENCE") {
-        return Error::FileReferenceExpired { detail: error_message };
+        return Error::FileReferenceExpired { detail: error_message.to_string() };
     }
 
     if error_message.contains("AUTH_KEY_UNREGISTERED") {
@@ -249,21 +235,15 @@ pub fn parse_rpc_error(data: &[u8]) -> Error {
         };
     }
 
-    if error_message.contains("USER_DEACTIVATED_BAN") {
-        return Error::Rpc { error_code, error_message };
-    }
-
-    if error_message.starts_with("MIGRATE_") {
-        if let Some(dc_str) = error_message.strip_prefix("MIGRATE_") {
-            if let Ok(dc_id) = dc_str.parse::<i32>() {
-                return Error::Migration { dc_id };
-            }
-        }
+    if let Some(dc_str) = error_message.strip_prefix("MIGRATE_")
+        && let Ok(dc_id) = dc_str.parse::<i32>()
+    {
+        return Error::Migration { dc_id };
     }
 
     Error::Rpc {
         error_code,
-        error_message,
+        error_message: error_message.to_string(),
     }
 }
 

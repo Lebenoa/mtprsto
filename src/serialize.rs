@@ -40,6 +40,11 @@ impl TLWriter {
         self.buf.len()
     }
 
+    /// Returns `true` when nothing has been written yet.
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
     // --- elementary writes ---
 
     pub fn write_i32(&mut self, v: i32) {
@@ -87,8 +92,9 @@ impl TLWriter {
         }
         self.buf.extend_from_slice(data);
         // Pad to 4-byte alignment
-        while self.buf.len() % 4 != 0 {
-            self.buf.push(0);
+        let pad = 4 - (self.buf.len() % 4);
+        if pad != 4 {
+            self.buf.resize(self.buf.len() + pad, 0);
         }
     }
 
@@ -224,7 +230,9 @@ impl<'a> TLReader<'a> {
         Ok(buf)
     }
 
-    /// Read a bare TL `string`.
+    /// Read a bare TL `string` (length-prefixed, padded to 4-byte
+    /// alignment — padding is computed from the absolute stream offset,
+    /// matching `TLWriter::write_bytes`).
     pub fn read_bytes(&mut self) -> Result<Vec<u8>> {
         self.ensure(1)?;
         let first = self.data[self.pos];
@@ -246,9 +254,8 @@ impl<'a> TLReader<'a> {
         buf.copy_from_slice(&self.data[self.pos..self.pos + len]);
         self.pos += len;
 
-        // Skip padding to 4-byte alignment
-        let total = skip + len;
-        let pad = (4 - (total % 4)) % 4;
+        // Skip padding so the stream position is 4-byte aligned again.
+        let pad = (4 - (self.pos % 4)) % 4;
         self.pos += pad;
 
         Ok(buf)
@@ -267,6 +274,18 @@ impl<'a> TLReader<'a> {
         self.ensure(n)?;
         self.pos += n;
         Ok(())
+    }
+
+    /// Read a TL `Vector<T>` header and return the element count.
+    /// The caller then reads `count` elements directly from this reader.
+    pub fn read_vector_header(&mut self) -> Result<i32> {
+        let ctor = self.read_u32()?;
+        if ctor != VECTOR {
+            return Err(crate::error::Error::Serialization(format!(
+                "expected vector constructor, got {ctor:#x}"
+            )));
+        }
+        self.read_i32()
     }
 }
 
@@ -291,8 +310,10 @@ pub fn constructor_id(description: &str) -> u32 {
 pub const RES_PQ: u32 = 0x05162463;
 
 // P_Q_inner_data
-pub const P_Q_INNER_DATA: u32 = 0xa9f55f95;
-pub const P_Q_INNER_DATA_TEMP: u32 = 0x56fddf88;
+pub const P_Q_INNER_DATA: u32 = 0x83c95aec;
+pub const P_Q_INNER_DATA_DC: u32 = 0xa9f55f95;
+pub const P_Q_INNER_DATA_TEMP: u32 = 0x3c6a84d4;
+pub const P_Q_INNER_DATA_TEMP_DC: u32 = 0x56fddf88;
 
 // Server_DH_Params
 pub const SERVER_DH_PARAMS_OK: u32 = 0xd0e8075c;

@@ -21,7 +21,7 @@ pub const API_LAYER: i32 = 223;
 /// High-level Telegram API client supporting both user and bot authorization.
 pub struct TelegramClient {
     pub session: Option<MtProtoSession>,
-    pub user_id: Option<i32>,
+    pub user_id: Option<i64>,
     pub dc_id: i32,
     pub api_id: Option<i32>,
     pub api_hash: Option<String>,
@@ -79,6 +79,13 @@ impl TelegramClient {
 
         // Step 4: Build req_DH_params
         let req_dh = auth.build_req_dh_params(self.dc_id)?;
+        if std::env::var("MTPRSTO_DEBUG_DH").is_ok() {
+            tracing::warn!(
+                "req_DH_params ({} bytes): {}",
+                req_dh.len(),
+                req_dh.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            );
+        }
 
         // Step 5: Send req_DH_params
         let mut stream = transport::connect(self.dc_id).await?;
@@ -155,19 +162,19 @@ impl TelegramClient {
 
         match constructor {
             types::AUTH_AUTHORIZATION => {
-                Err(Error::Protocol(
-                    "Bot authorization requires sign up — check bot token".into(),
-                ))
+                // Bot authorization successful
+                tracing::info!("bot authorization succeeded");
+                Ok(())
+            }
+            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
+                Err(Error::SignUpRequired)
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Rpc {
-                    error_code: code,
-                    error_message: msg,
-                })
+                Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth response",
+                "unexpected constructor {:#x} in bot auth response",
                 constructor
             ))),
         }
@@ -221,10 +228,7 @@ impl TelegramClient {
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Rpc {
-                    error_code: code,
-                    error_message: msg,
-                })
+                Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
                 "unexpected constructor {:#x} in auth_send_code response",
@@ -267,25 +271,23 @@ impl TelegramClient {
 
         match constructor {
             types::AUTH_AUTHORIZATION => {
+                // auth.authorization#2ea2c0d4 flags:# setup_password_required:flags.1?true
+                // otherwise_relogin_days:flags.1?int tmp_sessions:flags.0?int
+                // future_auth_token:flags.2?bytes user:User
                 let flags = r.read_i32()?;
-                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; }
-                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; }
-                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; }
-                let user_ctor = r.read_u32()?;
-                let user_flags = r.read_i32()?;
-                let user_id = r.read_i64()?;
-                self.user_id = Some(user_id as i32);
+                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; } // tmp_sessions
+                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; } // otherwise_relogin_days
+                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; } // future_auth_token
+                let user = types::User::read_from(&mut r)?;
+                self.user_id = Some(user.id().0);
                 Ok(())
             }
             types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
-                Err(Error::Protocol("Sign up required".into()))
+                Err(Error::SignUpRequired)
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Rpc {
-                    error_code: code,
-                    error_message: msg,
-                })
+                Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
                 "unexpected constructor {:#x} in auth_sign_in response",
@@ -330,15 +332,18 @@ impl TelegramClient {
 
         match constructor {
             types::AUTH_AUTHORIZATION => {
-                let _dc_number = r.read_i32()?;
+                // auth.authorization#2ea2c0d4 — same layout as auth_sign_in
+                let flags = r.read_i32()?;
+                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; } // tmp_sessions
+                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; } // otherwise_relogin_days
+                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; } // future_auth_token
+                let user = types::User::read_from(&mut r)?;
+                self.user_id = Some(user.id().0);
                 Ok(())
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
-                Err(Error::Rpc {
-                    error_code: code,
-                    error_message: msg,
-                })
+                Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
                 "unexpected constructor {:#x} in auth_sign_up response",

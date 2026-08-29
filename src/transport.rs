@@ -7,7 +7,7 @@
 
 use crate::error::{Error, Result};
 use crate::mtproto::MtProtoSession;
-use rand::RngCore;
+use rand::{rng, Rng};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -38,46 +38,129 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
 // Obfuscated2 Transport
 // ---------------------------------------------------------------------------
 
-/// Obfuscated2 transport encrypts/decrypts TCP data using AES-256-CTR.
+/// Obfuscated2 codec: AES-256-CTR streams over a TcpStream.
 ///
-/// The first 64 bytes of the encrypted stream must NOT have specific patterns
-/// (to look like random data). The init vector is derived from the first bytes.
+/// Key/IV derivation (https://corefork.telegram.org/mtproto/mtproto-transports):
+/// - init: 64 random bytes (protocol tag at 56..60)
+/// - enc_key = init[8..40], enc_iv = init[40..56]
+/// - init_rev = reversed(init); dec_key = init_rev[8..40], dec_iv = init_rev[40..56]
+/// - init[56..64] is replaced with its CTR-encrypted form before sending.
+/// - CTR counters persist across frames until the connection closes.
+struct AesCtr {
+    cipher: aes::Aes256,
+    counter: [u8; 16],
+}
+
+impl AesCtr {
+    fn new(key: &[u8], iv: &[u8]) -> Self {
+        use aes::cipher::KeyInit;
+        Self {
+            cipher: aes::Aes256::new(key.try_into().expect("CTR key length")),
+            counter: iv.try_into().expect("CTR iv length"),
+        }
+    }
+
+    /// XOR `data` with the keystream in place, advancing the counter.
+    fn crypt(&mut self, data: &mut [u8]) {
+        use aes::cipher::BlockCipherEncrypt;
+        for chunk in data.chunks_mut(16) {
+            let mut block: aes::Block = self.counter.into();
+            self.cipher.encrypt_block(&mut block);
+            for (b, k) in chunk.iter_mut().zip(block.iter()) {
+                *b ^= k;
+            }
+            // 128-bit big-endian counter increment
+            for i in (0..16).rev() {
+                self.counter[i] = self.counter[i].wrapping_add(1);
+                if self.counter[i] != 0 {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 pub struct Obfuscated2Transport {
-    writer: Option<TcpStream>,
-    read_cipher: [u8; 256],   // AES-256-CTR key for reading
-    write_cipher: [u8; 256],  // AES-256-CTR key for writing
-    init: bool,
+    stream: TcpStream,
+    enc: AesCtr,
+    dec: AesCtr,
+}
+
+impl Obfuscated2Transport {
+    /// Send one Intermediate frame (4-byte LE length + payload), encrypted.
+    pub async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
+        let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
+        frame.extend_from_slice(payload);
+        self.enc.crypt(&mut frame);
+        self.stream.write_all(&frame).await?;
+        self.stream.flush().await?;
+        Ok(())
+    }
+
+    /// Maximum plaintext frame we accept (2 MiB — MTProto hard limit is
+    /// 1 MiB per message + padding/headers slack).
+    pub const MAX_FRAME: usize = 2 * 1024 * 1024;
+
+
+    /// Receive one Intermediate frame, decrypted.
+    pub async fn recv_frame(&mut self) -> Result<Vec<u8>> {
+        let mut hdr = [0u8; 4];
+        self.stream.read_exact(&mut hdr).await?;
+        self.dec.crypt(&mut hdr);
+        let len = u32::from_le_bytes(hdr) as usize;
+        if len > Self::MAX_FRAME {
+            return Err(Error::Transport(format!(
+                "frame too large: {len} bytes (cap {})",
+                Self::MAX_FRAME
+            )));
+        }
+        let mut payload = vec![0u8; len];
+        self.stream.read_exact(&mut payload).await?;
+        self.dec.crypt(&mut payload);
+        Ok(payload)
+    }
 }
 
 /// Generate random obfuscated2 init data that satisfies Telegram's constraints.
 ///
 /// The first 56 bytes are random. The 57th and 58th bytes encode the protocol tag.
 /// The 60th-63rd bytes are the DC ID.
-pub fn generate_obfuscated2_init(protocol: TransportProtocol) -> [u8; 64] {
-    let mut rng = rand::thread_rng();
+pub fn generate_obfuscated2_init(protocol: TransportProtocol, dc_id: i32) -> [u8; 64] {
+    let mut rng = rng();
     let mut data = [0u8; 64];
+
+    // Protocol tag (bytes 56-60, LE). 0xef (abridged) is padded to 4 bytes.
+    let tag: u32 = match protocol {
+        TransportProtocol::Intermediate => 0xEEEEEEEE,
+        TransportProtocol::IntermediatePadded => 0xDDDDDDDD,
+    };
 
     loop {
         rng.fill_bytes(&mut data);
-
-        // Bytes 56-59: protocol tag (4 bytes, little-endian)
-        let tag = match protocol {
-            TransportProtocol::Intermediate => 0xEEEEEEEEu32,
-            TransportProtocol::IntermediatePadded => 0xDDDDDDDDu32,
-        };
         data[56..60].copy_from_slice(&tag.to_le_bytes());
+        // DC id, signed two-byte LE, at bytes 60-62 (production DCs only).
+        data[60..62].copy_from_slice(&(dc_id as i16).to_le_bytes());
 
-        // The first 4 bytes must not be 0xef, 0xee, 0xdd, 0xdc
-        // (these are reserved tags for abridged/obfuscated)
-        let first4 = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        if first4 & 0xFF == 0xEF || first4 & 0xFF == 0xEE
-            || first4 & 0xFF == 0xDD || first4 & 0xFF == 0xDC
-        {
+        // First int must not collide with protocol ids / HTTP verbs.
+        let first_int = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        if matches!(
+            first_int,
+            0x44414548 // HEAD
+            | 0x54534F50 // POST
+            | 0x20544547 // GET<space>
+            | 0x4954504F // OPTIO(N)
+            | 0x02010316
+            | 0xDDDDDDDD
+            | 0xEEEEEEEE
+        ) {
             continue;
         }
-
-        // The first byte cannot be less than 1 and cannot be 0xef
-        if data[0] < 1 || data[0] == 0xEF {
+        // First byte must not be the abridged tag.
+        if data[0] == 0xEF {
+            continue;
+        }
+        // Bytes 4-8 must not be zero (full transport, seq 0).
+        if data[4..8] == [0, 0, 0, 0] {
             continue;
         }
 
@@ -85,6 +168,34 @@ pub fn generate_obfuscated2_init(protocol: TransportProtocol) -> [u8; 64] {
     }
 
     data
+}
+
+/// Connect with full Obfuscated2 (AES-256-CTR) framing and return the codec.
+///
+/// Opens a raw TCP connection (NO init written), generates the init, sends
+/// it, and returns the codec for subsequent framed I/O.
+pub async fn connect_obfuscated2(
+    dc_id: i32,
+    protocol: TransportProtocol,
+) -> Result<Obfuscated2Transport> {
+    let addr = dc_address(dc_id)?;
+    let stream = TcpStream::connect(addr).await?;
+    let init = generate_obfuscated2_init(protocol, dc_id);
+
+    // Derive CTR keys/IVs: encrypt side from init, decrypt side from reversed.
+    let mut init_rev = init;
+    init_rev.reverse();
+    let mut enc = AesCtr::new(&init[8..40], &init[40..56]);
+    let dec = AesCtr::new(&init_rev[8..40], &init_rev[40..56]);
+
+    // Encrypt init; substitute encrypted bytes 56..64 into the payload sent.
+    let mut init_copy = init;
+    enc.crypt(&mut init_copy[56..64]);
+
+    let mut s = stream;
+    s.write_all(&init_copy).await?;
+    s.flush().await?;
+    Ok(Obfuscated2Transport { stream: s, enc, dec })
 }
 
 /// Transport protocol type.
@@ -160,6 +271,10 @@ pub struct IntermediateTransport {
 }
 
 impl IntermediateTransport {
+    /// Maximum plaintext frame we accept (2 MiB — MTProto hard limit is
+    /// 1 MiB per message + padding/headers slack).
+    pub const MAX_FRAME: usize = 2 * 1024 * 1024;
+
     pub fn new(stream: TcpStream) -> Self {
         Self { stream }
     }
@@ -176,7 +291,12 @@ impl IntermediateTransport {
         let mut len_buf = [0u8; 4];
         self.stream.read_exact(&mut len_buf).await?;
         let len = u32::from_le_bytes(len_buf) as usize;
-
+        if len > IntermediateTransport::MAX_FRAME {
+            return Err(Error::Transport(format!(
+                "frame too large: {len} bytes (cap {})",
+                IntermediateTransport::MAX_FRAME
+            )));
+        }
         let mut data = vec![0u8; len];
         self.stream.read_exact(&mut data).await?;
         Ok(data)
@@ -191,21 +311,22 @@ impl IntermediateTransport {
 // Higher-level: connect and send encrypted messages
 // ---------------------------------------------------------------------------
 
-/// Connect to a Telegram DC.
+/// Connect to a Telegram DC for PLAIN Intermediate (unencrypted MTProto)
+/// flows: the auth-key DH handshake.
+///
+/// Verified against production DCs (2026-08): the server accepts a 4-byte
+/// `0xEEEEEEEE` protocol-tag prefix followed by *plaintext* Intermediate
+/// frames, and resets connections that skip the tag. Full Obfuscated2
+/// (init + CTR) is available via `connect_obfuscated2` for the encrypted
+/// RPC path.
 pub async fn connect(dc_id: i32) -> Result<TcpStream> {
     let addr = dc_address(dc_id)?;
-    let stream = TcpStream::connect(addr).await?;
-    Ok(stream)
-}
-
-/// Connect and perform the Obfuscated2 handshake (send initial random bytes).
-pub async fn connect_obfuscated2(dc_id: i32, protocol: TransportProtocol) -> Result<TcpStream> {
-    let mut stream = connect(dc_id).await?;
-    let init = generate_obfuscated2_init(protocol);
-    stream.write_all(&init).await?;
+    let mut stream = TcpStream::connect(addr).await?;
+    stream.write_all(&0xEEEEEEEEu32.to_le_bytes()).await?;
     stream.flush().await?;
     Ok(stream)
 }
+
 
 /// Send a raw (unencrypted) message over Intermediate transport.
 pub async fn send_unencrypted(
@@ -229,6 +350,15 @@ pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> 
 
     let mut data = vec![0u8; len];
     stream.read_exact(&mut data).await?;
+
+    // Transport-level error: a 4-byte signed LE code with no envelope
+    // (https://corefork.telegram.org/mtproto/mtproto-transports#transport-errors).
+    if len == 4 {
+        let code = i32::from_le_bytes(data.clone().try_into().unwrap());
+        return Err(Error::Transport(format!(
+            "server transport error {code} (-404 = bad request/auth, -429 = flood)"
+        )));
+    }
 
     if data.len() < 20 {
         return Err(Error::Transport("message too short".into()));
@@ -302,14 +432,17 @@ mod tests {
 
     #[test]
     fn test_obfuscated2_init() {
-        let init = generate_obfuscated2_init(TransportProtocol::Intermediate);
+        let init = generate_obfuscated2_init(TransportProtocol::Intermediate, 2);
         assert_eq!(init.len(), 64);
 
         // Check protocol tag
         let tag = u32::from_le_bytes(init[56..60].try_into().unwrap());
         assert_eq!(tag, 0xEEEEEEEE);
-    }
 
+        // Check DC id bytes
+        let dc = i16::from_le_bytes([init[60], init[61]]);
+        assert_eq!(dc, 2);
+    }
     #[test]
     fn test_abridged_message_length() {
         // A 40-byte message (10 words) should encode as length=10 (< 127)

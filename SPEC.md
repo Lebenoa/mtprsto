@@ -477,7 +477,7 @@ Rate limits: 30 req/s globally, 1 req/s per method for some endpoints.
 | `msg_id` validity      | reject future > 30 s, past > 300 s            |
 | Acks per second        | ≥1 per 10 s, or queue ≥16 pending             |
 | Container `msg_id`s    | must be ≥ parent msg's seq                    |
-| API layer (2026)       | 218 (mtprsto ships with 175; bump on connect) |
+| API layer (2026)       | 223 (mtprsto)                               |
 
 ---
 
@@ -543,7 +543,7 @@ pure MTProto).
 | 3 | File upload (`upload.saveBigFilePart`)            | none          | `transfer.rs` + `upload.rs` + `resume.rs`                     | **P0**   |
 | 4 | File download (`upload.getFile` + iter)           | none          | `stream.rs`                                                  | **P0**   |
 | 5 | High-level `Client` (connect, send_message, ...)  | none          | every consumer                                              | **P0**   |
-| 6 | SQLite session store                              | none          | `tg/session.rs` (must read existing files written by `grammers_session 0.10`) | **P0**   |
+| 6 | Session persistence (JSON file)                   | ✅            | `src/session.rs` — atomic write-temp-rename, serde_json             | **P0**   |
 | 7 | Update stream + `iter_messages`                   | none          | `tg/botfather.rs` (poll for BotFather reply)                  | **P1**   |
 | 8 | Callback query (`getBotCallbackAnswer`)           | none          | `tg/botfather.rs` (press inline button)                      | **P1**   |
 | 9 | Channel admin (CreateChannel, Invite, EditAdmin)  | none          | `tg/bots.rs`, `tg/channels.rs`                               | **P1**   |
@@ -590,9 +590,9 @@ unusable API. They must be designed as a unit:
    before Client.
 3. **SenderPool** (`src/pool.rs`, ~800 LoC) — the throughput-critical
    bit.
-5. **High-level Client** (`src/client.rs`, ~1.5 kLoC) — composes all
+4. **High-level Client** (`src/client.rs`, ~1.5 kLoC) — composes all
    of the above.
-7. Tests + benchmark vs grammers throughput.
+5. Tests + benchmark vs grammers throughput.
 
 Then migrate ii-drive per file (`tg/session.rs` first, then
 `tg/transfer.rs`, `tg/bots.rs`, `tg/botfather.rs`, `tg/channels.rs`,
@@ -604,11 +604,11 @@ verify with a real-bot smoke test.
 
 | Risk                                                         | Mitigation |
 |--------------------------------------------------------------|------------|
-| Session sqlite schema mismatch → every bot re-auths          | Reverse-engineer `grammers_session 0.10` schema exactly; verify by reading an existing `data/sessions/*.sqlite`. |
+| Session schema mismatch → every bot re-auths                  | Use JSON format for simplicity; document migration path from grammers SQLite if needed. |
 | Throughput regression vs grammers' SenderPool                | Benchmark before migration; gate at end of step 4. |
 | `file_reference` expiry handling diverges from grammers      | Match grammers' error-text matching (`FILE_REFERENCE_EXPIRED`) byte-for-byte in `error.rs`. |
 | DC IP table stale → all initial connects fail                | Refresh from `help.getConfig` on every boot, fall back to hard-coded table. |
-| API layer mismatch (mtprsto 175 vs current ~218)              | Bump on `Client::connect` via `invokeWithLayer`. |
+| API layer mismatch (mtprsto 223 vs current)                   | Ship with layer 223; bump on new releases.      |
 | Updates channel only delivers when the main client pumps     | Replicate grammers' background "runner" task exactly; leak it past `Client::drop` until subscribers finish. |
 ---
 

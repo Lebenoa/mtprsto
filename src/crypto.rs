@@ -4,10 +4,10 @@
 //! CRC32 checksums, Diffie-Hellman key exchange, and RSA padding.
 
 use crate::error::{Error, Result};
-use aes::cipher::{BlockEncrypt, BlockDecrypt, KeyInit};
-use num_bigint::{BigUint, RandBigInt};
+use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
+use num_bigint::{BigRng010, BigUint};
 use num_traits::One;
-use rand::rngs::OsRng;
+use rand::{rng, Rng};
 use sha1::Digest as Sha1Digest;
 use sha2::Sha256;
 
@@ -29,7 +29,7 @@ type Aes256EcbDec = aes::Aes256Dec;
 /// `iv` must be exactly 32 bytes (two 16-byte blocks: x₀ || y₀).
 /// `data` length must be a multiple of 16.
 pub fn aes_ige_encrypt(data: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) -> Result<()> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(Error::Crypto(format!(
             "AES-IGE data length {} is not a multiple of 16",
             data.len()
@@ -47,18 +47,27 @@ pub fn aes_ige_encrypt(data: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) -> Result
     let cipher = Aes256EcbEnc::new(key.into());
 
     for chunk in data.chunks_mut(16) {
-        // c = E(y XOR chunk)  — chain tracks ciphertext
-        let mut block = [0u8; 16];
+        // MTProto IGE encrypt (gotd ige convention):
+        //   c_i = E(p_i XOR c_prev) XOR p_prev
+        // where c_prev starts as iv[0..16] and p_prev as iv[16..32].
+        let mut block_arr: aes::Block = {
+            let mut b = [0u8; 16];
+            b.copy_from_slice(chunk);
+            b.into()
+        };
         for i in 0..16 {
-            block[i] = y[i] ^ chunk[i];
+            block_arr[i] ^= x[i]; // prev ciphertext
         }
-        let mut block_arr = aes::Block::clone_from_slice(&block);
         cipher.encrypt_block(&mut block_arr);
+        for i in 0..16 {
+            block_arr[i] ^= y[i]; // prev plaintext
+        }
+
+        let p: [u8; 16] = chunk.try_into().unwrap();
         let c: [u8; 16] = block_arr.into();
 
-        // Update chains: x = plaintext, y = ciphertext
-        x.copy_from_slice(chunk);
-        y.copy_from_slice(&c);
+        x.copy_from_slice(&c); // chain tracks ciphertext for pre-XOR
+        y.copy_from_slice(&p); // and plaintext for post-XOR
 
         chunk.copy_from_slice(&c);
     }
@@ -69,7 +78,7 @@ pub fn aes_ige_encrypt(data: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) -> Result
 
 /// Decrypt `data` in-place using AES-256-IGE.
 pub fn aes_ige_decrypt(data: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) -> Result<()> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(Error::Crypto(format!(
             "AES-IGE data length {} is not a multiple of 16",
             data.len()
@@ -85,21 +94,28 @@ pub fn aes_ige_decrypt(data: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) -> Result
     y.copy_from_slice(&iv[16..32]);
 
     let cipher = Aes256EcbDec::new(key.into());
-
     for chunk in data.chunks_mut(16) {
-        // p = D(c) XOR y
-        let mut block_arr = aes::Block::clone_from_slice(chunk);
-        cipher.decrypt_block(&mut block_arr);
-        let d: [u8; 16] = block_arr.into();
-
-        let mut p = [0u8; 16];
+        // MTProto IGE decrypt (gotd ige convention):
+        //   p_i = D(c_i XOR p_prev) XOR c_prev
+        // where c_prev starts as iv[0..16] and p_prev as iv[16..32].
+        let mut block_arr: aes::Block = {
+            let mut b = [0u8; 16];
+            b.copy_from_slice(chunk);
+            b.into()
+        };
         for i in 0..16 {
-            p[i] = d[i] ^ y[i];
+            block_arr[i] ^= y[i]; // prev plaintext
+        }
+        cipher.decrypt_block(&mut block_arr);
+        for i in 0..16 {
+            block_arr[i] ^= x[i]; // prev ciphertext
         }
 
-        // Update chains: x = plaintext, y = ciphertext
-        x.copy_from_slice(&p);
-        y.copy_from_slice(chunk);
+        let c: [u8; 16] = chunk.try_into().unwrap();
+        let p: [u8; 16] = block_arr.into();
+
+        x.copy_from_slice(&c); // chain tracks ciphertext for post-XOR
+        y.copy_from_slice(&p); // and plaintext for pre-XOR
 
         chunk.copy_from_slice(&p);
     }
@@ -249,8 +265,8 @@ pub fn dh_client_generate() -> (BigUint, BigUint) {
     let g = BigUint::from(DH_GENERATOR);
 
     // Generate random 2048-bit number a
-    let mut rng = OsRng;
-    let a = rng.gen_biguint(2048);
+    let mut rng = rng();
+    let a = rng.random_biguint(2048);
 
     // g_a = g^a mod p
     let g_a = g.modpow(&a, &p);
@@ -276,9 +292,8 @@ pub fn dh_server_complete(g_a: BigUint, b: BigUint) -> Vec<u8> {
 pub fn dh_server_generate() -> (BigUint, BigUint) {
     let p = dh_prime();
     let g = BigUint::from(DH_GENERATOR);
-
-    let mut rng = OsRng;
-    let b = rng.gen_biguint(2048);
+    let mut rng = rng();
+    let b = rng.random_biguint(2048);
     let g_b = g.modpow(&b, &p);
 
     (g_b, b)
@@ -398,14 +413,13 @@ pub fn rsa_pad(data: &[u8], server_public_key: &RsaPublicKey) -> Result<Vec<u8>>
         )));
     }
 
-    let mut rng = OsRng;
+    let mut rng = rng();
 
     // data_with_padding = data + random bytes to make exactly 192 bytes
     let padding_len = 192 - data.len();
     let mut data_with_padding = Vec::with_capacity(192);
     data_with_padding.extend_from_slice(data);
     let mut pad = vec![0u8; padding_len];
-    use rand::RngCore;
     rng.fill_bytes(&mut pad);
     data_with_padding.extend_from_slice(&pad);
 
@@ -476,22 +490,24 @@ impl RsaPublicKey {
         self.n.len()
     }
 
-    /// Compute the 64-bit fingerprint: lower 64 bits of SHA1(n || e) where
-    /// n and e are serialized as `RSAPublicKey# n:string e:string = RSAPublicKey`.
+    /// Compute the 64-bit fingerprint of this RSA public key.
+    ///
+    /// MTProto definition (gotd RSAFingerprint): int64(LE u64 of
+    /// SHA1(rsa_public_key(n:string e:string))[12..20]).
     pub fn fingerprint(&self) -> u64 {
-        // TL-serialize the bare type: n_len(4 bytes) + n + e_len(4 bytes) + e
-        let mut buf = Vec::new();
-        // string is serialized as: 1 byte len (if < 254), data, padding
-        // But for fingerprint, it's just the raw bytes of the TL string encoding
-        let n_str = tl_string_bytes(&self.n);
-        let e_str = tl_string_bytes(&self.e);
-        buf.extend_from_slice(&n_str);
-        buf.extend_from_slice(&e_str);
-
+        let buf = self.tl_serialized();
         let hash = sha1(&buf);
         let mut id_bytes = [0u8; 8];
         id_bytes.copy_from_slice(&hash[12..20]);
-        u64::from_be_bytes(id_bytes)
+        u64::from_le_bytes(id_bytes)
+    }
+
+    /// TL bytes of the bare `rsa_public_key n:string e:string` combinator.
+    fn tl_serialized(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&tl_string_bytes(&self.n));
+        buf.extend_from_slice(&tl_string_bytes(&self.e));
+        buf
     }
 }
 
@@ -520,49 +536,19 @@ fn tl_string_bytes(data: &[u8]) -> Vec<u8> {
 // Known Telegram server public keys
 // ---------------------------------------------------------------------------
 
-/// Telegram's production RSA public keys (fingerprint → key).
-/// These are well-known and embedded in all Telegram clients.
+/// Telegram's production RSA public keys (main DCs).
+/// Source: gotd/td mtproto/_data/public_keys.pem (canonical, well-known).
 pub fn known_server_keys() -> Vec<RsaPublicKey> {
-    // Key 1: fingerprint 0xc3b42b026ce86b21
+    // Key 1: fingerprint 0x03268d20df9858b2
     let n1 = hex_decode(
-        "DBA4C53D0F3E9F58426C73B3C8EA4503BF49506F5D83B4F1AC0A89E26A7C45F9\
-         12261859AED93CD4E8B228269A1359B56DB781058D78A1B0E9EE2A7E4E2E4E20\
-         C8E1FE63F1D7C603FC571448E0E3A0E5C66AB7E9B6D30956D310F624135C0F26\
-         300DC8FF43E54DEE88EB2BBB2A705048C8C6C5CA3335ABE21B54A07096BE0434\
-         6980EC923622C8405E6C57D4026CA0A2EB6D0C4F84F82A8D0E73828E4A84C5FF\
-         64F1E7C144208F02B5445F1955EB8A2C3D74525F666B8602A288E43D60B2161C\
-         9352E8E2B1B1D90473B04F05D297E87B7A9E0B75F435D3C324C654D5C0697C84\
-         513F39AC6F54A5594C3B7C1E36E8B33B4B0EB7851D59C132B1BF5307B5F81492\
-         2F508029662B703B7F602FA8774D5917F3A33473E6A42C086DC1119C06F098E5\
-         3E190B2E82878368C40E17CC8F811D2B30F9A0B12D0BB4F91574E4C4BB0E26B0\
-         1647B755C84D5C0162C3927C96AF452A466A7B6F89365C0E1E6B57A6361C861F\
-         989F59F8B344B0B4A3903C8523B389269B39C72F1D8B2B571C1884822BE06E50\
-         0A22F4D299EA0E865EE97E08C9E15065DC847C3436E67992BB5C3E4F2CCF8F29\
-         935F901E36A8E628F75BDE0E30E1E878FC4E3A5897CFE4",
+        "C8C11D635691FAC091DD9489AEDCED2932AA8A0BCEFEF05FA800892D9B52ED03200865C9E97211CB2EE6C7AE96D3FB0E15AEFFD66019B44A08A240CFDD2868A85E1F54D6FA5DEAA041F6941DDF302690D61DC476385C2FA655142353CB4E4B59F6E5B6584DB76FE8B1370263246C010C93D011014113EBDF987D093F9D37C2BE48352D69A1683F8F6E6C2167983C761E3AB169FDE5DAAA12123FA1BEAB621E4DA5935E9C198F82F35EAE583A99386D8110EA6BD1ABB0F568759F62694419EA5F69847C43462ABEF858B4CB5EDC84E7B9226CD7BD7E183AA974A712C079DDE85B9DC063B8A5C08E8F859C0EE5DCD824C7807F20153361A7F63CFD2A433A1BE7F5",
     )
     .expect("valid hex");
     let e1 = hex_decode("010001").expect("valid hex");
 
-    // Key 2: fingerprint 0x72c3b548c64832a1
+    // Key 2: fingerprint 0x85fd64de851d9dd0
     let n2 = hex_decode(
-        "EDCE9065545F6C5A833420C487A54527B5F4647F6D1D70C6B0E7752149C720B6\
-         1FEB4810E18D5F070255DE724A7C6768B0755172E82E7E85519C608136A0C7FC\
-         F3FF8D5D2FBB1F2AB7C271E5B3B9E723ED9C0389F3A04C2542A4597C7164EB06\
-         7487C8CC9F4558196D0F44729A9E38F497D5553EC6AB3545A3AA4FC40D7E9216\
-         72AA1B06D00B1C3E9A9253D66A98F552894B85F3D3A135A9DB0AF93F95D5F5E6\
-         7D78AF0EBBA857755A7EB4DB9E043F04E7117A8606C4E16224D22C82B455B824\
-         535FEB90DDDD9927B7A3D6A15FA638C93F9DEAF801AFD52A10B607C41A6F450A\
-         15F9CFE2C855886FF7FC754359E02C9C573AC3134AC04C1D4D2F9B8C2E74D0D4\
-         665A1902B8B7FDE0FC67535CC2E18B57B159C2D13A287A90F24F3E12F1951462\
-         9884E7E6A72C63D90D02561A1C1026A96C4E571704084365AB2030DD4F5C5B7F\
-         A88976D4D16346517DB17E42E88F56E1E8E11C03D3C59A5B7F98F6B0793C780F\
-         C9597C55F98BC733827F6A836F3E05197B0692A43F3E4B0E38D9B448209F8F9C\
-         A25F79513C8C990CCDE12D93C1DE0C50A2E124D35B5B62E79F1A1673E7A9C350\
-         B64B0E41A83F5A042E3C3D9157C8F3E390F7206AF3F43C7D24A4A9B94DC2FDB9\
-         6D8A0E5E56E4C7CB368F5E15C9E5C8BB44E116117C4525080B06DBB64400D824\
-         965A4C3FCF870F44D7B87F436401C231162847944F3F5BE37543B1581B3E7A27\
-         8A16A6F0C2761532F41E5D9456236C4D5EBB9D8B5C8F89A7E5C54F871B9B3C96\
-         4B866B33E57B131B8C8B0F2D40D3E45E54DC494DE2B28F586F55",
+        "E8BB3305C0B52C6CF2AFDF7637313489E63E05268E5BADB601AF417786472E5F93B85438968E20E6729A301C0AFC121BF7151F834436F7FDA680847A66BF64ACCEC78EE21C0B316F0EDAFE2F41908DA7BD1F4A5107638EEB67040ACE472A14F90D9F7C2B7DEF99688BA3073ADB5750BB02964902A359FE745D8170E36876D4FD8A5D41B2A76CBFF9A13267EB9580B2D06D10357448D20D9DA2191CB5D8C93982961CDFDEDA629E37F1FB09A0722027696032FE61ED663DB7A37F6F263D370F69DB53A0DC0A1748BDAAFF6209D5645485E6E001D1953255757E4B8E42813347B11DA6AB500FD0ACE7E6DFA3736199CCAF9397ED0745A427DCFA6CD67BCB1ACFF3",
     )
     .expect("valid hex");
     let e2 = hex_decode("010001").expect("valid hex");
@@ -596,32 +582,25 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
 
 /// Generate `len` random bytes.
 pub fn random_bytes(len: usize) -> Vec<u8> {
-    use rand::RngCore;
     let mut buf = vec![0u8; len];
-    OsRng.fill_bytes(&mut buf);
+    rng().fill_bytes(&mut buf);
     buf
 }
 
-/// Generate a random 128-bit nonce.
 pub fn random_nonce() -> [u8; 16] {
     let mut nonce = [0u8; 16];
-    use rand::RngCore;
-    OsRng.fill_bytes(&mut nonce);
+    rng().fill_bytes(&mut nonce);
     nonce
 }
 
-/// Generate a random 256-bit nonce.
 pub fn random_nonce_256() -> [u8; 32] {
     let mut nonce = [0u8; 32];
-    use rand::RngCore;
-    OsRng.fill_bytes(&mut nonce);
+    rng().fill_bytes(&mut nonce);
     nonce
 }
 
-/// Generate a random 64-bit session ID.
 pub fn random_session_id() -> u64 {
-    use rand::RngCore;
-    OsRng.next_u64()
+rng().next_u64()
 }
 
 /// Compute a message ID based on current time (divisible by 4 for client messages).
@@ -664,8 +643,9 @@ mod tests {
         let original = b"Hello, MTProto world!!Extra padding for 16 bytes!!";
         // Pad to multiple of 16
         let mut data = original.to_vec();
-        while data.len() % 16 != 0 {
-            data.push(0);
+        let pad = 16 - (data.len() % 16);
+        if pad != 16 {
+            data.resize(data.len() + pad, 0);
         }
         let mut encrypted = data.clone();
         aes_ige_encrypt(&mut encrypted, &key, &iv).unwrap();

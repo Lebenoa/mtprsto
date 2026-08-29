@@ -23,24 +23,18 @@
 //!     └─ RPC replies (via invoke)
 //! ```
 
-use crate::error::{Error, Result};
-use crate::types::{Update, Updates, Peer, MsgId, ChannelId, Dialog};
+use crate::types::{Update, Updates};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 /// Dispatch mode for updates.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum DispatchMode {
     /// Publish all updates to an mpsc channel.
+    #[default]
     Channel,
     /// Register a handler function.
     Handler,
-}
-
-impl Default for DispatchMode {
-    fn default() -> Self {
-        Self::Channel
-    }
 }
 
 /// State tracking for a single pts domain (per-account or per-channel).
@@ -144,7 +138,7 @@ impl UpdateDispatcher {
     /// Process an incoming Updates object and dispatch individual updates.
     pub fn process_updates(&mut self, updates: Updates) -> Vec<Update> {
         match updates {
-            Updates::Updates { updates: upd_list, date, seq, .. } => {
+            Updates::Updates { updates: upd_list, date, .. } => {
                 self.account_pts.date = date;
                 self.dispatch_list(upd_list)
             }
@@ -152,12 +146,12 @@ impl UpdateDispatcher {
                 self.account_pts.date = date;
                 self.dispatch_one(update)
             }
-            Updates::UpdatesCombined { updates: upd_list, date, seq, seq_start, .. } => {
+            Updates::UpdatesCombined { updates: upd_list, date, seq, .. } => {
                 self.account_pts.date = date;
                 self.account_pts.seq = seq;
                 self.dispatch_list(upd_list)
             }
-            Updates::UpdateShortSentMessage { id, pts, pts_count, date } => {
+            Updates::UpdateShortSentMessage { id: _, pts, pts_count, date } => {
                 self.account_pts.date = date;
                 self.account_pts.advance(pts, pts_count);
                 // This isn't a real Update — the caller uses the message_id
@@ -304,7 +298,7 @@ mod tests {
 
     fn make_text_update(msg_id: i32, pts: i32, pts_count: i32) -> Update {
         Update::NewMessage {
-            message: Message::Message {
+            message: Message::Message(Box::new(crate::types::MessageFull {
                 id: MsgId(msg_id as i64),
                 from_id: None,
                 peer_id: Peer::User { user_id: crate::types::UserId(1) },
@@ -320,7 +314,7 @@ mod tests {
                 via_bot_id: None,
                 reply_to: None,
                 edit_hide: false,
-            },
+            })),
             pts,
             pts_count,
         }

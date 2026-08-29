@@ -54,6 +54,75 @@ fn default_version() -> i32 {
     1
 }
 
+/// Storage backend for persisted [`SessionData`].
+///
+/// The client wraps one implementation of this trait; pick a backend via
+/// [`ClientConfig::session_storage`](crate::client::ClientConfig::session_storage)
+/// or implement your own. All methods are synchronous so file and embedded
+/// backends need no locking gymnastics; wrap blocking DB calls in
+/// `tokio::task::spawn_blocking` inside your implementation if needed.
+///
+/// # Example
+///
+/// A trivial in-memory store:
+///
+/// ```
+/// use mtprsto::session::{SessionData, SessionStorage};
+/// use std::sync::Mutex;
+///
+/// struct MemoryStore(Mutex<Option<SessionData>>);
+///
+/// impl SessionStorage for MemoryStore {
+///     fn load(&mut self) -> mtprsto::Result<Option<SessionData>> {
+///         Ok(self.0.lock().unwrap().clone())
+///     }
+///
+///     fn save(&mut self, data: &SessionData) -> mtprsto::Result<()> {
+///         *self.0.lock().unwrap() = Some(data.clone());
+///         Ok(())
+///     }
+///
+///     fn delete(&mut self) -> mtprsto::Result<()> {
+///         *self.0.lock().unwrap() = None;
+///         Ok(())
+///     }
+/// }
+/// ```
+pub trait SessionStorage: Send + Sync {
+    /// Load the persisted session. Returns `Ok(None)` when nothing is stored.
+    fn load(&mut self) -> Result<Option<SessionData>>;
+
+    /// Persist (create or overwrite) the session.
+    fn save(&mut self, data: &SessionData) -> Result<()>;
+
+    /// Remove the persisted session. No-op when nothing is stored.
+    fn delete(&mut self) -> Result<()>;
+
+    /// Human-readable backend description for logs (e.g. the file path
+    /// or connection target).
+    fn describe(&self) -> String {
+        "session storage".to_string()
+    }
+}
+
+impl<T: SessionStorage + ?Sized> SessionStorage for Box<T> {
+    fn load(&mut self) -> Result<Option<SessionData>> {
+        (**self).load()
+    }
+
+    fn save(&mut self, data: &SessionData) -> Result<()> {
+        (**self).save(data)
+    }
+
+    fn delete(&mut self) -> Result<()> {
+        (**self).delete()
+    }
+
+    fn describe(&self) -> String {
+        (**self).describe()
+    }
+}
+
 /// Session store that manages persistence to disk.
 pub struct SessionStore {
     path: PathBuf,
@@ -93,21 +162,34 @@ impl SessionStore {
     /// Save session to disk.
     pub fn save(&mut self, data: &SessionData) -> Result<()> {
         // Ensure parent directory exists
-        if let Some(parent) = self.path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                        "failed to create session directory {}: {e}", parent.display()
-                    ))))?;
-            }
+        if let Some(parent) = self.path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
+                    "failed to create session directory {}: {e}", parent.display()
+                ))))?;
         }
 
         let content = serde_json::to_string_pretty(data)
             .map_err(|e| Error::Serialization(format!("failed to serialize session: {e}")))?;
 
-        std::fs::write(&self.path, content)
+        // Atomic write: write to a process-unique temp file, fsync, then
+        // rename. The PID suffix prevents two processes sharing a session
+        // directory from clobbering each other's temp file; sync_all makes
+        // the rename durable against power loss (not just process crash).
+        let tmp_path = self.path.with_extension(format!("json.tmp{}", std::process::id()));
+        std::fs::write(&tmp_path, &content)
             .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                "failed to write session file {}: {e}", self.path.display()
+                "failed to write session tmp file {}: {e}", tmp_path.display()
+            ))))?;
+        if let Ok(handle) = std::fs::File::open(&tmp_path) {
+            let _ = handle.sync_all(); // best-effort durability
+        }
+        std::fs::rename(&tmp_path, &self.path)
+            .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
+                "failed to rename session file {} -> {}: {e}",
+                tmp_path.display(), self.path.display()
             ))))?;
 
         self.data = Some(data.clone());
@@ -139,6 +221,24 @@ impl SessionStore {
         }
         self.data = None;
         Ok(())
+    }
+}
+
+impl SessionStorage for SessionStore {
+    fn load(&mut self) -> Result<Option<SessionData>> {
+        SessionStore::load(self)
+    }
+
+    fn save(&mut self, data: &SessionData) -> Result<()> {
+        SessionStore::save(self, data)
+    }
+
+    fn delete(&mut self) -> Result<()> {
+        SessionStore::delete(self)
+    }
+
+    fn describe(&self) -> String {
+        format!("json file {}", self.path.display())
     }
 }
 

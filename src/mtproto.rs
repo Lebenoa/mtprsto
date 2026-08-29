@@ -10,6 +10,7 @@ use crate::crypto::{self, RsaPublicKey};
 use crate::error::{Error, Result};
 use crate::serialize::{TLWriter, TLReader, *};
 use num_bigint::BigUint;
+use rand::rand_core::Rng as _;
 use num_traits::ToPrimitive;
 
 /// A negotiated MTProto session.
@@ -87,8 +88,7 @@ impl MtProtoSession {
         let mut plaintext = w.into_bytes();
 
         // MTProto 2.0 padding: 12..1024 bytes so total is divisible by 16
-        let mut rng = rand::rngs::OsRng;
-        use rand::RngCore;
+        let mut rng = rand::rng();
         let min_pad = 12;
         let max_pad = 1024;
         let base = plaintext.len();
@@ -100,7 +100,7 @@ impl MtProtoSession {
         } else {
             // We need at least min_pad bytes; pick the smallest amount >= min_pad that keeps alignment
             let needed = min_pad - pad_to_align;
-            let extra_chunks = (needed + 15) / 16;
+            let extra_chunks = needed.div_ceil(16);
             pad_to_align + extra_chunks * 16
         };
         let actual_pad = total_pad.min(max_pad);
@@ -140,15 +140,14 @@ impl MtProtoSession {
     /// Decrypt a received encrypted message (default: server→client, x=8).
     ///
     /// Input is the full message starting with `auth_key_id`.
-    /// Returns (msg_id, plaintext payload).
-    pub fn decrypt_message(&self, data: &[u8]) -> Result<(u64, Vec<u8>)> {
+    pub fn decrypt_message(&mut self, data: &[u8]) -> Result<(u64, Vec<u8>)> {
         self.decrypt_message_with_x(data, 8)
     }
 
     /// Decrypt with a specific x value.
     ///
     /// x=0 for client→server messages, x=8 for server→client messages.
-    pub fn decrypt_message_with_x(&self, data: &[u8], x: usize) -> Result<(u64, Vec<u8>)> {
+    pub fn decrypt_message_with_x(&mut self, data: &[u8], x: usize) -> Result<(u64, Vec<u8>)> {
         if data.len() < 24 {
             return Err(Error::Protocol("encrypted message too short".into()));
         }
@@ -180,7 +179,7 @@ impl MtProtoSession {
 
         // Parse internal header
         let mut reader = TLReader::new(&decrypted);
-        let _salt = reader.read_u64()?; // server_salt
+        let server_salt = reader.read_u64()?; // server_salt
         let _session = reader.read_u64()?; // session_id
         let msg_id = reader.read_u64()?; // message_id
         let _seq_no = reader.read_i32()?; // seq_no
@@ -191,6 +190,9 @@ impl MtProtoSession {
             return Err(Error::Protocol("message_data_length exceeds data".into()));
         }
         let payload = decrypted[payload_start..payload_start + msg_len as usize].to_vec();
+
+        // Adopt the server's current salt so subsequent sends stay valid.
+        self.server_salt = server_salt;
 
         Ok((msg_id, payload))
     }
@@ -210,7 +212,8 @@ impl MtProtoSession {
 // Auth key creation (Diffie-Hellman handshake)
 // ---------------------------------------------------------------------------
 
-/// State machine for the DH auth key creation.
+/// Intermediate state for the auth-key creation flow.
+#[derive(Default)]
 pub struct AuthKeyCreation {
     pub nonce: [u8; 16],
     pub server_nonce: Option<[u8; 16]>,
@@ -278,14 +281,23 @@ impl AuthKeyCreation {
         // Parse pq as a TL string (big-endian bytes)
         self.pq = Some(r.read_bytes()?);
 
-        // Parse server_public_key_fingerprints
+        // Parse server_public_key_fingerprints: Vector<long>
+        // The vector constructor (0x1cb5c415) precedes the count.
+        let vec_ctor = r.read_u32()?;
+        if vec_ctor != crate::serialize::VECTOR {
+            return Err(Error::UnexpectedResponse(format!(
+                "expected Vector constructor in resPQ, got {vec_ctor:#x}"
+            )));
+        }
         let num_fingerprints = r.read_i32()?;
         let mut fingerprints = Vec::new();
         for _ in 0..num_fingerprints {
-            fingerprints.push(r.read_i64()? as u64);
+            // longs are little-endian; gotd's RSAFingerprint is defined as
+            // int64(LE u64 of SHA1[12..20]), which is exactly what the
+            // server echoes back. Plain LE read matches.
+            let v = r.read_u64()?;
+            fingerprints.push(v);
         }
-
-        // Find matching server key
         for fp in &fingerprints {
             if let Some(key) = crypto::find_server_key(*fp) {
                 self.server_public_key = Some(key);
@@ -444,9 +456,9 @@ impl AuthKeyCreation {
         let g = BigUint::from(self.g.ok_or(Error::NoAuthKey)?);
 
         // Generate random 2048-bit b
-        let mut rng = rand::rngs::OsRng;
-        use num_bigint::RandBigInt;
-        let b = rng.gen_biguint(2048);
+        let mut rng = rand::rng();
+        use num_bigint::BigRng010;
+        let b = rng.random_biguint(2048);
         let g_b = g.modpow(&b, &dh_prime);
 
         self.a = Some(b); // Actually store b here; the "a" naming is from the server's perspective
@@ -469,7 +481,6 @@ impl AuthKeyCreation {
         data_with_hash.extend_from_slice(&hash);
         data_with_hash.extend_from_slice(&inner_data);
         let mut padding = vec![0u8; 16];
-        use rand::RngCore;
         rng.fill_bytes(&mut padding);
         data_with_hash.extend_from_slice(&padding);
 
@@ -675,7 +686,7 @@ fn pollard_rho_factor(n: &BigUint) -> Result<(BigUint, BigUint)> {
     if n.bits() < 64 {
         let n_val = n.to_u64().unwrap();
         for d in (3..=((n_val as f64).sqrt() as u64)).step_by(2) {
-            if n_val % d == 0 {
+            if n_val.is_multiple_of(d) {
                 return Ok((
                     BigUint::from(d),
                     BigUint::from(n_val / d),
@@ -687,11 +698,11 @@ fn pollard_rho_factor(n: &BigUint) -> Result<(BigUint, BigUint)> {
     }
 
     // Pollard's rho
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    use rand::RngExt;
+    let mut rng = rand::rng();
 
     loop {
-        let c = BigUint::from(rng.gen_range(1u32..=100));
+        let c = BigUint::from(rng.random_range(1u32..=100));
         let mut x = BigUint::from(2u32);
         let mut y = x.clone();
         let mut d = BigUint::one();
