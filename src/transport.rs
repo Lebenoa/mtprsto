@@ -25,8 +25,9 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
         1 => ("149.154.175.50", 443),
         2 => ("149.154.167.50", 443),
         3 => ("149.154.175.100", 443),
-        4 => ("149.154.167.91", 443),
-        5 => ("91.108.56.130", 443),
+        4 => ("149.154.167.92", 443),
+        5 => ("91.108.56.100", 443),
+        201 => ("91.108.56.4", 443), // test DC (SPEC §1)
         _ => return Err(Error::Transport(format!("unknown DC ID: {dc_id}"))),
     };
     let ip = ip.parse::<std::net::IpAddr>()
@@ -422,11 +423,19 @@ mod tests {
 
     #[test]
     fn test_dc_addresses() {
-        assert!(dc_address(1).is_ok());
-        assert!(dc_address(2).is_ok());
-        assert!(dc_address(3).is_ok());
-        assert!(dc_address(4).is_ok());
-        assert!(dc_address(5).is_ok());
+        let expected = [
+            (1, "149.154.175.50"),
+            (2, "149.154.167.50"),
+            (3, "149.154.175.100"),
+            (4, "149.154.167.92"),
+            (5, "91.108.56.100"),
+            (201, "91.108.56.4"),
+        ];
+        for (id, ip) in expected {
+            let addr = dc_address(id).unwrap();
+            assert_eq!(addr.ip().to_string(), ip, "DC {id}");
+            assert_eq!(addr.port(), 443);
+        }
         assert!(dc_address(99).is_err());
     }
 
