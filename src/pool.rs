@@ -367,13 +367,13 @@ impl SenderPool {
     #[tracing::instrument(name = "mtprsto::send_rpc", skip_all, err)]
     pub async fn send_rpc(&self, method_bytes: &[u8]) -> Result<Vec<u8>> {
         use crate::serialize::{
-            BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED, FUTURE_SALTS,
-            MSGS_STATE_INFO, RPC_RESULT, TLReader,
+            BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED, MSGS_ACK, PONG,
+            RPC_RESULT,
         };
 
-        // Build invokeWithLayer(initConnection(query)) — the server
-        // rejects bare RPCs with INPUT_FETCH_ERROR / API_ID_* errors
-        // because it can't establish the client context.
+        // invokeWithLayer(initConnection(query)) — the server rejects bare
+        // RPCs with INPUT_FETCH_ERROR / API_ID_* errors because it can't
+        // establish the client context.
         let full_payload = crate::mtproto::build_invoke_with_layer(
             crate::api::API_LAYER,
             &crate::mtproto::build_init_connection(
@@ -387,173 +387,114 @@ impl SenderPool {
         );
 
         // Service notifications (bad_server_salt, new_session_created)
-        // are retried transparently with the adopted server state.
-        for attempt in 0..4u32 {
-            let (_msg_id, response) = self.send_encrypted(&full_payload).await?;
+        // mean the request was NOT processed — adopt the announced state
+        // and re-send. Anything else keeps the request, so late answers
+        // are DRAINED on the same connection instead of re-sent.
+        // Pick ONE connection for the whole RPC (including service-state
+        // re-sends): hopping connections re-earns new_session_created on
+        // every fresh socket.
+        let idx = {
+            let mut ni = self.next_index.lock().await;
+            let idx = *ni;
+            *ni = (*ni + 1) % self.connections.len().max(1);
+            idx
+        };
+        let conn = self.connections.get(idx).ok_or_else(|| {
+            Error::Transport("pool has no connections".into())
+        })?;
+        'outer: for attempt in 0..4u32 {
 
-            // Decrypt the response (also adopts the server's current salt)
-            let (resp_msg_id, plaintext) = {
-                let mut session = self.session.write().await;
-                session.decrypt_message(&response)?
+            let (msg_id, mut response) = match async {
+                let (msg_id, encrypted) = {
+                    let mut session = self.session.write().await;
+                    let msg_id = session.next_msg_id();
+                    let seq_no = session.next_seq_no(true);
+                    (msg_id, session.encrypt_message(&full_payload, msg_id, seq_no))
+                };
+                let mut codec = conn.codec.lock().await;
+                codec.send_frame(&encrypted).await?;
+                let response = codec.recv_frame().await?;
+                Ok::<_, Error>((msg_id, response))
+            }
+            .await
+            {
+                Ok(v) => v,
+                Err(Error::Network(e)) => {
+                    tracing::warn!("I/O error on connection {idx} to DC {}: {e}", self.dc_id);
+                    self.reconnect_connection(conn).await?;
+                    continue; // same encrypted bytes re-sent; server dedupes
+                }
+                Err(e) => return Err(e),
             };
 
-            // Ack the response on the wire (write-only — no reply expected).
-            self.queue_ack(resp_msg_id).await;
+            // Frame loop: our answer may be preceded by service messages
+            // or delayed behind an answer to a previous (already-processed)
+            // attempt on this connection.
+            let mut frames = 0u32;
+            loop {
+                let (resp_msg_id, plaintext) = {
+                    let mut session = self.session.write().await;
+                    session.decrypt_message(&response)?
+                };
+                self.queue_ack(resp_msg_id).await;
+                let body = Self::unwrap_gzip(&plaintext)?;
+                let items = Self::container_items(&body)?;
 
-            // Unwrap gzip_packed into the message body, then dispatch on the
-            // service-ctor / rpc_result distinction.
-            let payload = Self::unwrap_gzip(&plaintext)?;
-            let mut r = TLReader::new(&payload);
-            let ctor = r.read_u32()?;
-
-            match ctor {
-                BAD_SERVER_SALT => {
-                    // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int
-                    // error_code:int new_server_salt:long
-                    let _bad_msg_id = r.read_u64()?;
-                    let _bad_msg_seqno = r.read_i32()?;
-                    let _error_code = r.read_i32()?;
-                    let new_salt = r.read_u64()?;
-                    {
-                        let mut session = self.session.write().await;
-                        session.server_salt = new_salt;
+                let mut re_send = false;
+                let mut conclusive = false;
+                for item in &items {
+                    if item.len() < 4 {
+                        continue;
                     }
-                    if attempt == 0 {
-                        continue; // re-send with the fresh salt
-                    }
-                    return Err(Error::Protocol(
-                        "server salt out of sync after retry".into(),
-                    ));
-                }
-                NEW_SERVER_SALT | NEW_SESSION_CREATED => {
-                    // new_server_salt#1160b89c new_server_salt:long
-                    // new_session_created#9ec209d4 first_msg_id:long unique_id:long server_salt:long
-                    let new_salt = if ctor == NEW_SERVER_SALT {
-                        r.read_u64()?
-                    } else {
-                        let _first_msg_id = r.read_u64()?;
-                        let _unique_id = r.read_u64()?;
-                        r.read_u64()?
-                    };
-                    {
-                        let mut session = self.session.write().await;
-                        session.server_salt = new_salt;
-                    }
-                    tracing::debug!(ctor = ctor, dc = self.dc_id, "server salt notification");
-
-                    // This frame was a notification, not our answer. The
-                    // server dedupes by msg_id, so re-sending the same
-                    // encrypted payload is safe and fetches the real result.
-                    let (_retry_id, retry_resp) = self.send_encrypted(&full_payload).await?;
-                    let (retry_ack_id, retry_plain) = {
-                        let mut session = self.session.write().await;
-                        session.decrypt_message(&retry_resp)?
-                    };
-                    self.queue_ack(retry_ack_id).await;
-                    let retry_body = Self::unwrap_gzip(&retry_plain)?;
-                    let mut rr = TLReader::new(&retry_body);
-                    let retry_ctor = rr.read_u32()?;
-                    if retry_ctor == RPC_RESULT {
-                        return Self::parse_rpc_result_body(&retry_body);
-                    }
-                    return Ok(retry_body);
-                }
-                FUTURE_SALTS => {
-                    // future_salts#ae500895 req_msg_id:long now:int salts:vector
-                    let (req_msg_id, now, salts) =
-                        crate::mtproto::parse_future_salts(&payload)?;
-                    tracing::debug!(
-                        "future_salts for msg {req_msg_id}: now={now}, {} windows",
-                        salts.len()
-                    );
-                    return Ok(payload);
-                }
-                MSGS_STATE_INFO => {
-                    // msgs_state_info#04deb57d req_msg_id:long info:bytes
-                    let _req_msg_id = r.read_u64()?;
-                    let info = r.read_bytes()?;
-                    tracing::debug!("msgs_state_info: {} bytes", info.len());
-                    return Ok(payload);
-                }
-                crate::serialize::BAD_MSG_NOTIFICATION => {
-                    // bad_msg_notification#a7eff811 bad_msg_id:long
-                    // bad_msg_seqno:int error_code:int
-                    let (bad_msg_id, _seqno, code) =
-                        crate::mtproto::parse_bad_msg_notification(&payload)?;
-                    return Err(classify_bad_msg(code, bad_msg_id));
-                }
-                crate::serialize::MSG_CONTAINER => {
-                    // The server bundles our rpc_result with service
-                    // messages (msgs_ack, new_session_created, ...) in a
-                    // container. Pick the result out of it; if there is
-                    // none, adopt whatever session/salt state the server
-                    // announced and re-send on the next attempt.
-                    match Self::choose_container_item(&payload)? {
-                        Some(item) => {
-                            let item_ctor =
-                                u32::from_le_bytes(item[0..4].try_into().unwrap());
-                            if item_ctor == RPC_RESULT {
-                                return Self::parse_rpc_result_body(item);
-                            }
-                            if self.adopt_service_state(item_ctor, item).await {
-                                if attempt < 3 {
-                                    continue;
-                                }
-                                return Err(Error::Protocol(
-                                    "server session state did not settle".into(),
-                                ));
-                            }
+                    let ctor = u32::from_le_bytes(item[0..4].try_into().unwrap());
+                    match ctor {
+                        BAD_SERVER_SALT | NEW_SERVER_SALT | NEW_SESSION_CREATED => {
+                            self.adopt_service_state(ctor, item).await;
+                            re_send = true;
+                            conclusive = true;
+                        }
+                        crate::serialize::BAD_MSG_NOTIFICATION => {
+                            let (bad_msg_id, _seqno, code) =
+                                crate::mtproto::parse_bad_msg_notification(item)?;
+                            return Err(classify_bad_msg(code, bad_msg_id));
+                        }
+                        crate::serialize::FUTURE_SALTS | crate::serialize::MSGS_STATE_INFO => {
                             return Ok(item.to_vec());
                         }
-                        None => {
-                            // Service-only container: adopt announced state
-                            // (new_session_created / salts) and re-send.
-                            let mut adopted = false;
-                            let mut r2 = crate::serialize::TLReader::new(&payload);
-                            let _ = r2.read_u32()?;
-                            let count = r2.read_i32()?;
-                            let mut off = 8usize;
-                            for _ in 0..count.max(0) {
-                                if off + 12 > payload.len() {
-                                    break;
-                                }
-                                off += 12;
-                                if off + 4 > payload.len() {
-                                    break;
-                                }
-                                let len = i32::from_le_bytes(
-                                    payload[off..off + 4].try_into().unwrap(),
-                                ) as usize;
-                                off += 4;
-                                if off + len > payload.len() {
-                                    break;
-                                }
-                                let item = &payload[off..off + len];
-                                let item_ctor = u32::from_le_bytes(
-                                    item[0..4].try_into().unwrap_or([0; 4]),
-                                );
-                                if self.adopt_service_state(item_ctor, item).await {
-                                    adopted = true;
-                                }
-                                off += (len + 3) & !3;
+                        MSGS_ACK | PONG => {}
+                        RPC_RESULT => {
+                            // rpc_result#f35c6d01 req_msg_id:long result
+                            let req =
+                                u64::from_le_bytes(item[4..12].try_into().unwrap());
+                            if req == msg_id {
+                                return Self::parse_rpc_result_body(item);
                             }
-                            if adopted && attempt < 3 {
-                                continue;
-                            }
-                            return Err(Error::Protocol(
-                                "msg_container held no result".into(),
-                            ));
+                            // Stale answer for an earlier msg_id — drain.
                         }
+                        _ => return Ok(item.to_vec()),
                     }
                 }
-                _ => {}
+                if re_send {
+                    if attempt < 3 {
+                        continue 'outer;
+                    }
+                    return Err(Error::Protocol(
+                        "server session state did not settle".into(),
+                    ));
+                }
+                if conclusive || frames >= 16 {
+                    return Err(Error::Protocol(format!(
+                        "no rpc_result for msg {msg_id} after {frames} frame(s)"
+                    )));
+                }
+                frames += 1;
+                // Our answer is still in flight — read the next frame on
+                // the SAME connection without re-sending.
+                response = {
+                    let mut codec = conn.codec.lock().await;
+                    codec.recv_frame().await?
+                };
             }
-
-            if ctor == RPC_RESULT {
-                return Self::parse_rpc_result_body(&payload);
-            }
-
-            return Ok(payload);
         }
         unreachable!("retry loop returns on every path")
     }
@@ -581,6 +522,40 @@ impl SenderPool {
             session.server_salt = new_salt;
         }
         true
+    }
+
+    /// Split a frame body into its messages: one item for a bare
+    /// message, all items for a `msg_container`.
+    fn container_items(data: &[u8]) -> Result<Vec<&[u8]>> {
+        use crate::serialize::MSG_CONTAINER;
+
+        if data.len() < 4
+            || u32::from_le_bytes(data[0..4].try_into().unwrap()) != MSG_CONTAINER
+        {
+            return Ok(vec![data]);
+        }
+        let mut r = crate::serialize::TLReader::new(data);
+        let _ctor = r.read_u32()?;
+        let count = r.read_i32()?;
+        let mut off = 8usize;
+        let mut items = Vec::with_capacity(count.max(0) as usize);
+        for _ in 0..count.max(0) {
+            if off + 12 > data.len() {
+                break;
+            }
+            off += 12; // msg_id:long seq_no:int
+            if off + 4 > data.len() {
+                break;
+            }
+            let len = i32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
+            off += 4;
+            if off + len > data.len() {
+                break;
+            }
+            items.push(&data[off..off + len]);
+            off += (len + 3) & !3;
+        }
+        Ok(items)
     }
 
     /// Pick the meaningful message out of a `msg_container`: the
@@ -1252,5 +1227,37 @@ mod tests {
     fn test_transport_policy_default_is_tcp_only() {
         assert_eq!(PoolConfig::default().transport_policy, TransportPolicy::TcpOnly);
         assert_eq!(TransportPolicy::default(), TransportPolicy::TcpOnly);
+    }
+}
+
+#[cfg(test)]
+mod envelope_debug_tests {
+    use super::*;
+
+    /// Decode the full RPC envelope field-by-field per the layer 223
+    /// schema to catch layout drift without hitting the network.
+    #[test]
+    fn test_full_envelope_layout() {
+        let resolve = crate::rpc::build_resolve_username("lebenoa");
+        let full = crate::mtproto::build_invoke_with_layer(
+            223,
+            &crate::mtproto::build_init_connection(12345, "mtprsto", "unknown", "0.1.0", "en", &resolve),
+        );
+        let mut r = crate::serialize::TLReader::new(&full);
+        assert_eq!(r.read_u32().unwrap(), crate::types::INVOKE_WITH_LAYER);
+        assert_eq!(r.read_i32().unwrap(), 223);
+        assert_eq!(r.read_u32().unwrap(), crate::types::INIT_CONNECTION);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags
+        assert_eq!(r.read_i32().unwrap(), 12345); // api_id
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "mtprsto");
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "unknown");
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "0.1.0");
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "en"); // system_lang_code
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), ""); // lang_pack
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "en"); // lang_code
+        assert_eq!(r.read_u32().unwrap(), crate::types::CONTACTS_RESOLVE_USERNAME);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags (no referer)
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "lebenoa");
+        assert_eq!(r.position(), full.len(), "trailing bytes in envelope");
     }
 }

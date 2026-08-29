@@ -202,6 +202,9 @@ impl<'a> MessageBuilder<'a> {
         };
 
         let result = client.invoke_raw(query).await?;
+        if std::env::var("MTPRSTO_DEBUG").is_ok() {
+            println!("DEBUG reply result ({}b): {:02x?}", result.len(), &result[..result.len().min(200)]);
+        }
         MsgId::from_rpc_result(&result)
     }
 }

@@ -78,6 +78,7 @@ mod type_tests {
         btn.write_to(&mut w);
         let mut r = TLReader::new(w.as_bytes());
         assert_eq!(r.read_u32().unwrap(), KEYBOARD_BUTTON);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags (no style)
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "Click me");
     }
 
@@ -116,7 +117,8 @@ mod type_tests {
         w.write_i32(1 << 14); // flags: bot=true
         w.write_i32(0); // flags2 (must be consumed here)
         w.write_i64(777); // id
-        // access_hash:flags.0 not set — nothing follows
+        // access_hash:flags.0 not set
+        w.write_i32(1); // bot_info_version:flags.14?int (required when bit14 set)
         let mut r = TLReader::new(w.as_bytes());
         let user = User::read_from(&mut r).unwrap();
         assert_eq!(user.id().0, 777, "flags2 word must be consumed before id");
@@ -128,9 +130,7 @@ mod type_tests {
     fn test_updates_parse_decodes_new_message() {
         let mut w = TLWriter::new();
         w.write_u32(UPDATES);
-        w.write_i32(0); // flags
-        w.write_i32(1_700_000_000); // date
-        w.write_i32(5); // seq
+        // layer 223 order: updates, users, chats, date, seq
         // updates:Vector<Update> — one updateNewMessage
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1);
@@ -138,19 +138,22 @@ mod type_tests {
         // message:message#3ae56482 — nested object carries its own ctor
         w.write_u32(MESSAGE);
         w.write_i32(0); // message flags
-        w.write_i64(77); // id
+        w.write_i32(0); // message flags2 (layer 223)
+        w.write_i32(77); // id:int
         w.write_u32(PEER_USER);
         w.write_i64(42); // peer_id user
         w.write_i32(1_700_000_000); // date
-        w.write_bytes(b"hi"); // message text
+        w.write_bytes(b"hi"); // message text (required string in 223)
         w.write_i32(10); // pts
         w.write_i32(1); // pts_count
-        // chats:Vector<Chat>
-        w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(0);
         // users:Vector<User>
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(0);
+        // chats:Vector<Chat>
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(0);
+        w.write_i32(1_700_000_000); // date
+        w.write_i32(5); // seq
 
         let updates = Updates::parse(&w.into_bytes()).unwrap();
         match updates {
@@ -183,12 +186,10 @@ mod type_tests {
         w.write_i32(1);
         w.write_i32(2);
         w.write_i32(1_700_000_000); // date
-        w.write_i32(6); // seq
 
         let updates = Updates::parse(&w.into_bytes()).unwrap();
         match updates {
-            Updates::UpdateShort { update: Update::ReadMessages { messages }, seq, .. } => {
-                assert_eq!(seq, 6);
+            Updates::UpdateShort { update: Update::ReadMessages { messages }, .. } => {
                 assert_eq!(messages, vec![MsgId(1), MsgId(2)]);
             }
             other => panic!("expected UpdateShort ReadMessages, got {other:?}"),

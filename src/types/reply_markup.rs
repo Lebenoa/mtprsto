@@ -82,17 +82,21 @@ pub enum KeyboardButton {
 impl KeyboardButton {
     pub fn write_to(&self, w: &mut TLWriter) {
         match self {
+            // Layer 225: every button leads with flags:int (style:flags.10).
             KeyboardButton::Text { text } => {
                 w.write_u32(KEYBOARD_BUTTON);
+                w.write_i32(0); // flags (no style)
                 w.write_bytes(text.as_bytes());
             }
             KeyboardButton::Url { text, url } => {
                 w.write_u32(KEYBOARD_BUTTON_URL);
+                w.write_i32(0); // flags (no style / fwd_text)
                 w.write_bytes(text.as_bytes());
                 w.write_bytes(url.as_bytes());
             }
             KeyboardButton::Callback { text, data } => {
                 w.write_u32(KEYBOARD_BUTTON_CALLBACK);
+                w.write_i32(0); // flags (no requires_password / style)
                 w.write_bytes(text.as_bytes());
                 w.write_bytes(data);
             }

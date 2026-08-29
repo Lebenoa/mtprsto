@@ -369,6 +369,11 @@ impl Client {
             let data = SessionStorage::load(&mut *store)?.ok_or(Error::NoAuthKey)?;
             drop(store);
 
+            if data.user_id != 0 {
+                tracing::info!("session already authorized (user {})", data.user_id);
+                return Ok(());
+            }
+
             let auth_key = data.decode_auth_key()?;
             let mut tg_client = TelegramClient::with_session(
                 self.dc_id,
@@ -379,7 +384,15 @@ impl Client {
             );
 
             match tg_client.authorize_bot(bot_token).await {
-                Ok(()) => {
+                Ok(user_id) => {
+                    // Persist the bot's user id so later runs skip re-auth
+                    // (importBotAuthorization is flood-limited hard).
+                    let mut store = self.session_store.write().await;
+                    if let Ok(Some(mut data)) = SessionStorage::load(&mut *store) {
+                        data.user_id = user_id;
+                        SessionStorage::save(&mut *store, &data)?;
+                    }
+                    drop(store);
                     tracing::info!("bot authorization successful");
                     return Ok(());
                 }
@@ -424,6 +437,9 @@ impl Client {
             Ok(())
         }).await?;
 
+        if std::env::var("MTPRSTO_DEBUG").is_ok() {
+            println!("DEBUG send result ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+        }
         // Response is UpdateShortSentMessage or a full Updates object;
         // both carry the new message id.
         let updates = types::Updates::parse(&result)?;
@@ -897,10 +913,16 @@ impl Client {
         }
 
         let result = self.invoke_with_method(CONTACTS_RESOLVE_USERNAME, |w| {
+            // contacts.resolveUsername#725afbbc flags:# username:string
+            //   referer:flags.0?string
+            w.write_i32(0); // flags (no referer)
             w.write_bytes(uname.as_bytes());
             Ok(())
         }).await?;
 
+        if std::env::var("MTPRSTO_DEBUG").is_ok() {
+            println!("DEBUG resolved ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+        }
         let peer = Self::parse_resolved_peer(&result, &key, &mut self.peer_cache)?;
         self.persist_peer_hash(&peer).await;
         Ok(peer)
@@ -934,23 +956,32 @@ impl Client {
         let key = key.trim_start_matches('@').to_ascii_lowercase();
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
-        if ctor != CONTACTS_FOUND {
+
+        // Bots (and unauthenticated flows) get contacts.resolvedPeer;
+        // authenticated user flows get contacts.found. Both end with
+        // chats + users vectors carrying the access hashes.
+        let results = if ctor == CONTACTS_RESOLVED_PEER {
+            // resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat> users:Vector<User>
+            let peer = types::Peer::read_from(&mut r)?;
+            vec![peer]
+        } else if ctor == CONTACTS_FOUND {
+            // found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> ...
+            let n = r.read_vector_header()?;
+            for _ in 0..n {
+                let _ = types::Peer::read_from(&mut r)?;
+            }
+            // results:Vector<Peer>
+            let n = r.read_vector_header()?;
+            let mut results = Vec::with_capacity(n as usize);
+            for _ in 0..n {
+                results.push(types::Peer::read_from(&mut r)?);
+            }
+            results
+        } else {
             return Err(Error::Protocol(format!(
                 "unexpected resolveUsername response constructor {ctor:#x}"
             )));
-        }
-
-        // my_results:Vector<Peer> — discard
-        let n = r.read_vector_header()?;
-        for _ in 0..n {
-            let _ = types::Peer::read_from(&mut r)?;
-        }
-        // results:Vector<Peer>
-        let n = r.read_vector_header()?;
-        let mut results = Vec::with_capacity(n as usize);
-        for _ in 0..n {
-            results.push(types::Peer::read_from(&mut r)?);
-        }
+        };
         // chats:Vector<Chat>
         let chat_count = r.read_vector_header()?;
         let mut chats = Vec::with_capacity(chat_count as usize);

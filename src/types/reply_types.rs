@@ -154,7 +154,19 @@ pub enum IncomingReplyMarkup {
 fn read_keyboard_button(ctor: u32, r: &mut TLReader) -> Result<KeyboardButtonKind> {
     // All button ctors carry a flags:# first (style:flags.10).
     let flags = r.read_i32()?;
-    let _ = flags;
+    // keyboardButtonStyle#4fdd3430 flags:# icon:flags.3?long
+    if flags & (1 << 10) != 0 {
+        let style_ctor = r.read_u32()?;
+        if style_ctor != KEYBOARD_BUTTON_STYLE {
+            return Err(Error::Serialization(format!(
+                "expected keyboardButtonStyle, got {style_ctor:#x}"
+            )));
+        }
+        let style_flags = r.read_i32()?;
+        if style_flags & (1 << 3) != 0 {
+            let _icon = r.read_i64()?;
+        }
+    }
     Ok(match ctor {
         KEYBOARD_BUTTON => KeyboardButtonKind::Text {
             text: String::from_utf8(r.read_bytes()?)?,

@@ -83,11 +83,10 @@ impl User {
         let ctor = r.read_u32()?;
         match ctor {
             USER => {
-                // user#31774388 flags:# ... flags2:# ... id:long ...
-                // The flags2 word is ALWAYS serialized (before id) — it
-                // keys its own conditional fields.
+                // user#31774388 (layer 223): flags + flags2, id:long,
+                // then interleaved conditionals per the schema order.
                 let flags = r.read_i32()?;
-                let _flags2 = r.read_i32()?;
+                let flags2 = r.read_i32()?;
                 let id = UserId(r.read_i64()?);
                 let access_hash = if flags & (1 << 0) != 0 {
                     Some(AccessHash(r.read_i64()?))
@@ -124,12 +123,53 @@ impl User {
                 } else {
                     None
                 };
+                if flags & (1 << 14) != 0 {
+                    let _bot_info_version = r.read_i32()?;
+                }
+                if flags & (1 << 18) != 0 {
+                    return Err(Error::Serialization(
+                        "user restriction_reason parsing not supported".into(),
+                    ));
+                }
+                if flags & (1 << 19) != 0 {
+                    let _bot_inline_placeholder = r.read_bytes()?;
+                }
+                if flags & (1 << 22) != 0 {
+                    let _lang_code = r.read_bytes()?;
+                }
+                if flags & (1 << 30) != 0 {
+                    Self::read_emoji_status(r)?;
+                }
+                if flags2 & (1 << 0) != 0 {
+                    Self::read_usernames(r)?;
+                }
+                if flags2 & (1 << 5) != 0 {
+                    return Err(Error::Serialization(
+                        "user stories_max_id (RecentStory) parsing not supported".into(),
+                    ));
+                }
+                if flags2 & (1 << 8) != 0 {
+                    Self::read_peer_color(r)?;
+                }
+                if flags2 & (1 << 9) != 0 {
+                    Self::read_peer_color(r)?;
+                }
+                if flags2 & (1 << 12) != 0 {
+                    let _bot_active_users = r.read_i32()?;
+                }
+                if flags2 & (1 << 14) != 0 {
+                    let _bot_verification_icon = r.read_i64()?;
+                }
+                if flags2 & (1 << 15) != 0 {
+                    let _send_paid_messages_stars = r.read_i64()?;
+                }
                 let bot = flags & (1 << 14) != 0;
                 let min = flags & (1 << 20) != 0;
                 let scam = flags & (1 << 24) != 0;
-                let fake = flags & (1 << 25) != 0;
+                let fake = flags & (1 << 26) != 0;
 
                 Ok(User::User {
+
                     id, access_hash, first_name, last_name,
                     username, phone, photo, status,
                     bot, min, scam, fake,
@@ -144,6 +184,38 @@ impl User {
             ))),
         }
     }
+
+    /// emojiStatusEmpty#2de11aae | emojiStatus#e7ff068a flags:# document_id:long until?
+    fn read_emoji_status(r: &mut TLReader) -> Result<()> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            EMOJI_STATUS_EMPTY => Ok(()),
+            EMOJI_STATUS => {
+                let _flags = r.read_i32()?;
+                let _document_id = r.read_i64()?;
+                Ok(())
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown EmojiStatus constructor {other:#x}"
+            ))),
+        }
+    }
+
+    /// Vector<Username> — username#b4073647 flags:# username:string
+    fn read_usernames(r: &mut TLReader) -> Result<()> {
+        let n = r.read_vector_header()?;
+        for _ in 0..n {
+            let _flags = r.read_i32()?;
+            let _username = r.read_bytes()?;
+        }
+        Ok(())
+    }
+
+    /// peerColor#b54b5acf flags:# color? background_emoji_id?
+    fn read_peer_color(r: &mut TLReader) -> Result<()> {
+        let _flags = r.read_i32()?;
+        Ok(())
+    }
 }
 
 /// User online status.
@@ -157,6 +229,7 @@ pub enum UserStatus {
     Empty,
 }
 
+
 impl UserStatus {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
@@ -169,9 +242,20 @@ impl UserStatus {
                 let expires = r.read_i32()?;
                 Ok(UserStatus::Online { expires })
             }
-            USER_STATUS_RECENTLY => Ok(UserStatus::Recently),
-            USER_STATUS_LAST_WEEK => Ok(UserStatus::LastWeek),
-            USER_STATUS_LAST_MONTH => Ok(UserStatus::LastMonth),
+            // userStatusRecently/LastWeek/LastMonth carry a flags word
+            // (by_me:flags.0?true) in layer 223.
+            USER_STATUS_RECENTLY => {
+                let _flags = r.read_i32()?;
+                Ok(UserStatus::Recently)
+            }
+            USER_STATUS_LAST_WEEK => {
+                let _flags = r.read_i32()?;
+                Ok(UserStatus::LastWeek)
+            }
+            USER_STATUS_LAST_MONTH => {
+                let _flags = r.read_i32()?;
+                Ok(UserStatus::LastMonth)
+            }
             USER_STATUS_EMPTY => Ok(UserStatus::Empty),
             other => Err(Error::Serialization(format!(
                 "unknown UserStatus constructor {other:#x}"
@@ -194,11 +278,16 @@ impl ProfilePhoto {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
+            // Layer 223: flags:# has_video:flags.0?true
+            //   photo_id:long stripped_thumb:flags.1?bytes dc_id:int
             USER_PROFILE_PHOTO | CHAT_PHOTO => {
+                let flags = r.read_i32()?;
                 let photo_id = PhotoId(r.read_i64()?);
-                let _volume_id = r.read_i64()?;
-                let _dc_id = r.read_i32()?;
-                Ok(ProfilePhoto::Photo { photo_id, dc_id: 0 })
+                if flags & (1 << 1) != 0 {
+                    let _stripped = r.read_bytes()?;
+                }
+                let dc_id = r.read_i32()?;
+                Ok(ProfilePhoto::Photo { photo_id, dc_id })
             }
             USER_PROFILE_PHOTO_EMPTY | CHAT_PHOTO_EMPTY => Ok(ProfilePhoto::Empty),
             other => Err(Error::Serialization(format!(

@@ -22,7 +22,6 @@ pub const INPUT_USER: u32 = 0xf21158c6;
 pub const INPUT_USER_FROM_ID: u32 = 0x1da448e2;
 
 pub const INPUT_REPLY_TO_MESSAGE: u32 = 0x869fbe10;
-pub const INPUT_REPLY_TO_MONOFORUM: u32 = 0x76ab27de;
 // --- Input channel (Layer 223) ---
 pub const INPUT_CHANNEL: u32 = 0xf35aec28;
 pub const INPUT_CHANNEL_FROM_MESSAGE: u32 = 0x5b934f9d; // inputChannelFromMessage
@@ -41,13 +40,16 @@ pub const INPUT_DOCUMENT_EMPTY: u32 = 0x72f0eaae; // inputDocumentEmpty
 ///  attributes:Vector<DocumentAttribute>`
 pub const DOCUMENT: u32 = 0x8fd4c4d8; // document#8fd4c4d8 (Layer 223)
 /// documentEmpty#3631cf4c id:long
-pub const DOCUMENT_EMPTY: u32 = 0x3631cf4c;
+pub const DOCUMENT_EMPTY: u32 = 0x36f8c871;
 
 // --- User (Layer 223) ---
 pub const USER: u32 = 0x31774388;
 pub const USER_EMPTY: u32 = 0xd3bc4b7a;
 
 // --- User status (Layer 223) ---
+// emojiStatus#e7ff068a / emojiStatusEmpty#2de11aae
+pub const EMOJI_STATUS: u32 = 0xe7ff068a;
+pub const EMOJI_STATUS_EMPTY: u32 = 0x2de11aae;
 pub const USER_STATUS_EMPTY: u32 = 0x9d05049;
 pub const USER_STATUS_ONLINE: u32 = 0xedb93949;
 pub const USER_STATUS_OFFLINE: u32 = 0x8c703f;
@@ -75,8 +77,17 @@ pub const USER_PROFILE_PHOTO_EMPTY: u32 = 0x4f11bae1;
 
 // --- Message (Layer 223) ---
 pub const MESSAGE: u32 = 0x3ae56482;
+// Live layer 225 re-issued the message ctor (wire-verified against
+// production DCs 2026-08; core.telegram.org's published JSON still lists
+// the old ID). Both are accepted when parsing.
+pub const MESSAGE_V225: u32 = 0x95ef6f2b;
 pub const MESSAGE_EMPTY: u32 = 0x90a6ca84;
 pub const MESSAGE_SERVICE: u32 = 0x7a800e0a;
+// messageReplyHeader#6917560b
+pub const MESSAGE_REPLY_HEADER: u32 = 0x6917560b;
+// Live layer 225 re-issued the reply-header ctor (wire-verified; same
+// field layout). Both IDs are accepted when parsing.
+pub const MESSAGE_REPLY_HEADER_V225: u32 = 0x1b97dd66;
 
 // --- Message media (Layer 223) ---
 pub const MESSAGE_MEDIA_EMPTY: u32 = 0x3ded6320;
@@ -117,7 +128,7 @@ pub const MESSAGE_ENTITY_BLOCKQUOTE: u32 = 0xf1ccaaac;
 pub const MESSAGE_ENTITY_BANK_CARD: u32 = 0x761e6af4;
 
 // --- Reply markup (Layer 223, verified 2026-08) ---
-pub const REPLY_KEYBOARD_MARKUP_223: u32 = 0x85dd99d1;
+pub const REPLY_KEYBOARD_MARKUP_223: u32 = REPLY_KEYBOARD_MARKUP;
 pub const REPLY_KEYBOARD_HIDE: u32 = 0xa03e5b85;
 pub const REPLY_KEYBOARD_FORCE_REPLY: u32 = 0x86b40b08;
 pub const REPLY_INLINE_MARKUP: u32 = 0x48a30254;
@@ -174,27 +185,31 @@ pub const UPDATE_SHORT_SENT_MESSAGE: u32 = 0x9015e101;
 
 // --- Update events (Layer 223) ---
 pub const UPDATE_NEW_MESSAGE: u32 = 0x1f2b0afd;
+// updateMessageID#4e90bfd6 id:int random_id:long
+pub const UPDATE_MESSAGE_ID: u32 = 0x4e90bfd6;
 pub const UPDATE_DELETE_MESSAGES: u32 = 0xa20db0e5;
 pub const UPDATE_READ_HISTORY_INBOX: u32 = 0x9e84bc99;
 pub const UPDATE_READ_HISTORY_OUTBOX: u32 = 0x2f2f21bf;
 pub const UPDATE_CHANNEL_TOO_LONG: u32 = 0x108d941f;
 pub const UPDATE_EDIT_MESSAGE: u32 = 0xe40370a3;
 /// updateReadMessages#c66f9217 messages:Vector<int>
-pub const UPDATE_READ_MESSAGES: u32 = 0xc66f9217;
+pub const UPDATE_READ_MESSAGES: u32 = 0xf8227181;
 pub const UPDATE_WEB_PAGE: u32 = 0x7f891213;
 /// replyKeyboardMarkup#350284c2
-pub const REPLY_KEYBOARD_MARKUP: u32 = 0x350284c2;
+pub const REPLY_KEYBOARD_MARKUP: u32 = 0x85dd99d1;
 pub const FORCE_REPLY: u32 = 0x86872538;
-pub mod inline_keyboard_markup { pub const CONSTRUCTOR_ID: u32 = 0x158b2380; }
+pub mod inline_keyboard_markup { pub const CONSTRUCTOR_ID: u32 = 0x48a30254; }
 
 // --- Keyboard buttons ---
-pub const KEYBOARD_BUTTON: u32 = 0x683a5c46;
-pub const KEYBOARD_BUTTON_URL: u32 = 0x258aff06;
-pub const KEYBOARD_BUTTON_CALLBACK: u32 = 0x3250872a;
-pub const KEYBOARD_BUTTON_SWITCH_INLINE: u32 = 0x063760c8;
-pub const KEYBOARD_BUTTON_GAME: u32 = 0x568be74c;
-pub const KEYBOARD_BUTTON_URL_AUTH: u32 = 0x10b78d29;
-pub const KEYBOARD_BUTTON_REQUEST_PEER: u32 = 0xb1764226;
+pub const KEYBOARD_BUTTON: u32 = 0x7d170cff;
+// keyboardButtonStyle#4fdd3430
+pub const KEYBOARD_BUTTON_STYLE: u32 = 0x4fdd3430;
+pub const KEYBOARD_BUTTON_URL: u32 = 0xd80c25ec;
+pub const KEYBOARD_BUTTON_CALLBACK: u32 = 0xe62bc960;
+pub const KEYBOARD_BUTTON_SWITCH_INLINE: u32 = 0x991399fc;
+pub const KEYBOARD_BUTTON_GAME: u32 = 0x89c590f9;
+pub const KEYBOARD_BUTTON_URL_AUTH: u32 = 0xf51006f9;
+pub const KEYBOARD_BUTTON_REQUEST_PEER: u32 = 0x5b0f15f5;
 
 // --- Messages (Layer 223) ---
 pub const MESSAGES_DIALOGS: u32 = 0x15ba6c40;
@@ -214,7 +229,7 @@ pub const AUTH_SENT_CODE: u32 = 0x5e002502;
 pub const AUTH_SENT_CODE_SUCCESS: u32 = 0x2390fe44;
 pub const AUTH_SENT_CODE_PAYMENT_REQUIRED: u32 = 0xe0955a3c;
 pub const AUTH_SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
-pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc004bac7;
+pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc000bba2;
 
 // --- Auth (Layer 223) ---
 // IDs verified against https://core.telegram.org/schema/json (2026-08).
@@ -257,7 +272,11 @@ pub const INPUT_CHECK_PASSWORD_SRP: u32 = 0xd27ff082;
 /// `account.getPassword#548a30f5 = account.Password;` (function)
 pub const ACCOUNT_GET_PASSWORD: u32 = 0x548a30f5;
 /// `account.password#5188ee1b ...` (response predicate)
-pub const ACCOUNT_GET_PASSWORD_RESPONSE: u32 = 0x5188ee1b;
+pub const ACCOUNT_GET_PASSWORD_RESPONSE: u32 = 0x957b50fb;
+// securePasswordKdfAlgoPBKDF2HMACSHA512iter100000#bbf2dda0 {salt:bytes}
+pub const SECURE_PASSWORD_KDF_ALGO_PBKDF2: u32 = 0xbbf2dda0;
+// securePasswordKdfAlgoSHA512#86471d92 {salt:bytes}
+pub const SECURE_PASSWORD_KDF_ALGO_SHA512: u32 = 0x86471d92;
 /// `passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow#3a912d4a
 ///  salt1:bytes salt2:bytes g:int p:bytes`
 pub const PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512_100K_MODPOW: u32 = 0x3a912d4a;
@@ -281,7 +300,7 @@ pub const MESSAGES_GET_BOT_CALLBACK_ANSWER: u32 = 0x9342ca07;
 pub const MESSAGES_BOT_CALLBACK_ANSWER: u32 = 0x36585ea4;
 /// `messages.affectedMessages#84d19185 pts:int pts_count:int`
 pub const MESSAGES_AFFECTED_MESSAGES: u32 = 0x84d19185;
-pub const MESSAGES_DELETE_MESSAGES: u32 = 0xe58e95c6;
+pub const MESSAGES_DELETE_MESSAGES: u32 = 0xe58e95d2;
 /// `messages.deleteHistory#b08f922a flags:# just_clear:flags.0?true
 ///  revoke:flags.1?true peer:InputPeer max_id:int min_date:flags.2?int
 ///  max_date:flags.3?int = messages.AffectedHistory;`
@@ -289,17 +308,16 @@ pub const MESSAGES_DELETE_HISTORY: u32 = 0xb08f922a;
 pub const MESSAGES_EDIT_MESSAGE: u32 = 0x51e842e1;
 pub const MESSAGES_READ_HISTORY: u32 = 0x0e306d3a;
 pub const MESSAGES_SEARCH: u32 = 0x29ee847a;
-pub const MESSAGES_SEND_CALLBACK_DATA: u32 = 0x934a4ee1;
 /// `messages.affectedHistory#b45c69d1 pts:int pts_count:int offset:int`
 pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
 
 // --- Users ---
-pub const USERS_GET_FULL_USER: u32 = 0xe0b917f2;
+pub const USERS_GET_FULL_USER: u32 = 0xb60f5918;
 pub const USERS_GET_USERS: u32 = 0x0d91a548;
 /// users.userFull#d69e83e0 full_user:UserFull chats:Vector<Chat> users:Vector<User>
-pub const USERS_USER_FULL: u32 = 0xd69e83e0;
+pub const USERS_USER_FULL: u32 = 0x3b6d152e;
 /// contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> chats:Vector<Chat> users:Vector<User>
-pub const CONTACTS_FOUND: u32 = 0xb3134d19;
+pub const CONTACTS_FOUND: u32 = 0xb3134d9d;
 /// `contacts.resolvePhone#8af94344 phone:string = contacts.ResolvedPeer;`
 pub const CONTACTS_RESOLVE_PHONE: u32 = 0x8af94344;
 pub const CONTACTS_SEARCH: u32 = 0x11f812d8;
@@ -317,7 +335,6 @@ pub const CHANNELS_GET_CHANNELS: u32 = 0xa7f6bbb;
 pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
 /// `channels.editAbout#13e27b46` was removed from the schema; about is now
 /// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
-pub const CHANNELS_EDIT_ABOUT: u32 = 0x13e27b46;
 pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
 pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa95;
 /// `channels.channelParticipants#9ab0feaf count:int participants:...`
@@ -334,13 +351,13 @@ pub const UPDATES_GET_STATE: u32 = 0xedd4882a;
 pub const UPDATES_GET_DIFFERENCE: u32 = 0x19c2f763;
 pub const UPDATES_GET_CHANNEL_DIFFERENCE: u32 = 0x3173d78;
 /// updates.differenceEmpty#a9eca690 date:int seq:int pts:int pts_count:int
-pub const DIFFERENCE_EMPTY: u32 = 0xa9eca690;
+pub const DIFFERENCE_EMPTY: u32 = 0x5d75a138;
 /// updates.difference#f46ca0 seq:int new_messages:Vector<Message>
 ///   other_updates:Vector<Update> chats:Vector<Chat> users:Vector<User>
-pub const DIFFERENCE: u32 = 0xf46ca0;
+pub const DIFFERENCE: u32 = 0xf49ca0;
 /// updates.differenceSlice#a004db6 new_messages:... other_updates:...
 ///   chats:... users:... intermediate_state:State
-pub const DIFFERENCE_SLICE: u32 = 0xa004db6;
+pub const DIFFERENCE_SLICE: u32 = 0xa8fb1981;
 /// updates.differenceTooLong#4afe8f6d pts:int
 pub const DIFFERENCE_TOO_LONG: u32 = 0x4afe8f6d;
 /// updates.channelDifferenceEmpty#3e11affb flags:# pts:int final:flags.0?true
@@ -350,7 +367,7 @@ pub const CHANNEL_DIFFERENCE_EMPTY: u32 = 0x3e11affb;
 pub const CHANNEL_DIFFERENCE: u32 = 0x2064674e;
 /// updates.channelDifferenceTooLong#4103bd2d flags:# pts:int final:flags.0?true
 ///   timeout:flags.1?int messages:Vector<Message> chats:... users:...
-pub const CHANNEL_DIFFERENCE_TOO_LONG: u32 = 0x4103bd2d;
+pub const CHANNEL_DIFFERENCE_TOO_LONG: u32 = 0xa4bcc6fe;
 
 // --- Upload ---
 pub const UPLOAD_SAVE_FILE_PART: u32 = 0xb304a621;

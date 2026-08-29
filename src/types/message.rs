@@ -93,15 +93,46 @@ impl Message {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE => {
+            MESSAGE | MESSAGE_V225 => {
+                // message#3ae56482 / live layer 225 #95ef6f2b: flags + flags2,
+                // id:int,
+                // message:string is REQUIRED, conditionals interleaved.
                 let flags = r.read_i32()?;
-                let id = MsgId(r.read_i64()?);
+                let flags2 = r.read_i32()?;
+                let id = MsgId(r.read_i32()? as i64);
                 let from_id = if flags & (1 << 8) != 0 {
                     Some(Peer::read_from(r)?)
                 } else {
                     None
                 };
+                if flags & (1 << 29) != 0 {
+                    let _from_boosts = r.read_i32()?;
+                }
+                if flags2 & (1 << 12) != 0 {
+                    let _from_rank = r.read_bytes()?;
+                }
                 let peer_id = Peer::read_from(r)?;
+                if flags & (1 << 28) != 0 {
+                    let _saved_peer_id = Peer::read_from(r)?;
+                }
+                if flags & (1 << 2) != 0 {
+                    return Err(Error::Serialization(
+                        "message fwd_from (MessageFwdHeader) parsing not supported".into(),
+                    ));
+                }
+                let via_bot_id = if flags & (1 << 11) != 0 {
+                    Some(UserId(r.read_i64()?))
+                } else {
+                    None
+                };
+                if flags2 & (1 << 0) != 0 {
+                    let _via_business_bot = r.read_i64()?;
+                }
+                let reply_to = if flags & (1 << 3) != 0 {
+                    Some(ReplyHeader::read_from(r)?)
+                } else {
+                    None
+                };
                 let date = r.read_i32()?;
                 let message_text = String::from_utf8(r.read_bytes()?)?;
                 let media = if flags & (1 << 9) != 0 {
@@ -127,27 +158,69 @@ impl Message {
                 } else {
                     None
                 };
-                let edit_date = if flags & (1 << 11) != 0 {
+                if flags & (1 << 10) != 0 {
+                    let _forwards = r.read_i32()?; // forwards shares flags.10
+                }
+                if flags & (1 << 23) != 0 {
+                    return Err(Error::Serialization(
+                        "message replies (MessageReplies) parsing not supported".into(),
+                    ));
+                }
+                let edit_date = if flags & (1 << 15) != 0 {
                     Some(r.read_i32()?)
                 } else {
                     None
                 };
-                let post = flags & (1 << 14) != 0;
-                let grouped_id = if flags & (1 << 13) != 0 {
+                if flags & (1 << 16) != 0 {
+                    let _post_author = r.read_bytes()?;
+                }
+                let grouped_id = if flags & (1 << 17) != 0 {
                     Some(r.read_i64()?)
                 } else {
                     None
                 };
-                let via_bot_id = if flags & (1 << 11) != 0 {
-                    Some(UserId(r.read_i64()?))
-                } else {
-                    None
-                };
-                let reply_to = if flags & (1 << 0) != 0 {
-                    Some(ReplyHeader::read_from(r)?)
-                } else {
-                    None
-                };
+                if flags & (1 << 20) != 0 {
+                    return Err(Error::Serialization(
+                        "message reactions (MessageReactions) parsing not supported".into(),
+                    ));
+                }
+                if flags & (1 << 22) != 0 {
+                    return Err(Error::Serialization(
+                        "message restriction_reason parsing not supported".into(),
+                    ));
+                }
+                if flags & (1 << 25) != 0 {
+                    let _ttl_period = r.read_i32()?;
+                }
+                if flags & (1 << 30) != 0 {
+                    let _quick_reply_shortcut_id = r.read_i32()?;
+                }
+                if flags2 & (1 << 2) != 0 {
+                    let _effect = r.read_i64()?;
+                }
+                if flags2 & (1 << 3) != 0 {
+                    return Err(Error::Serialization(
+                        "message factcheck (FactCheck) parsing not supported".into(),
+                    ));
+                }
+                if flags2 & (1 << 5) != 0 {
+                    let _report_delivery_until_date = r.read_i32()?;
+                }
+                if flags2 & (1 << 6) != 0 {
+                    let _paid_message_stars = r.read_i64()?;
+                }
+                if flags2 & (1 << 7) != 0 {
+                    return Err(Error::Serialization(
+                        "message suggested_post parsing not supported".into(),
+                    ));
+                }
+                if flags2 & (1 << 10) != 0 {
+                    let _schedule_repeat_period = r.read_i32()?;
+                }
+                if flags2 & (1 << 11) != 0 {
+                    let _summary_from_language = r.read_bytes()?;
+                }
+                let post = flags & (1 << 14) != 0;
                 let edit_hide = flags & (1 << 21) != 0;
                 Ok(Message::Message(Box::new(MessageFull {
                     id, from_id, peer_id, date, message: message_text,
@@ -156,22 +229,31 @@ impl Message {
                 })))
             }
             MESSAGE_EMPTY => {
-                let id = MsgId(r.read_i64()?);
+                // messageEmpty#90a6ca84 flags:# id:int peer_id:flags.0?Peer
+                let _flags = r.read_i32()?;
+                let id = MsgId(r.read_i32()? as i64);
                 Ok(Message::Empty { id })
             }
             MESSAGE_SERVICE => {
-                let id = MsgId(r.read_i64()?);
-                let from_id = if true { // simplified flag check
+                // messageService#7a800e0a flags:# ... id:int ... action
+                let flags = r.read_i32()?;
+                let _flags2 = r.read_i32()?;
+                let id = MsgId(r.read_i32()? as i64);
+                let from_id = if flags & (1 << 8) != 0 {
                     Some(Peer::read_from(r)?)
                 } else {
                     None
                 };
                 let peer_id = Peer::read_from(r)?;
+                let reply_to = if flags & (1 << 3) != 0 {
+                    Some(ReplyHeader::read_from(r)?)
+                } else {
+                    None
+                };
                 let date = r.read_i32()?;
                 let action = MessageAction::read_from(r)?;
                 Ok(Message::Service {
-                    id, from_id, peer_id, date, action,
-                    reply_to: None,
+                    id, from_id, peer_id, date, action, reply_to,
                 })
             }
             other => Err(Error::Serialization(format!(
@@ -190,21 +272,52 @@ pub struct ReplyHeader {
 }
 
 impl ReplyHeader {
+    /// messageReplyHeader#6917560b (layer 223).
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != MESSAGE_REPLY_HEADER && ctor != MESSAGE_REPLY_HEADER_V225 {
+            return Err(Error::Serialization(format!(
+                "unknown MessageReplyHeader constructor {ctor:#x}"
+            )));
+        }
         let flags = r.read_i32()?;
-        let reply_to_msg_id = MsgId(r.read_i64()?);
+        let mut reply_to_msg_id = None;
+        if flags & (1 << 4) != 0 {
+            reply_to_msg_id = Some(MsgId(r.read_i32()? as i64));
+        }
         let reply_to_peer_id = if flags & (1 << 0) != 0 {
             Some(Peer::read_from(r)?)
         } else {
             None
         };
+        if flags & (1 << 5) != 0 {
+            return Err(Error::Serialization(
+                "reply_from (MessageFwdHeader) parsing not supported".into(),
+            ));
+        }
+        if flags & (1 << 8) != 0 {
+            let _reply_media = crate::types::MessageMedia::read_from(r)?;
+        }
         let reply_to_top_id = if flags & (1 << 1) != 0 {
-            Some(MsgId(r.read_i64()?))
+            Some(MsgId(r.read_i32()? as i64))
         } else {
             None
         };
+        if flags & (1 << 6) != 0 {
+            let _quote_text = r.read_bytes()?;
+        }
+        if flags & (1 << 7) != 0 {
+            let _quote_entities = super::reply_types::read_message_entities(r)?;
+        }
+        if flags & (1 << 10) != 0 {
+            let _quote_offset = r.read_i32()?;
+        }
+        if flags & (1 << 11) != 0 {
+            let _todo_item_id = r.read_i32()?;
+        }
         Ok(ReplyHeader {
-            reply_to_msg_id,
+            reply_to_msg_id: reply_to_msg_id
+                .ok_or_else(|| Error::Serialization("reply header without msg id".into()))?,
             reply_to_peer_id,
             reply_to_top_id,
         })

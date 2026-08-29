@@ -376,7 +376,15 @@ updates.getChannelDifference#3173d78 → Updates, ChannelDifferenceEmpty, Channe
 > `updates.getDifference` → `#19c2f763`,
 > `new_session_created` → `#9ec20908`). `src/types/constructors.rs` is
 > verified against `core.telegram.org/schema/json` and is the source of
-> truth — re-check IDs there, not here, before adding RPCs. Service
+> truth — re-check IDs there, not here, before adding RPCs.
+>
+> **Wire-verified (2026-08):** live production layer 225 re-issued some
+> constructor IDs that the published JSON still lists under the old
+> values — e.g. `message` → `#95ef6f2b` and
+> `messageReplyHeader` → `#1b97dd66` (same field layouts, new IDs).
+> mtprsto accepts both. When a live parse fails with an unknown-ctor
+> error, decode the dumped bytes and add the live ID alongside the
+> published one. Service
 > messages like `getFutureSalts` are bare MTProto messages, NOT RPC
 > methods (wrapping them in `invokeWithLayer` yields
 > `INPUT_METHOD_INVALID`).

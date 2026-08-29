@@ -12,7 +12,7 @@ use crate::transport;
 use tokio::io::AsyncWriteExt;
 
 /// API layer version (Layer 223).
-pub const API_LAYER: i32 = 223;
+pub const API_LAYER: i32 = 225;
 
 // ---------------------------------------------------------------------------
 // API Client
@@ -320,7 +320,7 @@ impl TelegramClient {
     /// Authorize as a bot using a bot token.
     ///
     /// This sends `auth.importBotAuthorization` to the server.
-    pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<()> {
+    pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<i64> {
         // importBotAuthorization flags:0 api_id:int api_hash:string bot_auth_token:string = auth.Authorization;
         let mut payload = TLWriter::new();
         payload.write_u32(types::IMPORT_BOT_AUTH); // auth.importBotAuthorization#67a3ff2c
@@ -337,9 +337,15 @@ impl TelegramClient {
 
         match constructor {
             types::AUTH_AUTHORIZATION => {
-                // Bot authorization successful
+                // auth.authorization#2ea2c0d4 flags:# tmp_sessions:flags.0?int
+                //   user:User — capture the bot's user id for the session.
+                let flags = r.read_i32()?;
+                if flags & (1 << 0) != 0 {
+                    let _ = r.read_i32()?; // tmp_sessions
+                }
+                let user = crate::types::User::read_from(&mut r)?;
                 tracing::info!("bot authorization succeeded");
-                Ok(())
+                Ok(user.id().0)
             }
             types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
                 Err(Error::SignUpRequired)
@@ -825,8 +831,22 @@ fn parse_account_password(plaintext: &[u8]) -> Result<AccountPasswordChallenge> 
     let _ = hint;
     let email = if flags & (1 << 4) != 0 { r.read_bytes()? } else { Vec::new() };
     let _ = email;
-    let _new_algo_ctor = r.read_u32()?; // skip new_algo (only ctor id read)
-    let _new_secure_algo_ctor = r.read_u32()?; // skip new_secure_algo
+    // new_algo:PasswordKdfAlgo — consume the full object
+    let new_algo_ctor = r.read_u32()?;
+    if new_algo_ctor == types::PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512_100K_MODPOW {
+        let _salt1 = r.read_bytes()?;
+        let _salt2 = r.read_bytes()?;
+        let _g = r.read_i32()?;
+        let _p = r.read_bytes()?;
+    }
+    // new_secure_algo:SecurePasswordKdfAlgo — consume per ctor
+    let secure_ctor = r.read_u32()?;
+    match secure_ctor {
+        types::SECURE_PASSWORD_KDF_ALGO_PBKDF2 | types::SECURE_PASSWORD_KDF_ALGO_SHA512 => {
+            let _salt = r.read_bytes()?;
+        }
+        _ => {}
+    }
     let _secure_random = r.read_bytes()?;
     if flags & (1 << 5) != 0 {
         let _ = r.read_i32()?; // pending_reset_date

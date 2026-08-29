@@ -3,6 +3,7 @@
 use super::*;
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
+use super::constructors::UPDATE_MESSAGE_ID;
 #[allow(unused_imports)]
 use std::fmt;
 
@@ -49,6 +50,8 @@ pub enum Updates {
 /// A single update event.
 #[derive(Debug, Clone)]
 pub enum Update {
+    /// updateMessageID#4e90bfd6 — the id assigned to our own sent message.
+    MessageID { id: MsgId },
     NewMessage { message: Message, pts: i32, pts_count: i32 },
     EditMessage { message: Message, pts: i32, pts_count: i32 },
     DeleteMessages { messages: Vec<MsgId>, pts: i32, pts_count: i32 },
@@ -77,34 +80,31 @@ impl Updates {
         let ctor = r.read_u32()?;
         match ctor {
             UPDATES => {
-                // updates#74ae4240 flags:int date:int seq:int
-                //   updates:Vector<Update> chats:Vector<Chat> users:Vector<User>
-                let _flags = r.read_i32()?;
+                // updates#74ae4240 (layer 223): updates, users, chats,
+                // date, seq — NO flags word.
+                let updates = read_update_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
                 let date = r.read_i32()?;
                 let seq = r.read_i32()?;
-                let updates = read_update_vector(&mut r)?;
-                let chats = read_chat_vector(&mut r)?;
-                let users = read_user_vector(&mut r)?;
                 Ok(Updates::Updates { updates, users, chats, date, seq })
             }
             UPDATES_COMBINED => {
-                // updatesCombined#725b04c3 flags:int date:int seq:int
-                //   seq_start:int updates:Vector<Update> chats:... users:...
-                let _flags = r.read_i32()?;
-                let date = r.read_i32()?;
-                let seq = r.read_i32()?;
-                let seq_start = r.read_i32()?;
+                // updatesCombined#725b04c3 (layer 223): updates, users,
+                // chats, date, seq_start, seq — NO flags word.
                 let updates = read_update_vector(&mut r)?;
-                let chats = read_chat_vector(&mut r)?;
                 let users = read_user_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let date = r.read_i32()?;
+                let seq_start = r.read_i32()?;
+                let seq = r.read_i32()?;
                 Ok(Updates::UpdatesCombined { updates, users, chats, date, seq, seq_start })
             }
             UPDATE_SHORT => {
-                // updateShort#78d4dec1 update:Update date:int seq:int
+                // updateShort#78d4dec1 (layer 223): update:Update date:int
                 let update = Update::read_from(&mut r)?;
                 let date = r.read_i32()?;
-                let seq = r.read_i32()?;
-                Ok(Updates::UpdateShort { update, date, seq })
+                Ok(Updates::UpdateShort { update, date, seq: 0 })
             }
             UPDATE_SHORT_SENT_MESSAGE => {
                 // updateShortSentMessage#9015e101 flags:int id:int pts:int
@@ -126,6 +126,12 @@ impl Updates {
     pub fn message_id(&self) -> Option<MsgId> {
         match self {
             Updates::UpdateShortSentMessage { id, .. } => Some(*id),
+            Updates::Updates { updates, .. } | Updates::UpdatesCombined { updates, .. } => {
+                updates.iter().find_map(|u| match u {
+                    Update::MessageID { id } => Some(*id),
+                    _ => None,
+                })
+            }
             _ => None,
         }
     }
@@ -139,6 +145,12 @@ impl Update {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
+            UPDATE_MESSAGE_ID => {
+                // updateMessageID#4e90bfd6 id:int random_id:long
+                let id = MsgId(r.read_i32()? as i64);
+                let _random_id = r.read_i64()?;
+                Ok(Update::MessageID { id })
+            }
             UPDATE_NEW_MESSAGE | UPDATE_EDIT_MESSAGE => {
                 // updateNewMessage#1f2b0afd message:Message pts:int pts_count:int
                 // updateEditMessage#e40370a3 message:Message pts:int pts_count:int
@@ -265,26 +277,51 @@ impl Difference {
         let ctor = r.read_u32()?;
         match ctor {
             DIFFERENCE_EMPTY => {
-                // differenceEmpty#a9eca690 date seq pts pts_count
+                // differenceEmpty#5d75a138 date:int seq:int
                 Ok(Difference::Empty {
                     date: r.read_i32()?,
                     seq: r.read_i32()?,
-                    pts: r.read_i32()?,
-                    pts_count: r.read_i32()?,
+                    pts: 0,
+                    pts_count: 0,
                 })
             }
             DIFFERENCE => {
-                // difference#f46ca0 seq new_messages other_updates chats users
-                let seq = r.read_i32()?;
+                // difference#f49ca0 new_messages new_encrypted_messages
+                //   other_updates chats users state
                 let new_messages = read_msg_vector(&mut r)?;
+                let enc_count = r.read_vector_header()?; // new_encrypted_messages
+                if enc_count > 0 {
+                    return Err(Error::Serialization(
+                        "EncryptedMessage parsing not supported".into(),
+                    ));
+                }
+                if enc_count > 0 {
+                    return Err(Error::Serialization(
+                        "EncryptedMessage parsing not supported".into(),
+                    ));
+                }
                 let other_updates = read_update_vector(&mut r)?;
                 let chats = read_chat_vector(&mut r)?;
                 let users = read_user_vector(&mut r)?;
+                // state#a56c2a3e pts qts date seq unread_count
+                let _st_ctor = r.read_u32()?;
+                let _pts = r.read_i32()?;
+                let _qts = r.read_i32()?;
+                let _date = r.read_i32()?;
+                let seq = r.read_i32()?;
+                let _unread = r.read_i32()?;
                 Ok(Difference::Difference { seq, new_messages, other_updates, chats, users })
             }
             DIFFERENCE_SLICE => {
-                // differenceSlice#a004db6 ... intermediate_state:State
+                // differenceSlice#a8fb1981 new_messages new_encrypted_messages
+                //   other_updates chats users intermediate_state
                 let new_messages = read_msg_vector(&mut r)?;
+                let enc_count = r.read_vector_header()?; // new_encrypted_messages
+                if enc_count > 0 {
+                    return Err(Error::Serialization(
+                        "EncryptedMessage parsing not supported".into(),
+                    ));
+                }
                 let other_updates = read_update_vector(&mut r)?;
                 let chats = read_chat_vector(&mut r)?;
                 let users = read_user_vector(&mut r)?;
