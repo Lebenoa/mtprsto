@@ -122,6 +122,8 @@ pub const UPDATE_READ_HISTORY_INBOX: u32 = 0x9e84bc99;
 pub const UPDATE_READ_HISTORY_OUTBOX: u32 = 0x2f2f21bf;
 pub const UPDATE_CHANNEL_TOO_LONG: u32 = 0x108d941f;
 pub const UPDATE_EDIT_MESSAGE: u32 = 0xe40370a3;
+/// updateReadMessages#c66f9217 messages:Vector<int>
+pub const UPDATE_READ_MESSAGES: u32 = 0xc66f9217;
 pub const UPDATE_WEB_PAGE: u32 = 0x7f891213;
 /// replyKeyboardMarkup#350284c2
 pub const REPLY_KEYBOARD_MARKUP: u32 = 0x350284c2;

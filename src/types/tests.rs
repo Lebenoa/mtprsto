@@ -122,4 +122,95 @@ mod type_tests {
         assert_eq!(user.id().0, 777, "flags2 word must be consumed before id");
         assert!(user.is_bot());
     }
+
+    /// SPEC §6: `updates` container decodes inner update constructors.
+    #[test]
+    fn test_updates_parse_decodes_new_message() {
+        let mut w = TLWriter::new();
+        w.write_u32(UPDATES);
+        w.write_i32(0); // flags
+        w.write_i32(1_700_000_000); // date
+        w.write_i32(5); // seq
+        // updates:Vector<Update> — one updateNewMessage
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(1);
+        w.write_u32(UPDATE_NEW_MESSAGE);
+        // message:message#3ae56482 — nested object carries its own ctor
+        w.write_u32(MESSAGE);
+        w.write_i32(0); // message flags
+        w.write_i64(77); // id
+        w.write_u32(PEER_USER);
+        w.write_i64(42); // peer_id user
+        w.write_i32(1_700_000_000); // date
+        w.write_bytes(b"hi"); // message text
+        w.write_i32(10); // pts
+        w.write_i32(1); // pts_count
+        // chats:Vector<Chat>
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(0);
+        // users:Vector<User>
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(0);
+
+        let updates = Updates::parse(&w.into_bytes()).unwrap();
+        match updates {
+            Updates::Updates { updates: list, seq, .. } => {
+                assert_eq!(seq, 5);
+                assert_eq!(list.len(), 1);
+                match &list[0] {
+                    Update::NewMessage { message, pts, pts_count } => {
+                        assert_eq!(message.id(), MsgId(77));
+                        assert_eq!(message.text(), "hi");
+                        assert_eq!(*pts, 10);
+                        assert_eq!(*pts_count, 1);
+                    }
+                    other => panic!("expected NewMessage, got {other:?}"),
+                }
+            }
+            other => panic!("expected Updates, got {other:?}"),
+        }
+    }
+
+    /// updateShort wraps a single update; inner ctor must decode.
+    #[test]
+    fn test_update_short_decodes_inner() {
+        let mut w = TLWriter::new();
+        w.write_u32(UPDATE_SHORT);
+        w.write_u32(UPDATE_READ_MESSAGES);
+        // messages:Vector<int>
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(2);
+        w.write_i32(1);
+        w.write_i32(2);
+        w.write_i32(1_700_000_000); // date
+        w.write_i32(6); // seq
+
+        let updates = Updates::parse(&w.into_bytes()).unwrap();
+        match updates {
+            Updates::UpdateShort { update: Update::ReadMessages { messages }, seq, .. } => {
+                assert_eq!(seq, 6);
+                assert_eq!(messages, vec![MsgId(1), MsgId(2)]);
+            }
+            other => panic!("expected UpdateShort ReadMessages, got {other:?}"),
+        }
+    }
+
+    /// Unknown inner ctors fall through to Update::Other instead of erroring.
+    #[test]
+    fn test_updates_unknown_inner_is_other() {
+        let mut w = TLWriter::new();
+        w.write_u32(UPDATE_SHORT);
+        w.write_u32(0xDEADBEEF); // unknown update ctor
+        w.write_i32(0); // (opaque inner bytes — decoder keeps them unread)
+        w.write_i32(1_700_000_000);
+        w.write_i32(0);
+
+        let updates = Updates::parse(&w.into_bytes()).unwrap();
+        match updates {
+            Updates::UpdateShort { update: Update::Other { constructor }, .. } => {
+                assert_eq!(constructor, 0xDEADBEEF);
+            }
+            other => panic!("expected Other, got {other:?}"),
+        }
+    }
 }
