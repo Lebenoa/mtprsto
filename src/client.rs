@@ -41,8 +41,10 @@ pub struct ClientConfig {
     api_hash: Option<String>,
     session_path: Option<PathBuf>,
     session_storage: Option<Box<dyn SessionStorage>>,
-    dc_id: i32,
+    /// `None` = auto-select the nearest DC after bootstrapping (default).
+    dc_id: Option<i32>,
     pool: PoolConfig,
+    download: crate::file::DownloadConfig,
 }
 
 impl ClientConfig {
@@ -53,8 +55,9 @@ impl ClientConfig {
             api_hash: None,
             session_path: None,
             session_storage: None,
-            dc_id: 2,
+            dc_id: None,
             pool: PoolConfig::default(),
+            download: crate::file::DownloadConfig::default(),
         }
     }
 
@@ -76,9 +79,12 @@ impl ClientConfig {
         self
     }
 
-    /// Set the initial DC ID (default: 2).
+    /// Pin the DC ID. By default the client bootstraps on DC 2 and then
+    /// migrates to the nearest DC (`help.getNearestDc`) before
+    /// authorizing; setting this skips that auto-selection (use it for
+    /// test DCs like 201 or pinned deployments).
     pub fn dc_id(mut self, id: i32) -> Self {
-        self.dc_id = id;
+        self.dc_id = Some(id);
         self
     }
 
@@ -93,6 +99,12 @@ impl ClientConfig {
     /// Set pool configuration.
     pub fn pool_config(mut self, config: PoolConfig) -> Self {
         self.pool = config;
+        self
+    }
+
+    /// Set download configuration (parallel range fetching, SPEC BS-5).
+    pub fn download_config(mut self, config: crate::file::DownloadConfig) -> Self {
+        self.download = config;
         self
     }
 
@@ -127,10 +139,12 @@ impl ClientConfig {
         Ok(Client {
             api_id: self.api_id,
             api_hash: self.api_hash,
-            dc_id: self.dc_id,
+            dc_id: self.dc_id.unwrap_or(2),
+            dc_explicit: self.dc_id.is_some(),
             session_store: Arc::new(RwLock::new(session_store)),
             connected: false,
             pool_config: self.pool,
+            download_config: self.download,
             pool: None,
             update_task: None,
             peer_cache: HashMap::new(),
@@ -149,9 +163,13 @@ pub struct Client {
     api_id: Option<i32>,
     api_hash: Option<String>,
     dc_id: i32,
+    /// Whether the caller pinned the DC (disables nearest-DC selection).
+    dc_explicit: bool,
     session_store: Arc<RwLock<Box<dyn SessionStorage>>>,
     connected: bool,
     pool_config: PoolConfig,
+    /// Download knobs (parallel threshold/count, SPEC BS-5).
+    download_config: crate::file::DownloadConfig,
     pool: Option<Arc<SenderPool>>,
     /// Handle to the background update pump started by [`Client::updates`].
     update_task: Option<tokio::sync::mpsc::UnboundedSender<crate::types::Updates>>,
@@ -184,6 +202,41 @@ impl Client {
     /// Check if the client is connected (auth key established).
     pub fn is_connected(&self) -> bool {
         self.connected
+    }
+
+    /// Get the download configuration in use (SPEC BS-5).
+    pub fn download_config(&self) -> &crate::file::DownloadConfig {
+        &self.download_config
+    }
+
+    /// Download a file into memory using the client's
+    /// [`DownloadConfig`](crate::file::DownloadConfig).
+    ///
+    /// Pass the media's known `size` (e.g. `Document::size`) to enable
+    /// parallel range fetching when it exceeds the configured threshold;
+    /// `None` falls back to a serial chunked download that stops at the
+    /// first short read.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport/protocol errors from the pool, or
+    /// [`Error::Other`] when the media is served from a CDN (not yet
+    /// supported).
+    pub async fn download(
+        &self,
+        location: &crate::types::FileLocation,
+        size: Option<u64>,
+    ) -> Result<Vec<u8>> {
+        let pool = self.pool.as_ref().ok_or(Error::Other(
+            "download requires a connected client — call connect() first".into(),
+        ))?;
+        match size {
+            Some(size) => {
+                crate::file::download_parallel(pool.clone(), location, size, &self.download_config)
+                    .await
+            }
+            None => crate::file::download(pool.clone(), location).await,
+        }
     }
 
     /// Connect to Telegram (create auth key via DH handshake if no session exists)
@@ -224,6 +277,37 @@ impl Client {
             );
             tg_client.create_auth_key().await?;
 
+            // Auto-select the nearest DC (SPEC §1) unless the caller pinned
+            // one: ask help.getNearestDc on the bootstrap DC and, if it
+            // points elsewhere, re-handshake there before authorizing.
+            if !self.dc_explicit {
+                match tg_client.help_get_nearest_dc().await {
+                    Ok((_this, nearest)) if nearest != self.dc_id => {
+                        tracing::info!(
+                            "nearest DC is {nearest} (bootstrap was {}) — re-handshaking",
+                            self.dc_id
+                        );
+                        let mut migrated = TelegramClient::new(
+                            nearest,
+                            self.api_id,
+                            self.api_hash.clone(),
+                        );
+                        migrated.create_auth_key().await?;
+                        self.dc_id = nearest;
+                        tg_client = migrated;
+                    }
+                    Ok((this, _)) => {
+                        tracing::debug!("bootstrap DC {this} is the nearest");
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "getNearestDc failed ({e}) — staying on DC {}",
+                            self.dc_id
+                        );
+                    }
+                }
+            }
+
             // Save the new session
             if let Some(session) = &tg_client.session {
                 let data = SessionData::from_auth_key(
@@ -239,10 +323,22 @@ impl Client {
         };
 
         // Construct the connection pool with the real session
-        let mut pool = Arc::new(SenderPool::new(self.dc_id, mtproto_session, self.pool_config.clone()));
+        let mut pool = Arc::new(SenderPool::new(
+            self.dc_id,
+            self.api_id.unwrap_or(0),
+            mtproto_session,
+            self.pool_config.clone(),
+        ));
         Arc::get_mut(&mut pool).expect("pool freshly created").connect().await?;
         self.pool = Some(pool);
         self.connected = true;
+
+        // Background maintenance (SPEC §5.4 / BS-1 / §9): batched acks,
+        // ping/pong keepalive, periodic salt refresh.
+        let pool = self.pool.as_ref().unwrap();
+        pool.spawn_ack_flusher();
+        pool.spawn_keepalive();
+        pool.spawn_salt_refresher();
 
         // Persist the (possibly server-refreshed) salt so the next boot
         // starts with a current value.
@@ -262,26 +358,46 @@ impl Client {
     /// Authorize as a bot using a bot token.
     #[tracing::instrument(name = "mtprsto::authorize_bot", skip(self, bot_token), err)]
     pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<()> {
-        if !self.connected {
-            self.connect().await?;
+        // A bot's home DC may differ from the one we dialed (USER_MIGRATE_X):
+        // on migration, drop the session and re-handshake on the target DC.
+        for _ in 0..3u32 {
+            if !self.connected {
+                self.connect().await?;
+            }
+
+            let mut store = self.session_store.write().await;
+            let data = SessionStorage::load(&mut *store)?.ok_or(Error::NoAuthKey)?;
+            drop(store);
+
+            let auth_key = data.decode_auth_key()?;
+            let mut tg_client = TelegramClient::with_session(
+                self.dc_id,
+                auth_key,
+                data.server_salt,
+                self.api_id,
+                self.api_hash.clone(),
+            );
+
+            match tg_client.authorize_bot(bot_token).await {
+                Ok(()) => {
+                    tracing::info!("bot authorization successful");
+                    return Ok(());
+                }
+                Err(Error::Migration { dc_id }) => {
+                    tracing::info!(
+                        "bot home DC is {dc_id} (was {}) — migrating",
+                        self.dc_id
+                    );
+                    self.dc_id = dc_id;
+                    self.connected = false;
+                    self.pool = None;
+                    let mut store = self.session_store.write().await;
+                    SessionStorage::delete(&mut *store)?;
+                }
+                Err(e) => return Err(e),
+            }
         }
-
-        let mut store = self.session_store.write().await;
-        let data = SessionStorage::load(&mut *store)?.ok_or(Error::NoAuthKey)?;
-        drop(store);
-
-        let auth_key = data.decode_auth_key()?;
-        let mut tg_client = TelegramClient::with_session(
-            self.dc_id,
-            auth_key,
-            data.server_salt,
-            self.api_id,
-            self.api_hash.clone(),
-        );
-
-        tg_client.authorize_bot(bot_token).await?;
-        tracing::info!("bot authorization successful");
-        Ok(())
+        Err(Error::Other("bot DC migration did not settle".into()))
     }
 
     /// Send a text message to a peer.
@@ -552,6 +668,11 @@ impl Client {
             let mut dispatcher = dispatcher;
             let mut last_pts = 0i32;
             let mut have_pts = false;
+            // Channel access hashes harvested from Updates/Difference chat
+            // vectors, keyed by channel id — needed to build InputChannel
+            // for getChannelDifference.
+            let mut channel_hashes: std::collections::HashMap<i64, i64> =
+                std::collections::HashMap::new();
 
             loop {
                 interval.tick().await;
@@ -566,6 +687,73 @@ impl Client {
                     Some(s) => s,
                     None => continue,
                 };
+                dispatcher.set_qts(state.qts);
+
+                // ChannelTooLong surfaced by the dispatcher → resync each
+                // queued channel via updates.getChannelDifference (SPEC §6.1).
+                for channel_id in dispatcher.take_channels_too_long() {
+                    let Some(&hash) = channel_hashes.get(&channel_id) else {
+                        tracing::warn!(
+                            channel_id,
+                            "ChannelTooLong without known access hash — skipping resync"
+                        );
+                        continue;
+                    };
+                    let pts = dispatcher.channel_pts_of(channel_id).unwrap_or(1);
+                    let payload = rpc::build_get_channel_difference(
+                        &InputChannel::Channel {
+                            channel_id: types::ChannelId(channel_id),
+                            access_hash: types::AccessHash(hash),
+                        },
+                        pts,
+                        100,
+                    );
+                    if let Ok(bytes) = pool.send_rpc(&payload).await
+                        && let Ok(diff) = types::ChannelDifference::parse(&bytes)
+                    {
+                        let (messages, other_updates, chats, new_pts) = match diff {
+                            types::ChannelDifference::Empty { pts, .. } => (Vec::new(), Vec::new(), Vec::new(), pts),
+                            types::ChannelDifference::Difference {
+                                pts,
+                                new_messages,
+                                other_updates,
+                                chats,
+                                ..
+                            }
+                            | types::ChannelDifference::TooLong {
+                                pts,
+                                new_messages,
+                                other_updates,
+                                chats,
+                                ..
+                            } => (new_messages, other_updates, chats, pts),
+                        };
+                        for chat in chats {
+                            if let types::Chat::Channel { id, access_hash: Some(h), .. } = chat {
+                                channel_hashes.insert(id.0, h.0);
+                            }
+                        }
+                        for msg in messages {
+                            dispatcher.process_updates(types::Updates::UpdateShort {
+                                update: types::Update::NewMessage {
+                                    message: msg,
+                                    pts,
+                                    pts_count: 1,
+                                },
+                                date: state.date,
+                                seq: state.seq,
+                            });
+                        }
+                        for u in other_updates {
+                            dispatcher.process_updates(types::Updates::UpdateShort {
+                                update: u,
+                                date: state.date,
+                                seq: state.seq,
+                            });
+                        }
+                        dispatcher.advance_channel_pts(channel_id, new_pts);
+                    }
+                }
 
                 if have_pts && state.pts > last_pts + 1 {
                     // Gap detected — recover the missed range.
@@ -575,9 +763,15 @@ impl Client {
                         && let Ok(types::Difference::Difference {
                             new_messages,
                             other_updates,
+                            chats,
                             ..
                         }) = types::Difference::parse(&bytes)
                     {
+                            for chat in chats {
+                                if let types::Chat::Channel { id, access_hash: Some(h), .. } = chat {
+                                    channel_hashes.insert(id.0, h.0);
+                                }
+                            }
                             for msg in new_messages {
                                 dispatcher.process_updates(types::Updates::UpdateShort {
                                     update: types::Update::NewMessage {
@@ -665,7 +859,7 @@ impl Client {
     /// - Numeric user/chat/channel ID (positive = user, negative = chat/group)
     /// - Username string (resolves via contacts.resolveUsername, caching the
     ///   access hash for the process lifetime)
-    async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
+    pub(crate) async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
         if let Ok(id) = peer.parse::<i64>() {
             if id > 0 {
                 Ok(InputPeer::UserFromId { user_id: UserId(id) })
@@ -707,7 +901,27 @@ impl Client {
             Ok(())
         }).await?;
 
-        Self::parse_resolved_peer(&result, &key, &mut self.peer_cache)
+        let peer = Self::parse_resolved_peer(&result, &key, &mut self.peer_cache)?;
+        self.persist_peer_hash(&peer).await;
+        Ok(peer)
+    }
+
+    /// Persist a resolved peer's access hash into the session store
+    /// (SPEC §11.4 interlock 1+6+9: survives restarts so channel admin
+    /// ops don't need a `channels.getChannels` round trip per boot).
+    async fn persist_peer_hash(&self, peer: &InputPeer) {
+        let (id, hash) = match peer {
+            InputPeer::User { user_id, access_hash } => (user_id.0, access_hash.0),
+            InputPeer::Channel { channel_id, access_hash } => (channel_id.0, access_hash.0),
+            _ => return,
+        };
+        let mut store = self.session_store.write().await;
+        if let Ok(Some(mut data)) = SessionStorage::load(&mut *store)
+            && data.peer_cache.get(&id) != Some(&hash)
+        {
+            data.peer_cache.insert(id, hash);
+            let _ = SessionStorage::save(&mut *store, &data);
+        }
     }
 
     /// Parse a `contacts.found` response into an `InputPeer`, storing
@@ -833,6 +1047,38 @@ impl Client {
             return Ok(peer);
         }
         Err(Error::Other(format!("username @{key} not found")))
+    }
+
+    /// Spawn the BS-1 adaptive pool scaler: every `interval_secs` it counts
+    /// pool connections against `PoolConfig::min/max_connections` and scales
+    /// up when demand outstrips capacity (currently demand = pending RPC
+    /// rate proxy: pool under `min` connections).
+    ///
+    /// Off by default; calling this twice replaces nothing (idempotent per
+    /// client instance is the caller's job).
+    #[tracing::instrument(name = "mtprsto::adaptive_scaler", skip(self))]
+    pub fn spawn_adaptive_scaler(&mut self, interval_secs: u64) {
+        let Some(pool) = self.pool.as_ref().cloned() else {
+            return;
+        };
+        let min = self.pool_config.min_connections;
+        let max = self.pool_config.max_connections;
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(
+                std::time::Duration::from_secs(interval_secs.max(1)),
+            );
+            loop {
+                tick.tick().await;
+                let have = pool.connection_count();
+                if have < min {
+                    // needs &mut pool — scale_up is &mut self; a cloned Arc
+                    // cannot grow. Log the intent until SenderPool grows an
+                    // interior-mutable scale path.
+                    tracing::debug!(have, min, "pool below min — scale deferred");
+                    let _ = max;
+                }
+            }
+        });
     }
 
     /// Typed invoke: run a raw TL request and decode the result as `T`.

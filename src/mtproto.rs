@@ -697,6 +697,24 @@ pub fn parse_rpc_error(data: &[u8]) -> Result<(i32, String)> {
     Ok((error_code, error_message))
 }
 
+/// Parse a `bad_msg_notification#a7eff811` service message.
+///
+/// Returns `(bad_msg_id, bad_msg_seqno, error_code)`. The error_code
+/// meanings are documented in [`crate::pool::describe_bad_msg_code`].
+pub fn parse_bad_msg_notification(data: &[u8]) -> Result<(u64, i32, i32)> {
+    let mut r = TLReader::new(data);
+    let constructor = r.read_u32()?;
+    if constructor != BAD_MSG_NOTIFICATION {
+        return Err(Error::UnexpectedResponse(format!(
+            "expected BAD_MSG_NOTIFICATION, got {constructor:#x}"
+        )));
+    }
+    let bad_msg_id = r.read_u64()?;
+    let bad_msg_seqno = r.read_i32()?;
+    let error_code = r.read_i32()?;
+    Ok((bad_msg_id, bad_msg_seqno, error_code))
+}
+
 // ---------------------------------------------------------------------------
 // RPC envelopes (SPEC §5)
 // ---------------------------------------------------------------------------
@@ -706,6 +724,32 @@ pub fn build_invoke_with_layer(layer: i32, method_bytes: &[u8]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(crate::types::INVOKE_WITH_LAYER);
     w.write_i32(layer);
+    w.write_raw_bytes(method_bytes);
+    w.into_bytes()
+}
+
+/// Wrap method bytes in `initConnection#c1cd5ea9` (client identification).
+///
+/// `CONNECTION_NOT_INITED` is returned by production servers when
+/// `auth.*`/user RPCs run without this wrapper.
+pub fn build_init_connection(
+    api_id: i32,
+    device_model: &str,
+    system_version: &str,
+    app_version: &str,
+    lang_code: &str,
+    method_bytes: &[u8],
+) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(crate::types::INIT_CONNECTION);
+    w.write_i32(0); // flags (no proxy / params)
+    w.write_i32(api_id);
+    w.write_bytes(device_model.as_bytes());
+    w.write_bytes(system_version.as_bytes());
+    w.write_bytes(app_version.as_bytes());
+    w.write_bytes(lang_code.as_bytes()); // system_lang_code
+    w.write_bytes(b""); // lang_pack (empty for non-official apps)
+    w.write_bytes(lang_code.as_bytes());
     w.write_raw_bytes(method_bytes);
     w.into_bytes()
 }

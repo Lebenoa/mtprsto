@@ -84,7 +84,9 @@ struct PooledConnection {
 /// A codec over any supported wire transport. `send_frame`/`recv_frame`
 /// behave identically regardless of the variant.
 enum PoolCodec {
-    Tcp(transport::Obfuscated2Transport),
+    /// Plain Intermediate — gotd's default for non-obfuscated-only DC
+    /// options, verified against production DCs.
+    Tcp(transport::IntermediateTransport),
     #[cfg(feature = "ws")]
     Ws(transport::Obfuscated2Transport<crate::ws::WsTransport>),
 }
@@ -92,7 +94,7 @@ enum PoolCodec {
 impl PoolCodec {
     async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
         match self {
-            PoolCodec::Tcp(c) => c.send_frame(payload).await,
+            PoolCodec::Tcp(c) => c.send(payload).await,
             #[cfg(feature = "ws")]
             PoolCodec::Ws(c) => c.send_frame(payload).await,
         }
@@ -100,7 +102,7 @@ impl PoolCodec {
 
     async fn recv_frame(&mut self) -> Result<Vec<u8>> {
         match self {
-            PoolCodec::Tcp(c) => c.recv_frame().await,
+            PoolCodec::Tcp(c) => c.recv().await,
             #[cfg(feature = "ws")]
             PoolCodec::Ws(c) => c.recv_frame().await,
         }
@@ -154,6 +156,8 @@ impl TcpFailover {
 pub struct SenderPool {
     /// DC ID this pool connects to.
     dc_id: i32,
+    /// API ID used in the initConnection wrapper for RPCs.
+    api_id: i32,
     /// Shared session (auth key, salt, etc.).
     session: Arc<RwLock<MtProtoSession>>,
     /// Active connections, each with its own mutex.
@@ -164,25 +168,42 @@ pub struct SenderPool {
     config: PoolConfig,
     /// Next connection index for round-robin.
     next_index: Mutex<usize>,
+    /// Received msg_ids awaiting a batched msgs_ack (flushed at
+    /// [`ACK_BATCH_MAX`] pending or after [`ACK_FLUSH_INTERVAL`], per
+    /// SPEC §5.4).
+    pending_acks: Arc<Mutex<Vec<u64>>>,
 }
+
+/// Flush pending acks once this many are queued (SPEC §5.4: "16 pending").
+const ACK_BATCH_MAX: usize = 16;
+/// Flush pending acks at least this often (SPEC §5.4: "every ~10 s").
+const ACK_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+/// Ping every connection on this cadence (SPEC BS-1: keepalive every 30 s).
+const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+/// Reconnect a connection after this long without a pong (SPEC BS-1: 90 s).
+const PONG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+/// Refresh the server salt on this cadence (SPEC §9: salt validity ~30 min).
+const SALT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(25 * 60);
 
 impl SenderPool {
     /// Create a new pool for the given DC with an existing session.
-    pub fn new(dc_id: i32, session: MtProtoSession, config: PoolConfig) -> Self {
+    pub fn new(dc_id: i32, api_id: i32, session: MtProtoSession, config: PoolConfig) -> Self {
         Self {
             dc_id,
+            api_id,
             session: Arc::new(RwLock::new(session)),
             connections: Vec::new(),
             tcp_failover: Mutex::new(TcpFailover::default()),
             config,
             next_index: Mutex::new(0),
+            pending_acks: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     /// Create a pool with just a DC ID and config (no session yet).
     pub fn without_session(dc_id: i32, config: PoolConfig) -> Self {
         let session = MtProtoSession::new(vec![0u8; 256], 0);
-        Self::new(dc_id, session, config)
+        Self::new(dc_id, 0, session, config)
     }
 
     /// Set the session on the pool.
@@ -350,14 +371,24 @@ impl SenderPool {
             MSGS_STATE_INFO, RPC_RESULT, TLReader,
         };
 
-        // Build invokeWithLayer
+        // Build invokeWithLayer(initConnection(query)) — the server
+        // rejects bare RPCs with INPUT_FETCH_ERROR / API_ID_* errors
+        // because it can't establish the client context.
         let full_payload = crate::mtproto::build_invoke_with_layer(
-            crate::api::API_LAYER, method_bytes,
+            crate::api::API_LAYER,
+            &crate::mtproto::build_init_connection(
+                self.api_id,
+                "mtprsto",
+                "unknown",
+                env!("CARGO_PKG_VERSION"),
+                "en",
+                method_bytes,
+            ),
         );
 
-        // A bad_server_salt notification is retried transparently once with
-        // the fresh salt (already adopted by decrypt_message).
-        for attempt in 0..2u32 {
+        // Service notifications (bad_server_salt, new_session_created)
+        // are retried transparently with the adopted server state.
+        for attempt in 0..4u32 {
             let (_msg_id, response) = self.send_encrypted(&full_payload).await?;
 
             // Decrypt the response (also adopts the server's current salt)
@@ -367,7 +398,7 @@ impl SenderPool {
             };
 
             // Ack the response on the wire (write-only — no reply expected).
-            self.send_write_only_ack(resp_msg_id).await;
+            self.queue_ack(resp_msg_id).await;
 
             // Unwrap gzip_packed into the message body, then dispatch on the
             // service-ctor / rpc_result distinction.
@@ -418,7 +449,7 @@ impl SenderPool {
                         let mut session = self.session.write().await;
                         session.decrypt_message(&retry_resp)?
                     };
-                    self.send_write_only_ack(retry_ack_id).await;
+                    self.queue_ack(retry_ack_id).await;
                     let retry_body = Self::unwrap_gzip(&retry_plain)?;
                     let mut rr = TLReader::new(&retry_body);
                     let retry_ctor = rr.read_u32()?;
@@ -444,6 +475,77 @@ impl SenderPool {
                     tracing::debug!("msgs_state_info: {} bytes", info.len());
                     return Ok(payload);
                 }
+                crate::serialize::BAD_MSG_NOTIFICATION => {
+                    // bad_msg_notification#a7eff811 bad_msg_id:long
+                    // bad_msg_seqno:int error_code:int
+                    let (bad_msg_id, _seqno, code) =
+                        crate::mtproto::parse_bad_msg_notification(&payload)?;
+                    return Err(classify_bad_msg(code, bad_msg_id));
+                }
+                crate::serialize::MSG_CONTAINER => {
+                    // The server bundles our rpc_result with service
+                    // messages (msgs_ack, new_session_created, ...) in a
+                    // container. Pick the result out of it; if there is
+                    // none, adopt whatever session/salt state the server
+                    // announced and re-send on the next attempt.
+                    match Self::choose_container_item(&payload)? {
+                        Some(item) => {
+                            let item_ctor =
+                                u32::from_le_bytes(item[0..4].try_into().unwrap());
+                            if item_ctor == RPC_RESULT {
+                                return Self::parse_rpc_result_body(item);
+                            }
+                            if self.adopt_service_state(item_ctor, item).await {
+                                if attempt < 3 {
+                                    continue;
+                                }
+                                return Err(Error::Protocol(
+                                    "server session state did not settle".into(),
+                                ));
+                            }
+                            return Ok(item.to_vec());
+                        }
+                        None => {
+                            // Service-only container: adopt announced state
+                            // (new_session_created / salts) and re-send.
+                            let mut adopted = false;
+                            let mut r2 = crate::serialize::TLReader::new(&payload);
+                            let _ = r2.read_u32()?;
+                            let count = r2.read_i32()?;
+                            let mut off = 8usize;
+                            for _ in 0..count.max(0) {
+                                if off + 12 > payload.len() {
+                                    break;
+                                }
+                                off += 12;
+                                if off + 4 > payload.len() {
+                                    break;
+                                }
+                                let len = i32::from_le_bytes(
+                                    payload[off..off + 4].try_into().unwrap(),
+                                ) as usize;
+                                off += 4;
+                                if off + len > payload.len() {
+                                    break;
+                                }
+                                let item = &payload[off..off + len];
+                                let item_ctor = u32::from_le_bytes(
+                                    item[0..4].try_into().unwrap_or([0; 4]),
+                                );
+                                if self.adopt_service_state(item_ctor, item).await {
+                                    adopted = true;
+                                }
+                                off += (len + 3) & !3;
+                            }
+                            if adopted && attempt < 3 {
+                                continue;
+                            }
+                            return Err(Error::Protocol(
+                                "msg_container held no result".into(),
+                            ));
+                        }
+                    }
+                }
                 _ => {}
             }
 
@@ -456,10 +558,87 @@ impl SenderPool {
         unreachable!("retry loop returns on every path")
     }
 
+    /// Adopt server-announced session state from a service message.
+    /// Returns `true` when the caller should re-send its request.
+    async fn adopt_service_state(&self, ctor: u32, item: &[u8]) -> bool {
+        use crate::serialize::{BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED};
+        if item.len() < 28 {
+            return false;
+        }
+        let new_salt = match ctor {
+            // bad_server_salt#edab447b ... new_salt at [20..28]
+            BAD_SERVER_SALT => u64::from_le_bytes(item[20..28].try_into().unwrap()),
+            // new_session_created#9ec20908 first_msg_id:long
+            // unique_id:long server_salt:long — salt at [20..28]
+            NEW_SESSION_CREATED => u64::from_le_bytes(item[20..28].try_into().unwrap()),
+            // new_server_salt#1160b89c new_server_salt:long — salt at [4..12]
+            NEW_SERVER_SALT => u64::from_le_bytes(item[4..12].try_into().unwrap()),
+            _ => return false,
+        };
+        let mut session = self.session.write().await;
+        if session.server_salt != new_salt {
+            tracing::debug!(ctor = ctor, "adopting server-announced salt");
+            session.server_salt = new_salt;
+        }
+        true
+    }
+
+    /// Pick the meaningful message out of a `msg_container`: the
+    /// `rpc_result` item if present, else the first non-service item.
+    /// Service noise (msgs_ack, pong, new_session_created) is skipped.
+    fn choose_container_item(data: &[u8]) -> Result<Option<&[u8]>> {
+        use crate::serialize::{MSG_CONTAINER, MSGS_ACK, NEW_SESSION_CREATED, PONG};
+
+        if data.len() < 4
+            || u32::from_le_bytes(data[0..4].try_into().unwrap()) != MSG_CONTAINER
+        {
+            return Ok(Some(data));
+        }
+        let mut r = crate::serialize::TLReader::new(data);
+        let _ctor = r.read_u32()?;
+        let count = r.read_i32()?;
+        let bytes = data;
+        let mut off = 8usize;
+        let mut first: Option<&[u8]> = None;
+        let mut rpc: Option<&[u8]> = None;
+        for _ in 0..count.max(0) {
+            if off + 12 > bytes.len() {
+                break;
+            }
+            off += 12; // msg_id:long seq_no:int
+            if off + 4 > bytes.len() {
+                break;
+            }
+            let len = i32::from_le_bytes(bytes[off..off + 4].try_into().unwrap()) as usize;
+            off += 4;
+            if off + len > bytes.len() {
+                break;
+            }
+            let item = &bytes[off..off + len];
+            let item_ctor = u32::from_le_bytes(item[0..4].try_into().unwrap_or([0; 4]));
+            if item_ctor == crate::serialize::RPC_RESULT && rpc.is_none() {
+                rpc = Some(item);
+            }
+            if first.is_none()
+                && item_ctor != MSGS_ACK
+                && item_ctor != PONG
+                && item_ctor != NEW_SESSION_CREATED
+                && item_ctor != crate::serialize::NEW_SERVER_SALT
+            {
+                first = Some(item);
+            }
+            off += (len + 3) & !3; // 4-byte aligned
+        }
+        Ok(rpc.or(first))
+    }
+
     /// Parse an `rpc_result#f35c6d01` wrapper: request msg_id, gzip, and
     /// rpc_error classification. `data` starts at the rpc_result ctor.
     fn parse_rpc_result_body(data: &[u8]) -> Result<Vec<u8>> {
-        use crate::serialize::{RPC_ERROR, RPC_RESULT, TLReader};
+        use crate::serialize::{
+            RPC_ANSWER_DROPPED, RPC_ANSWER_DROPPED_RUNNING, RPC_ANSWER_UNKNOWN, RPC_ERROR,
+            RPC_RESULT, TLReader,
+        };
 
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
@@ -483,6 +662,24 @@ impl SenderPool {
         if inner_ctor == RPC_ERROR {
             let (code, msg) = crate::mtproto::parse_rpc_error(&inner)?;
             return Err(crate::error::classify_rpc_error(code, &msg));
+        }
+        // rpc_answer_* reply kinds (SPEC §5.2): the answer is unknown,
+        // still being computed, or was dropped — the caller should retry
+        // with backoff. Only rpc_answer_dropped_running is definitive
+        // enough to surface directly; the others map to the same error.
+        if matches!(
+            inner_ctor,
+            RPC_ANSWER_UNKNOWN | RPC_ANSWER_DROPPED | RPC_ANSWER_DROPPED_RUNNING
+        ) {
+            return Err(Error::RpcDropped {
+                detail: format!("rpc_result contained rpc_answer ctor {inner_ctor:#x}"),
+            });
+        }
+        // A bad_msg_notification can also arrive inside rpc_result.
+        if inner_ctor == crate::serialize::BAD_MSG_NOTIFICATION {
+            let (bad_msg_id, _seqno, code) =
+                crate::mtproto::parse_bad_msg_notification(&inner)?;
+            return Err(classify_bad_msg(code, bad_msg_id));
         }
         Ok(inner)
     }
@@ -516,9 +713,21 @@ impl SenderPool {
     /// salts around clock-boundary reconnects; the pool otherwise keeps its
     /// salt fresh via bad_server_salt / new_server_salt handling.
     pub async fn get_future_salts(&self, num: i32) -> Result<(u64, i32, Vec<crate::mtproto::SaltWindow>)> {
+        // getFutureSalts is a BARE service message, not an RPC method —
+        // wrapping it in invokeWithLayer yields INPUT_METHOD_INVALID
+        // (the ctor the server reports back is getFutureSalts itself).
         let req = crate::mtproto::build_get_future_salts(num);
-        let payload = self.send_rpc(&req).await?;
-        crate::mtproto::parse_future_salts(&payload)
+        let (_msg_id, response) = self.send_encrypted(&req).await?;
+        let plaintext = {
+            let mut session = self.session.write().await;
+            session.decrypt_message(&response)?.1
+        };
+        let body = Self::unwrap_gzip(&plaintext)?;
+        let body = match Self::choose_container_item(&body)? {
+            Some(item) => item.to_vec(),
+            None => body,
+        };
+        crate::mtproto::parse_future_salts(&body)
     }
 
     /// Ask the server for the delivery state of the given messages
@@ -540,10 +749,31 @@ impl SenderPool {
         r.read_bytes()
     }
 
-    /// Fire-and-forget ack: encrypt and write to the round-robin connection
-    /// without reading a reply. Best-effort — errors are logged, not fatal.
-    async fn send_write_only_ack(&self, resp_msg_id: u64) {
-        let ack = crate::mtproto::build_msgs_ack(&[resp_msg_id]);
+    /// Queue an ack for the given received msg_id (SPEC §5.4 batching:
+    /// flush immediately at [`ACK_BATCH_MAX`] pending, otherwise wait for
+    /// the flusher task). Best-effort — flush errors are logged, not fatal.
+    async fn queue_ack(&self, resp_msg_id: u64) {
+        let flush = {
+            let mut pending = self.pending_acks.lock().await;
+            pending.push(resp_msg_id);
+            pending.len() >= ACK_BATCH_MAX
+        };
+        if flush {
+            self.flush_acks().await;
+        }
+    }
+
+    /// Write one batched `msgs_ack` for every queued msg_id (write-only —
+    /// no reply expected).
+    async fn flush_acks(&self) {
+        let ids: Vec<u64> = {
+            let mut pending = self.pending_acks.lock().await;
+            std::mem::take(&mut *pending)
+        };
+        if ids.is_empty() {
+            return;
+        }
+        let ack = crate::mtproto::build_msgs_ack(&ids);
         let encrypted = {
             let mut session = self.session.write().await;
             let ack_msg_id = session.next_msg_id();
@@ -553,6 +783,121 @@ impl SenderPool {
         if let Err(e) = self.write_raw(&encrypted).await {
             tracing::debug!("ack write failed (non-fatal): {e}");
         }
+    }
+
+    /// Spawn the periodic ack flusher (every [`ACK_FLUSH_INTERVAL`]).
+    /// Call once after `connect`.
+    pub fn spawn_ack_flusher(self: &Arc<Self>) {
+        let pool_arc = self.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(ACK_FLUSH_INTERVAL);
+            loop {
+                tick.tick().await;
+                pool_arc.flush_acks().await;
+            }
+        });
+    }
+
+    /// Spawn the ping/pong keepalive: pings every idle connection on
+    /// [`PING_INTERVAL`]; a connection that goes [`PONG_TIMEOUT`] without
+    /// a pong is silently disconnected and reconnected with the same
+    /// auth_key (SPEC BS-1).
+    pub fn spawn_keepalive(self: &Arc<Self>) {
+        let pool_arc = self.clone();
+        for i in 0..pool_arc.connections.len() {
+            let conn = pool_arc.connections[i].clone();
+            let pool_arc = pool_arc.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(PING_INTERVAL).await;
+                    // Only ping when the codec is idle; a locked codec means
+                    // an RPC exchange is in flight and traffic itself proves
+                    // liveness.
+                    let Ok(mut codec) = conn.codec.try_lock() else {
+                        continue;
+                    };
+                    let ping_id = rand::random::<i64>();
+                    let ping = crate::mtproto::build_ping(ping_id);
+                    let encrypted = {
+                        let mut session = pool_arc.session.write().await;
+                        let msg_id = session.next_msg_id();
+                        let seq_no = session.next_seq_no(true);
+                        session.encrypt_message(&ping, msg_id, seq_no)
+                    };
+                    if let Err(e) = codec.send_frame(&encrypted).await {
+                        tracing::debug!("keepalive ping failed: {e}");
+                        continue;
+                    }
+                    match tokio::time::timeout(PONG_TIMEOUT, codec.recv_frame()).await {
+                        Ok(Ok(resp)) => {
+                            if let Ok((_, plaintext)) =
+                                pool_arc.session.write().await.decrypt_message(&resp)
+                            {
+                                let body = SenderPool::unwrap_gzip(&plaintext)
+                                    .unwrap_or_else(|_| plaintext.clone());
+                                match crate::mtproto::parse_pong(&body) {
+                                    Ok(_) => {}
+                                    Err(_) => tracing::debug!(
+                                        "keepalive got non-pong frame; discarded"
+                                    ),
+                                }
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                "keepalive recv failed on DC {} conn {i}: {e}",
+                                pool_arc.dc_id
+                            );
+                            if let Err(e) = pool_arc.reconnect_connection(&conn).await {
+                                tracing::warn!("keepalive reconnect failed: {e}");
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                "no pong within {:?} on DC {} conn {i} — reconnecting",
+                                PONG_TIMEOUT,
+                                pool_arc.dc_id
+                            );
+                            if let Err(e) = pool_arc.reconnect_connection(&conn).await {
+                                tracing::warn!("keepalive reconnect failed: {e}");
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    /// Spawn the periodic salt refresher: every [`SALT_REFRESH_INTERVAL`]
+    /// ask for future salt windows and adopt the one currently valid
+    /// (SPEC §9: salt validity ~30 min).
+    pub fn spawn_salt_refresher(self: &Arc<Self>) {        let pool_arc = self.clone();
+        tokio::spawn(async move {
+            // Sleep FIRST: a tokio interval fires its first tick
+            // immediately, which would spam getFutureSalts at startup.
+            loop {
+                tokio::time::sleep(SALT_REFRESH_INTERVAL).await;
+                match pool_arc.get_future_salts(3).await {
+                    Ok((_req_id, server_now, windows)) => {
+                        let fresh = windows.iter().find(|w| {
+                            w.valid_since <= server_now && server_now < w.valid_until
+                        });
+                        if let Some(w) = fresh {
+                            let mut session = pool_arc.session.write().await;
+                            if session.server_salt != w.salt {
+                                tracing::debug!("salt refreshed via get_future_salts");
+                                session.server_salt = w.salt;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!("salt refresh failed (non-fatal): {e}");
+                    }
+                }
+            }
+        });
     }
 
     /// Write one obfuscated frame to the next round-robin connection
@@ -623,11 +968,10 @@ impl SenderPool {
         }
     }
 
-    async fn connect_tcp(dc_id: i32) -> Result<transport::Obfuscated2Transport> {
-        transport::connect_obfuscated2(
-            dc_id, transport::TransportProtocol::Intermediate,
-        )
-        .await
+    async fn connect_tcp(dc_id: i32) -> Result<transport::IntermediateTransport> {
+        Ok(transport::IntermediateTransport::new(
+            transport::connect(dc_id).await?,
+        ))
     }
 
     #[cfg(feature = "ws")]
@@ -746,6 +1090,123 @@ async fn futures_collect<T>(
     out
 }
 
+/// Human-readable meaning of a `bad_msg_notification` error_code
+/// (SPEC §5.2). Code 20 (salt invalidated) cannot be auto-recovered here
+/// because the notification carries no new salt — the caller re-encrypts
+/// with the adopted salt on its next request.
+pub fn describe_bad_msg_code(code: i32) -> &'static str {
+    match code {
+        16 => "msg_id too low",
+        17 => "msg_id too high",
+        18 => "bad msg_key",
+        20 => "server salt invalidated",
+        32 => "msg_seqno too low",
+        33 => "msg_seqno too high",
+        34 => "msg_seqno parity mismatch (even/odd)",
+        48 => "incorrect server salt for seq_no",
+        64 => "invalid container",
+        65 => "message not authorised (no auth_key)",
+        96 => "user banned / flood wait",
+        _ => "unknown bad_msg code",
+    }
+}
+
+/// Map a `bad_msg_notification` to a typed [`Error`].
+fn classify_bad_msg(code: i32, bad_msg_id: u64) -> Error {
+    tracing::warn!(
+        "bad_msg_notification for msg {bad_msg_id}: code {code} ({})",
+        describe_bad_msg_code(code)
+    );
+    match code {
+        // Code 65 means the auth key never reached this server — treat it
+        // like an auth failure so callers can re-authenticate.
+        65 => Error::NoAuthKey,
+        _ => Error::BadMessage {
+            code,
+            description: describe_bad_msg_code(code).to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod bad_msg_tests {
+    use super::*;
+
+    #[test]
+    fn test_describe_bad_msg_codes() {
+        assert_eq!(describe_bad_msg_code(16), "msg_id too low");
+        assert_eq!(describe_bad_msg_code(20), "server salt invalidated");
+        assert_eq!(describe_bad_msg_code(48), "incorrect server salt for seq_no");
+        assert_eq!(describe_bad_msg_code(65), "message not authorised (no auth_key)");
+        assert_eq!(describe_bad_msg_code(96), "user banned / flood wait");
+        assert!(describe_bad_msg_code(42).starts_with("unknown"));
+    }
+
+    #[test]
+    fn test_parse_bad_msg_notification() {
+        let mut w = crate::serialize::TLWriter::new();
+        w.write_u32(crate::serialize::BAD_MSG_NOTIFICATION);
+        w.write_u64(0x1234);
+        w.write_i32(5);
+        w.write_i32(16);
+        let (id, seqno, code) =
+            crate::mtproto::parse_bad_msg_notification(w.as_bytes()).unwrap();
+        assert_eq!((id, seqno, code), (0x1234, 5, 16));
+    }
+
+    #[test]
+    fn test_choose_container_item_prefers_rpc_result() {
+        use crate::serialize::TLWriter;
+        // Build msgs_ack and rpc_result bodies, wrap in a container.
+        let mut ack = TLWriter::new();
+        ack.write_u32(crate::serialize::MSGS_ACK);
+        ack.write_u32(crate::serialize::VECTOR);
+        ack.write_i32(1);
+        ack.write_u64(0x1234);
+        let ack = ack.into_bytes();
+
+        let mut rpc = TLWriter::new();
+        rpc.write_u32(crate::serialize::RPC_RESULT);
+        rpc.write_u64(0xdeadbeef);
+        rpc.write_raw_bytes(&[0x99, 0x72, 0x75, 0xb5]); // boolTrue body
+        let rpc = rpc.into_bytes();
+
+        let mut c = TLWriter::new();
+        c.write_u32(crate::serialize::MSG_CONTAINER);
+        c.write_i32(2);
+        for (id, seq, body) in [(0x11, 1, &ack), (0x22, 3, &rpc)] {
+            c.write_u64(id);
+            c.write_i32(seq);
+            c.write_i32(body.len() as i32);
+            let pad = (4 - (body.len() % 4)) % 4;
+            c.write_raw_bytes(body);
+            if pad > 0 {
+                c.write_raw_bytes(&[0u8; 3][..pad]);
+            }
+        }
+        let container = c.into_bytes();
+
+        let chosen = SenderPool::choose_container_item(&container).unwrap().unwrap();
+        assert_eq!(u32::from_le_bytes(chosen[0..4].try_into().unwrap()), crate::serialize::RPC_RESULT);
+    }
+
+    #[test]
+    fn test_classify_bad_msg_code_65_is_no_auth_key() {
+        assert!(matches!(
+            classify_bad_msg(65, 1),
+            Error::NoAuthKey
+        ));
+        let e = classify_bad_msg(16, 1);
+        assert!(matches!(e, Error::BadMessage { code: 16, .. }));
+        assert!(!e.is_transient());
+    }
+
+    #[test]
+    fn test_rpc_dropped_is_transient() {
+        assert!(Error::RpcDropped { detail: "x".into() }.is_transient());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -762,7 +1223,7 @@ mod tests {
     #[test]
     fn test_pool_creation() {
         let session = MtProtoSession::new(vec![0u8; 256], 12345);
-        let pool = SenderPool::new(2, session, PoolConfig::default());
+        let pool = SenderPool::new(2, 0, session, PoolConfig::default());
         assert_eq!(pool.dc_id(), 2);
     }
 

@@ -41,6 +41,8 @@ pub mod transport;
 pub mod types;
 pub mod updates;
 pub mod ergonomics;
+pub mod resilience;
+pub mod client_wrappers;
 #[cfg(feature = "ws")]
 pub mod ws;
 

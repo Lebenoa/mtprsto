@@ -131,7 +131,7 @@ pub fn build_get_history(
     w.write_i32(limit);
     w.write_i32(max_id);
     w.write_i32(min_id);
-    w.write_i32(0); // hash
+    w.write_i64(0); // hash:long
     w.into_bytes()
 }
 
@@ -198,12 +198,10 @@ pub fn build_search(
 ) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_SEARCH);
-    w.write_i32(0); // flags
+    w.write_i32(0); // flags (no from_id / top_msg_id)
     peer.write_to(&mut w);
     w.write_bytes(query.as_bytes());
-    // InputPeerEmpty as from_id
-    w.write_u32(INPUT_PEER_EMPTY);
-    // InputMessagesFilterEmpty
+    // InputMessagesFilterEmpty (filter is required)
     w.write_u32(0x57e2f66c);
     w.write_i32(0); // min_date
     w.write_i32(0); // max_date
@@ -212,25 +210,32 @@ pub fn build_search(
     w.write_i32(limit);
     w.write_i32(0); // max_id
     w.write_i32(0); // min_id
-    w.write_i32(0); // hash
+    w.write_i64(0); // hash:long
     w.into_bytes()
 }
 
 /// Build `messages.getBotCallbackAnswer` payload.
+///
+/// Schema (Layer 223): `messages.getBotCallbackAnswer#9342ca07 flags:#
+/// game:flags.1?true peer:InputPeer msg_id:int data:flags.0?bytes
+/// password:flags.2?InputCheckPasswordSRP = messages.BotCallbackAnswer;`
 pub fn build_get_bot_callback_answer(
     peer: &InputPeer,
     msg_id: i32,
     data: &[u8],
 ) -> Vec<u8> {
-    let flags: i32 = 1 << 0; // data:flags.0?bytes
+    let flags: i32 = if data.is_empty() { 0 } else { 1 << 0 };
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_GET_BOT_CALLBACK_ANSWER);
     w.write_i32(flags);
     peer.write_to(&mut w);
     w.write_i32(msg_id);
-    w.write_bytes(data);
+    if !data.is_empty() {
+        w.write_bytes(data);
+    }
     w.into_bytes()
 }
+
 
 // ===========================================================================
 // Users methods
@@ -263,8 +268,11 @@ pub fn build_get_users(users: &[InputUser]) -> Vec<u8> {
 
 /// Build `contacts.resolveUsername` payload.
 pub fn build_resolve_username(username: &str) -> Vec<u8> {
+    // contacts.resolveUsername#725afbbc flags:# username:string
+    //   referer:flags.0?string
     let mut w = TLWriter::new();
     w.write_u32(CONTACTS_RESOLVE_USERNAME);
+    w.write_i32(0); // flags (no referer)
     w.write_bytes(username.as_bytes());
     w.into_bytes()
 }
@@ -280,17 +288,16 @@ pub fn build_create_channel(
     broadcast: bool,
     megagroup: bool,
 ) -> Vec<u8> {
+    // channels.createChannel#91006707: broadcast:flags.0, megagroup:flags.1
     let mut flags: i32 = 0;
-    if broadcast { flags |= 1 << 5; }
-    if megagroup { flags |= 1 << 8; }
+    if broadcast { flags |= 1 << 0; }
+    if megagroup { flags |= 1 << 1; }
 
     let mut w = TLWriter::new();
     w.write_u32(CHANNELS_CREATE_CHANNEL);
     w.write_i32(flags);
     w.write_bytes(title.as_bytes());
-    if !about.is_empty() {
-        w.write_bytes(about.as_bytes());
-    }
+    w.write_bytes(about.as_bytes()); // about is required in layer 223
     w.into_bytes()
 }
 
@@ -318,15 +325,23 @@ pub fn build_edit_admin(
     admin_rights: i32,
     rank: &str,
 ) -> Vec<u8> {
+    // channels.editAdmin#9a98ad68 flags:# channel:InputChannel
+    //   user_id:InputUser admin_rights:ChatAdminRights rank:flags.0?string
+    let mut flags: i32 = 0;
+    if !rank.is_empty() {
+        flags |= 1 << 0;
+    }
     let mut w = TLWriter::new();
     w.write_u32(CHANNELS_EDIT_ADMIN);
+    w.write_i32(flags);
     channel.write_to(&mut w);
     user_id.write_to(&mut w);
-    // ChatAdminRights
+    // ChatAdminRights#5fb224d5 flags:# (rights bit-mask)
+    w.write_u32(crate::types::CHAT_ADMIN_RIGHTS);
     w.write_i32(admin_rights);
-    // ChatAdminRights
-    w.write_i32(0); // empty banned rights
-    w.write_bytes(rank.as_bytes());
+    if !rank.is_empty() {
+        w.write_bytes(rank.as_bytes());
+    }
     w.into_bytes()
 }
 
@@ -965,7 +980,9 @@ mod tests {
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), CHANNELS_CREATE_CHANNEL);
         let flags = r.read_i32().unwrap();
-        assert_eq!(flags, 1 << 5); // broadcast
+        assert_eq!(flags, 1 << 0); // broadcast (flags.0 in layer 223)
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "My Channel");
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "About");
     }
 
     #[test]
@@ -973,6 +990,7 @@ mod tests {
         let payload = build_resolve_username("testbot");
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), CONTACTS_RESOLVE_USERNAME);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags (no referer)
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "testbot");
     }
 

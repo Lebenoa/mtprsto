@@ -10,29 +10,45 @@ errors, and a pluggable session layer.
 
 - **Pure MTProto 2.0** — abridged/intermediate framing, obfuscated transport,
   DH key exchange, AES-256-IGE message encryption.
-- **High-level `Client`** — builder config, connect, bot login, send messages,
-  dialogs, updates, message deletion.
-- **SenderPool** — multi-connection pool handling encryption, transport
-  framing, decryption, and RPC acks.
+- **High-level `Client`** — builder config, bot/user login, `send`,
+  `send_file`, message builder (`.reply_to().silent()`), history iterator,
+  dialogs, updates pump, callback queries, channel admin, file
+  upload/download, raw invoke.
+- **SenderPool** — multi-connection pool (1 main + aux, adaptive scaling),
+  batched acks (≥16 pending or 10 s), ping/pong keepalive with silent-
+  disconnect reconnect, transparent bad-server-salt retry, periodic salt
+  refresh, and `bad_msg_notification` / `rpc_answer_*` classification.
 - **WebSocket fallback** (optional `ws` feature) — `TransportPolicy::Auto`
   switches new connections to `wss://` after 2 TCP failures on a DC within
   5 minutes, and returns to TCP once it works again. Default is TCP-only;
   enable with `features = ["ws"]`.
-- **Pluggable session storage** — persist `auth_key`, server salt, and DC
-  behind a small trait. JSON file backend included; implement
-  [`SessionStorage`](src/session.rs) for SQLite, Postgres, Redis, or anything
-  else (see [`examples/session_storage.rs`](examples/session_storage.rs)).
+- **Files** — chunked `upload.saveFilePart`/`saveBigFilePart` with parallel
+  workers; `upload.getFile` downloads with optional parallel range fetching
+  (`DownloadConfig`, BS-5) and CDN-redirect detection.
+- **Nearest-DC selection** — bootstraps on DC 2, asks `help.getNearestDc`
+  and re-handshakes to the closest DC before authorizing. Pin a DC with
+  `.dc_id(n)` to opt out (test DCs, pinned deployments). `USER_MIGRATE_X`
+  migrations during bot login are followed automatically.
+- **Updates** — `UpdateDispatcher` with pts/seq/qts tracking, gap recovery
+  via `updates.getDifference`, automatic channel resync on
+  `UpdateChannelTooLong`, and `mpsc` channel or handler dispatch.
+- **Pluggable session storage** — persist `auth_key`, server salt, DC, and
+  peer access hashes behind a small trait. JSON file backend included;
+  implement [`SessionStorage`](src/session.rs) for SQLite, Postgres, Redis,
+  or anything else (see [`examples/session_storage.rs`](examples/session_storage.rs)).
 - **Atomic session writes** — write-temp + fsync + rename, so a crash never
   corrupts a session file.
-- **Typed errors** — `FloodWait`, `FileReferenceExpired`, `InvalidCode`, and
-  friends instead of stringly-typed failures.
+- **Typed errors** — `FloodWait`, `FileReferenceExpired`, `BadMessage`,
+  `RpcDropped`, `InvalidCode`, and friends instead of stringly-typed
+  failures.
+- **2FA (SRP)** and QR login token flows included.
 
 ## Status
 
-Work in progress. Transport, auth-key exchange, bot/user authorization,
-RPC invocation through the pool, session persistence, and update decoding all
-work. File upload/download, callback queries, and channel-admin RPCs are on
-the roadmap (see [`SPEC.md`](SPEC.md) for the full gap table).
+Protocol-complete for the ii-drive migration surface (see
+[`SPEC.md`](SPEC.md)). Remaining backlog: CDN file download (redirects are
+detected but not fetched), IPv6 DC table, and throughput benchmarks vs
+grammers.
 
 ## Installation
 
@@ -147,17 +163,20 @@ TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --
 | Module | Purpose |
 |---|---|
 | [`client`](src/client.rs) | High-level `Client`: connect, bot login, `send`, `get_me`, `get_dialogs`, `delete_messages`, raw invoke |
-| [`pool`](src/pool.rs) | `SenderPool`: pooled connections, RPC correlation, acks |
+| [`pool`](src/pool.rs) | `SenderPool`: pooled connections, RPC correlation, batched acks, keepalive |
 | [`mtproto`](src/mtproto.rs) | MTProto 2.0 session: message IDs, salts, seq numbers, encryption |
-| [`crypto`](src/crypto.rs) | AES-256-IGE, RSA, Diffie–Hellman, SHA-1/SHA-256, MD5 |
+| [`crypto`](src/crypto.rs) | AES-256-IGE, RSA, Diffie–Hellman, SRP (2FA), SHA-1/SHA-256, MD5 |
 | [`transport`](src/transport.rs) | TCP transport with abridged/intermediate framing |
 | [`serialize`](src/serialize.rs) | TL reader/writer (little-endian TL primitives) |
 | [`session`](src/session.rs) | `SessionData` + `SessionStorage` trait + JSON store |
 | [`api`](src/api.rs) | Auth-key creation and authorization flows |
-| [`types`](src/types.rs) | Generated TL types (constructors, enums) |
+| [`file`](src/file.rs) | Chunked upload/download, `DownloadConfig`, `upload.file` parsing |
+| [`types`](src/types/) | Hand-written TL types (constructors, enums) |
 | [`updates`](src/updates.rs) | Update dispatching (`UpdateDispatcher`) |
-| [`error`](src/error.rs) | Typed error taxonomy incl. `FloodWait`, `FileReferenceExpired` |
-| [`rpc`](src/rpc.rs) | Response decoding helpers |
+| [`ergonomics`](src/ergonomics.rs) | Message/send-file builders, history iterator |
+| [`resilience`](src/resilience.rs) | Flood limiter, file-ref cache, DC rotator |
+| [`error`](src/error.rs) | Typed error taxonomy incl. `FloodWait`, `BadMessage` |
+| [`rpc`](src/rpc.rs) | TL payload builders for the §7 RPC surface |
 | [`ws`](src/ws.rs) | Obfuscated2-over-WebSocket fallback (feature `ws`) |
 
 ## Session storage
@@ -173,10 +192,14 @@ DC ID, and user ID. Format:
   "server_time_offset": 0,
   "dc_id": 2,
   "user_id": 12345678,
-  "api_layer": 175,
+  "api_layer": 223,
+  "peer_cache": { "12345678": -1001234567890 },
   "version": 1
 }
 ```
+
+`peer_cache` stores resolved peer access hashes (channel/user id → hash) so
+admin ops don't pay a `channels.getChannels` round trip after restart.
 
 Saves are atomic (`*.tmp<PID>` + fsync + rename). By default the client
 persists to `~/.mtprsto/session.json` when no path is given, so the auth key

@@ -8,7 +8,7 @@ use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use num_bigint::{BigRng010, BigUint};
 use num_traits::One;
 use rand::{rng, Rng};
-use sha1::{Digest as Sha1Digest, Sha1};
+use sha1::Digest as Sha1Digest;
 use sha2::Sha256;
 
 
@@ -352,55 +352,56 @@ pub fn auth_key_id(auth_key: &[u8]) -> u64 {
     u64::from_be_bytes(id_bytes)
 }
 
-/// Compute msg_key for MTProto 2.0 encryption (SPEC §4).
+/// Compute msg_key for MTProto 2.0 encryption.
 ///
-/// `msg_key = SHA-1(substr(auth_key, x, 32) || plaintext)[0..16]`
-/// where x = 0 for client→server, x = 8 for server→client.
-pub fn msg_key_mtproto2(auth_key: &[u8], plaintext: &[u8], x: usize) -> [u8; 16] {
-    let mut hasher = Sha1::new();
-    hasher.update(&auth_key[x..x + 32]);
-    hasher.update(plaintext);
-    let hash = hasher.finalize();
+/// `msg_key_large = SHA-256(substr(auth_key, 88+x, 32) || plaintext_padded)`
+/// and `msg_key = msg_key_large[8..24]`, per the official MTProto 2.0
+/// description and gotd/td `crypto/keys.go` (reference implementation).
+/// Note: this is *not* the MTProto 1.0 SHA-1 rule.
+pub fn msg_key_mtproto2(auth_key: &[u8], plaintext_padded: &[u8], x: usize) -> [u8; 16] {
+    let mut hasher = Sha256::new();
+    hasher.update(&auth_key[88 + x..88 + x + 32]);
+    hasher.update(plaintext_padded);
+    let large = hasher.finalize();
 
     let mut msg_key = [0u8; 16];
-    msg_key.copy_from_slice(&hash[..16]);
+    msg_key.copy_from_slice(&large[8..24]);
     msg_key
 }
 
 /// Derive AES key and IV from auth_key and msg_key (MTProto 2.0).
 ///
+/// ```text
+/// sha256_a = SHA-256(msg_key || substr(auth_key, x, 36))
+/// sha256_b = SHA-256(substr(auth_key, 40+x, 36) || msg_key)
+/// aes_key  = sha256_a[0..8]  || sha256_b[8..24] || sha256_a[24..32]
+/// aes_iv   = sha256_b[0..8]  || sha256_a[8..24] || sha256_b[24..32]
+/// ```
+///
 /// Returns (aes_key, aes_iv) — both 32 bytes.
 pub fn aes_key_and_iv(auth_key: &[u8], msg_key: &[u8; 16], x: usize) -> ([u8; 32], [u8; 32]) {
-    // SPEC §4.1:
-    //   k_part   = substr(auth_key, x, 128)
-    //   sha256_a = SHA-256(k_part || substr(auth_key, 40+x, 16))
-    //   sha256_b = SHA-256(substr(auth_key, 40+x, 16) || k_part || msg_key)
-    let k_part = &auth_key[x..x + 128];
+    let sha256_a = {
+        let mut h = Sha256::new();
+        h.update(msg_key);
+        h.update(&auth_key[x..x + 36]);
+        h.finalize()
+    };
+    let sha256_b = {
+        let mut h = Sha256::new();
+        h.update(&auth_key[40 + x..40 + x + 36]);
+        h.update(msg_key);
+        h.finalize()
+    };
 
-    let mut sha256_a_hasher = Sha256::new();
-    sha256_a_hasher.update(k_part);
-    sha256_a_hasher.update(&auth_key[40 + x..40 + x + 16]);
-    let sha256_a = sha256_a_hasher.finalize();
-
-    let mut sha256_b_hasher = Sha256::new();
-    sha256_b_hasher.update(&auth_key[40 + x..40 + x + 16]);
-    sha256_b_hasher.update(k_part);
-    sha256_b_hasher.update(msg_key);
-    let sha256_b = sha256_b_hasher.finalize();
-
-    // aes_key = sha256_a[0..8]  || sha256_b[8..24] || sha256_a[20..32]
     let mut aes_key = [0u8; 32];
     aes_key[0..8].copy_from_slice(&sha256_a[0..8]);
-    aes_key[8..20].copy_from_slice(&sha256_b[8..20]);
-    aes_key[20..32].copy_from_slice(&sha256_a[20..32]);
+    aes_key[8..24].copy_from_slice(&sha256_b[8..24]);
+    aes_key[24..32].copy_from_slice(&sha256_a[24..32]);
 
-    // aes_iv  = sha256_a[8..20] || sha256_b[0..8]  || sha256_a[32..36](*)
-    // sha256_a[32..36] is out of bounds for a 32-byte digest; the widely used
-    // reading of the spec is sha256_a[16..20] (the 4 bytes after [8..20]).
     let mut aes_iv = [0u8; 32];
-    aes_iv[0..12].copy_from_slice(&sha256_a[8..20]);
-    aes_iv[12..20].copy_from_slice(&sha256_b[0..8]);
-    aes_iv[20..32].copy_from_slice(&sha256_a[16..28]);
+    aes_iv[0..8].copy_from_slice(&sha256_b[0..8]);
+    aes_iv[8..24].copy_from_slice(&sha256_a[8..24]);
+    aes_iv[24..32].copy_from_slice(&sha256_b[24..32]);
 
     (aes_key, aes_iv)
 }
@@ -826,16 +827,16 @@ mod tests {
     /// SPEC §4/§4.1 regression guards: pins the exact derivation formulas.
     /// Any change to these functions must be a SPEC-verified change.
     #[test]
-    fn test_msg_key_is_sha1_prefix() {
+    fn test_msg_key_is_sha256_slice() {
         let auth_key = [0x42u8; 256];
         let plaintext = b"payload";
         let key = msg_key_mtproto2(&auth_key, plaintext, 0);
-        // msg_key = SHA-1(auth_key[0..32] || plaintext)[0..16]
-        let mut hasher = Sha1::new();
-        hasher.update(&auth_key[0..32]);
+        // msg_key = SHA-256(auth_key[88..120] || plaintext)[8..24]
+        let mut hasher = Sha256::new();
+        hasher.update(&auth_key[88..120]);
         hasher.update(plaintext);
-        let expected = &hasher.finalize()[..16];
-        assert_eq!(&key, expected);
+        let large = hasher.finalize();
+        assert_eq!(&key, &large[8..24]);
     }
 
     #[test]
@@ -844,26 +845,24 @@ mod tests {
         let msg_key = [0x22u8; 16];
         let (aes_key, aes_iv) = aes_key_and_iv(&auth_key, &msg_key, 0);
 
-        // Recompute per SPEC §4.1 independently.
-        let k_part = &auth_key[0..128];
+        // Recompute per the MTProto 2.0 description independently.
         let mut ha = Sha256::new();
-        ha.update(k_part);
-        ha.update(&auth_key[40..56]);
+        ha.update(msg_key);
+        ha.update(&auth_key[0..36]);
         let sha_a = ha.finalize();
         let mut hb = Sha256::new();
-        hb.update(&auth_key[40..56]);
-        hb.update(k_part);
+        hb.update(&auth_key[40..76]);
         hb.update(msg_key);
         let sha_b = hb.finalize();
 
         let mut want_key = Vec::new();
         want_key.extend_from_slice(&sha_a[0..8]);
-        want_key.extend_from_slice(&sha_b[8..20]);
-        want_key.extend_from_slice(&sha_a[20..32]);
+        want_key.extend_from_slice(&sha_b[8..24]);
+        want_key.extend_from_slice(&sha_a[24..32]);
         let mut want_iv = Vec::new();
-        want_iv.extend_from_slice(&sha_a[8..20]);
         want_iv.extend_from_slice(&sha_b[0..8]);
-        want_iv.extend_from_slice(&sha_a[16..28]);
+        want_iv.extend_from_slice(&sha_a[8..24]);
+        want_iv.extend_from_slice(&sha_b[24..32]);
 
         assert_eq!(aes_key.as_slice(), want_key.as_slice());
         assert_eq!(aes_iv.as_slice(), want_iv.as_slice());

@@ -1,2 +1,6 @@
 /target
 .freebuff
+.zcode
+bot.session
+*.session
+tl*.json

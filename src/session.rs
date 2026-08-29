@@ -45,6 +45,11 @@ pub struct SessionData {
     /// API layer version at time of creation.
     #[serde(default)]
     pub api_layer: i32,
+    /// Cached peer access hashes (SPEC §11.4 interlock 1+6+9): channel id
+    /// → access hash. Saves a `channels.getChannels` round trip on every
+    /// admin op after restart.
+    #[serde(default)]
+    pub peer_cache: std::collections::HashMap<i64, i64>,
     /// Format version (for forward compat).
     #[serde(default = "default_version")]
     pub version: i32,
@@ -255,6 +260,7 @@ impl SessionData {
             dc_id,
             user_id: 0,
             api_layer: super::api::API_LAYER,
+            peer_cache: std::collections::HashMap::new(),
             version: 1,
         }
     }
@@ -314,6 +320,30 @@ mod tests {
         let data = SessionData::from_auth_key(&auth_key, 0, 2);
         let decoded = data.decode_auth_key().unwrap();
         assert_eq!(decoded, auth_key);
+    }
+
+    #[test]
+    fn test_peer_cache_roundtrip_and_backward_compat() {
+        let path = temp_path();
+        let mut store = SessionStore::new(&path);
+        let mut data = SessionData::from_auth_key(&vec![0u8; 256], 1, 2);
+        data.peer_cache.insert(12345, 0xdeadbeef);
+        store.save(&data).unwrap();
+
+        let mut store2 = SessionStore::new(&path);
+        let loaded = store2.load().unwrap().expect("load");
+        assert_eq!(loaded.peer_cache.get(&12345), Some(&0xdeadbeef));
+        store.delete().unwrap();
+
+        // Old-format file (no peer_cache field) still loads thanks to
+        // #[serde(default)].
+        let old = format!(
+            "{{\"auth_key\":\"{}\",\"server_salt\":1,\"session_id\":2,\
+              \"server_time_offset\":0,\"dc_id\":2}}",
+            data.auth_key
+        );
+        let parsed: SessionData = serde_json::from_str(&old).unwrap();
+        assert!(parsed.peer_cache.is_empty());
     }
 
     #[test]

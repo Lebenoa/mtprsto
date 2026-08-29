@@ -185,7 +185,10 @@ After auth, every subsequent request uses `(auth_key, session_id)`.
 
 `auth_key_id` = little-endian `u64` of `auth_key[6..14]`.
 
-`msg_key` = `SHA-1(substr(auth_key, x, 32) || plaintext)[0..16]`.
+`msg_key` = `SHA-256(substr(auth_key, 88+x, 32) || plaintext_padded)[8..24]`.
+
+(NB: the SHA-1 msg_key rule is MTProto **1.0**; MTProto 2.0 uses SHA-256
+with the 88+x offset — verified against gotd/td `crypto/keys.go`.)
 
 - Client → server: `x = 0`
 - Server → client: `x = 8`
@@ -193,13 +196,12 @@ After auth, every subsequent request uses `(auth_key, session_id)`.
 ### 4.1 AES key + IV derivation (MTProto 2.0)
 
 ```
-k_part       = substr(auth_key, x, 128)
-sha256_a     = SHA-256(k_part || substr(auth_key, 40+x, 16))
-sha256_b     = SHA-256(substr(auth_key, 40+x, 16) || k_part || substr(msg_key, 0, 16))
-aes_key      = substr(sha256_a, 0, 8) || substr(sha256_b, 8, 12)
-              || substr(sha256_a, 16+4, 12)
-aes_iv       = substr(sha256_a, 8, 12) || substr(sha256_b, 0, 8)
-              || substr(sha256_a, 32, 4)
+sha256_a     = SHA-256(msg_key || substr(auth_key, x, 36))
+sha256_b     = SHA-256(substr(auth_key, 40+x, 36) || msg_key)
+aes_key      = substr(sha256_a, 0, 8) || substr(sha256_b, 8, 16)
+              || substr(sha256_a, 24, 8)
+aes_iv       = substr(sha256_b, 0, 8) || substr(sha256_a, 8, 16)
+              || substr(sha256_b, 24, 8)
 ```
 
 `plaintext = plaintext_body || random_padding` where padding makes total
@@ -367,6 +369,17 @@ updates.getChannelDifference#3173d78 → Updates, ChannelDifferenceEmpty, Channe
 ---
 
 ## 7. TL surface mtprsto must cover
+
+> **NB (2026-08):** several constructor IDs in this section were written
+> against an older layer and have since changed on the live schema
+> (e.g. `contacts.resolveUsername` → `#725afbbc`,
+> `updates.getDifference` → `#19c2f763`,
+> `new_session_created` → `#9ec20908`). `src/types/constructors.rs` is
+> verified against `core.telegram.org/schema/json` and is the source of
+> truth — re-check IDs there, not here, before adding RPCs. Service
+> messages like `getFutureSalts` are bare MTProto messages, NOT RPC
+> methods (wrapping them in `invokeWithLayer` yields
+> `INPUT_METHOD_INVALID`).
 
 For the swap (cf. ii-drive usage), mtprsto currently implements ~30
 constructor IDs. The full required surface:

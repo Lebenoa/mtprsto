@@ -27,6 +27,8 @@ pub enum Chat {
     },
     /// Empty/deleted chat.
     Empty { id: ChatId },
+    /// `chatForbidden#7328209` — the account cannot view this chat.
+    Forbidden { id: ChatId, title: String },
     /// Channel or supergroup.
     Channel {
         id: ChannelId,
@@ -84,6 +86,12 @@ impl Chat {
             CHAT_EMPTY => {
                 let id = ChatId(r.read_i64()?);
                 Ok(Chat::Empty { id })
+            }
+            CHAT_FORBIDDEN => {
+                // chatForbidden#7328209: id:int then title:string
+                let id = ChatId(r.read_i64()?);
+                let title = String::from_utf8(r.read_bytes()?)?;
+                Ok(Chat::Forbidden { id, title })
             }
             CHANNEL => {
                 let flags = r.read_i32()?;

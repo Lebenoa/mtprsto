@@ -60,6 +60,16 @@ pub enum Update {
 }
 
 impl Updates {
+    /// Chats carried by full Updates variants (empty otherwise).
+    pub fn chats(&self) -> Vec<Chat> {
+        match self {
+            Updates::Updates { chats, .. } | Updates::UpdatesCombined { chats, .. } => {
+                chats.clone()
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// Parse any `Updates` container: `updates`, `updatesCombined`,
     /// `updateShort`, `updateShortSentMessage`.
     pub fn parse(data: &[u8]) -> Result<Self> {

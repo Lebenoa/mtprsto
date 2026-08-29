@@ -72,6 +72,16 @@ pub enum Error {
     /// MTProto protocol error (bad msg_key, nonce mismatch, etc.).
     Protocol(String),
 
+    /// The server rejected a message with `bad_msg_notification`. `code`
+    /// is Telegram's bad_msg_code (16 msg_id too low, 17 too high, 18
+    /// bad msg_key, 20 salt invalidated, 32-48 sequence issues, 64
+    /// invalid container, 65 not authorised, 96 flood/ban).
+    BadMessage { code: i32, description: String },
+
+    /// The server reported `rpc_answer_unknown` or `rpc_answer_dropped`:
+    /// the answer is not ready or was dropped. Retry with backoff.
+    RpcDropped { detail: String },
+
     /// DH parameter verification failed.
     DhVerification(String),
 
@@ -101,6 +111,7 @@ impl Error {
                 // 401 (unauthorized — key may be expired)
                 matches!(error_code, 401 | 420 | 500..=599)
             }
+            Error::RpcDropped { .. } => true,
             Error::Transport(_) => true,
             _ => false,
         }
@@ -156,6 +167,10 @@ impl fmt::Display for Error {
             Error::Serialization(msg) => write!(f, "Serialization: {msg}"),
             Error::Transport(msg) => write!(f, "Transport: {msg}"),
             Error::Protocol(msg) => write!(f, "Protocol: {msg}"),
+            Error::BadMessage { code, description } => {
+                write!(f, "BadMessage: {description} [code={code}]")
+            }
+            Error::RpcDropped { detail } => write!(f, "RpcDropped: {detail}"),
             Error::DhVerification(msg) => write!(f, "DhVerification: {msg}"),
             Error::UnexpectedResponse(msg) => write!(f, "UnexpectedResponse: {msg}"),
             Error::PaddingError(msg) => write!(f, "PaddingError: {msg}"),
@@ -235,6 +250,16 @@ pub fn classify_rpc_error(error_code: i32, error_message: &str) -> Error {
         };
     }
 
+    // PHONE_MIGRATE_X / USER_MIGRATE_X / NETWORK_MIGRATE_X — the peer
+    // lives on DC X and the client must migrate.
+    for prefix in ["PHONE_MIGRATE_", "USER_MIGRATE_", "NETWORK_MIGRATE_"] {
+        if let Some(dc_str) = error_message.strip_prefix(prefix)
+            && let Ok(dc_id) = dc_str.parse::<i32>()
+        {
+            return Error::Migration { dc_id };
+        }
+    }
+
     if let Some(dc_str) = error_message.strip_prefix("MIGRATE_")
         && let Ok(dc_id) = dc_str.parse::<i32>()
     {
@@ -292,6 +317,17 @@ mod tests {
     fn test_migration_dc_id() {
         let err = Error::Migration { dc_id: 2 };
         assert_eq!(err.dc_id(), Some(2));
+    }
+
+    #[test]
+    fn test_classify_user_migrate() {
+        let e = classify_rpc_error(303, "USER_MIGRATE_5");
+        assert!(matches!(e, Error::Migration { dc_id: 5 }));
+        let e = classify_rpc_error(303, "PHONE_MIGRATE_2");
+        assert!(matches!(e, Error::Migration { dc_id: 2 }));
+        let e = classify_rpc_error(303, "NETWORK_MIGRATE_4");
+        assert!(matches!(e, Error::Migration { dc_id: 4 }));
+        assert_eq!(e.dc_id(), Some(4));
     }
 
     #[test]

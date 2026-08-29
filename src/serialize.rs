@@ -359,7 +359,8 @@ pub const PONG: u32 = 0x347773c5;
 pub const MSGS_ACK: u32 = 0x62d6b459;
 
 // new_session_created
-pub const NEW_SESSION_CREATED: u32 = 0x9ec209d4;
+// new_session_created#9ec20908 (ctor ID updated by Telegram; fields unchanged)
+pub const NEW_SESSION_CREATED: u32 = 0x9ec20908;
 
 // bad_msg_notification
 pub const BAD_MSG_NOTIFICATION: u32 = 0xa7eff811;
@@ -381,6 +382,14 @@ pub const FUTURE_SALTS: u32 = 0xae500895;
 // msgs_state_req#da69fb52 msg_ids:Vector<long>
 pub const MSGS_STATE_REQ: u32 = 0xda69fb52;
 
+// upload.file#96a18f23 type:storage.fileType mtime:int bytes:bytes
+pub const UPLOAD_FILE: u32 = 0x96a18f23;
+// upload.fileCdnRedirect#f18cda2c dc_id:int file_token:bytes
+//   encryption_key:bytes encryption_iv:bytes
+pub const UPLOAD_FILE_CDN_REDIRECT: u32 = 0xf18cda2c;
+// upload.cdnFile#a99f3906 bytes:bytes
+pub const UPLOAD_CDN_FILE: u32 = 0xa99f3906;
+
 // msgs_state_info#04deb57d req_msg_id:long info:bytes
 pub const MSGS_STATE_INFO: u32 = 0x04deb57d;
 
@@ -395,6 +404,11 @@ pub const RPC_RESULT: u32 = 0xf35c6d01;
 
 // rpc_error
 pub const RPC_ERROR: u32 = 0x2144ca19;
+
+// rpc_answer_* — non-error reply kinds delivered inside rpc_result (SPEC §5.2)
+pub const RPC_ANSWER_UNKNOWN: u32 = 0x5e2b3f5d;
+pub const RPC_ANSWER_DROPPED_RUNNING: u32 = 0x6d2c0b28;
+pub const RPC_ANSWER_DROPPED: u32 = 0xa7ad2a5f;
 
 // Bool
 pub const BOOL_TRUE: u32 = 0x997275b5;

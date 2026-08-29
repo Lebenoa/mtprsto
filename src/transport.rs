@@ -112,10 +112,10 @@ impl FrameStream for TcpStream {
     }
 }
 
-#[cfg(feature = "ws")]
 impl<S> Obfuscated2Transport<S> {
     /// Wrap an already-connected stream with the given CTR pair (used by
     /// the WS path, which sends the init itself).
+    #[allow(dead_code)] // used by the ws feature path and live probes
     pub(crate) fn new(stream: S, enc: AesCtr, dec: AesCtr) -> Self {
         Self { stream, enc, dec }
     }
@@ -224,13 +224,25 @@ pub(crate) fn obfuscated2_keys(
     dc_id: i32,
 ) -> (AesCtr, AesCtr, Vec<u8>) {
     let init = generate_obfuscated2_init(protocol, dc_id);
-    let mut init_rev = init;
-    init_rev.reverse();
     let mut enc = AesCtr::new(&init[8..40], &init[40..56]);
-    let dec = AesCtr::new(&init_rev[8..40], &init_rev[40..56]);
-    let mut init_copy = init;
-    enc.crypt(&mut init_copy[56..64]);
-    (enc, dec, init_copy.to_vec())
+
+    // Encrypt the whole init to advance the keystream, exactly like
+    // gotd/td: the server decrypts the full 64-byte header with the
+    // client's encrypt keystream, so frames must start at offset 64.
+    let mut encrypted_init = init;
+    enc.crypt(&mut encrypted_init[..]);
+
+    let mut header = Vec::with_capacity(64);
+    header.extend_from_slice(&init[..56]); // plaintext prefix
+    header.extend_from_slice(&encrypted_init[56..64]); // encrypted tag + dc
+
+    // Decrypt init: reverse init[8..56] (48 bytes), key = [0..32], iv = [32..48].
+    let mut dec_init = [0u8; 48];
+    dec_init.copy_from_slice(&init[8..56]);
+    dec_init.reverse();
+    let dec = AesCtr::new(&dec_init[0..32], &dec_init[32..48]);
+
+    (enc, dec, header)
 }
 
 /// Transport protocol type.
@@ -288,6 +300,12 @@ impl AbridgedTransport {
 
         let mut data = vec![0u8; len];
         self.stream.read_exact(&mut data).await?;
+        if len == 4 {
+            let code = i32::from_le_bytes(data.as_slice().try_into().unwrap());
+            return Err(Error::Transport(format!(
+                "server transport error {code} (-404 = bad request/auth, -429 = flood)"
+            )));
+        }
         Ok(data)
     }
 
@@ -437,6 +455,21 @@ pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
 
     let mut data = vec![0u8; len];
     stream.read_exact(&mut data).await?;
+
+    // Transport-level error: a 4-byte signed LE code with no envelope
+    if len == 4 {
+        let code = i32::from_le_bytes(data.clone().try_into().unwrap());
+        return Err(Error::Transport(format!(
+            "server transport error {code} (-404 = bad request/auth, -429 = flood)"
+        )));
+    }
+
+    if len < 24 {
+        return Err(Error::Protocol(format!(
+            "encrypted message too short: {len} bytes"
+        )));
+    }
+
     Ok(data)
 }
 
@@ -449,6 +482,95 @@ pub async fn exchange_unencrypted(
     let msg_id = 0xdeadbeef; // Can be anything for unencrypted
     send_unencrypted(&mut stream, msg_id, send_payload).await?;
     recv_unencrypted(&mut stream).await
+}
+
+#[cfg(test)]
+mod obf_probe {
+    use super::*;
+
+    /// Live-server probe (ignored; run with
+    /// `cargo test --lib -- --ignored --nocapture probe_obfuscated2`):
+    /// fresh DH handshake over raw, then exercises the obfuscated2 path.
+    #[tokio::test]
+    #[ignore = "live network probe"]
+    async fn probe_obfuscated2() {
+        let mut tg = crate::api::TelegramClient::new(2, Some(0), Some(String::new()));
+        tg.create_auth_key().await.unwrap();
+        let session = tg.session.expect("handshake produced session");
+        println!("handshake ok, salt={:#x}", session.server_salt);
+        let mut session = session;
+
+        let mut w = crate::serialize::TLWriter::new();
+        w.write_u32(0x7abe77ec); // ping
+        w.write_i64(12345);
+        let payload = w.into_bytes();
+        let msg_id = session.next_msg_id();
+        let seq_no = session.next_seq_no(true);
+        let encrypted = session.encrypt_message(&payload, msg_id, seq_no);
+
+        async fn dial() -> tokio::net::TcpStream {
+            let addr = dc_address(2).unwrap();
+            tokio::net::TcpStream::connect(addr).await.unwrap()
+        }
+
+        // gotd-wire obfuscated2 ping
+        let mut codec = connect_obfuscated2(2, TransportProtocol::Intermediate).await.unwrap();
+        codec.send_frame(&encrypted).await.unwrap();
+        match codec.recv_frame().await {
+            Ok(resp) => {
+                println!("obf: reply {} bytes", resp.len());
+                match session.decrypt_message(&resp) {
+                    Ok((_, p)) => println!("  DECRYPTED OK, ctor {:02x?}", &p[..4.min(p.len())]),
+                    Err(e) => println!("  decrypt failed: {e}"),
+                }
+            }
+            Err(e) => println!("obf: {e}"),
+        }
+    }
+
+    /// Byte-for-byte comparison against gotd/td reference vectors
+    /// (fixed init 0x01..0x40, tag 0xEEEEEEEE, dc=2).
+    #[test]
+    fn test_obf_matches_gotd_reference() {
+        let mut init = [0u8; 64];
+        for (i, b) in init.iter_mut().enumerate() {
+            *b = (i as u8) + 1;
+        }
+        init[56..60].copy_from_slice(&0xEEEEEEEEu32.to_le_bytes());
+        init[60..62].copy_from_slice(&2i16.to_le_bytes());
+
+        let mut enc = AesCtr::new(&init[8..40], &init[40..56]);
+        let mut encrypted_init = init;
+        enc.crypt(&mut encrypted_init[..]);
+        let mut header = Vec::new();
+        header.extend_from_slice(&init[..56]);
+        header.extend_from_slice(&encrypted_init[56..64]);
+        let mut want_header = Vec::new();
+        for i in 0..56u8 {
+            want_header.push(i + 1);
+        }
+        want_header.extend_from_slice(&[0x33, 0xbd, 0x94, 0x84, 0xf1, 0xfb, 0x4e, 0x3a]);
+        assert_eq!(header, want_header, "header mismatch vs Go reference");
+
+        let frame = [0x00, 0x00, 0x00, 0x10, 0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44];
+        let mut out = frame;
+        enc.crypt(&mut out);
+        assert_eq!(
+            out,
+            [0xdd, 0x00, 0x4d, 0x3a, 0x37, 0xf1, 0x22, 0x01, 0x2d, 0xbb, 0xdc, 0xbe],
+        );
+
+        let mut dec_init = [0u8; 48];
+        dec_init.copy_from_slice(&init[8..56]);
+        dec_init.reverse();
+        let mut dec = AesCtr::new(&dec_init[0..32], &dec_init[32..48]);
+        let mut reply = [0u8; 12];
+        dec.crypt(&mut reply);
+        assert_eq!(
+            reply,
+            [0xf8, 0x8d, 0x18, 0x7a, 0xea, 0x16, 0xc7, 0x4f, 0x41, 0x86, 0x06, 0x52],
+        );
+    }
 }
 
 #[cfg(test)]

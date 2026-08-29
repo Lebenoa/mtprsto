@@ -26,16 +26,19 @@ tokio-rustls = { version = "0.26", optional = true }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = "0.3"
 
+[dependencies.tokio-tungstenite]
+version = "0.30"
+features = ["rustls-tls-native-roots"]
+optional = true
+
 [features]
 default = []
+# Compiles all tracing macros to no-ops (STATIC_MAX_LEVEL = OFF) for
+# latency-sensitive deployments that don't want observability overhead.
+tracing-off = ["tracing/max_level_off"]
 ws = [
-  "dep:tokio-tungstenite",
   "dep:futures-util",
-  "dep:tokio-rustls",
   "dep:rustls-native-certs",
+  "dep:tokio-rustls",
+  "dep:tokio-tungstenite",
 ]
-
-[dependencies.tokio-tungstenite]
-optional = true
-version = "0.26"
-features = ["rustls-tls-native-roots"]

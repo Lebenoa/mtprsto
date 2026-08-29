@@ -5,7 +5,7 @@
 //! examples where a network is not required.
 
 use crate::error::{Error, Result};
-use crate::serialize::TLReader;
+use crate::serialize::{TLReader, TLWriter};
 use crate::types::{self, InputPeer, MsgId};
 
 // ===========================================================================
@@ -111,6 +111,10 @@ pub struct MessageBuilder<'a> {
     reply_to: Option<i64>,
     silent: bool,
     no_webpage: bool,
+    /// Wrap the query in invokeAfterMsg with this msg_id (§5).
+    after_msg: Option<i64>,
+    /// Wrap the query in invokeWithoutUpdates (§5).
+    without_updates: bool,
 }
 
 impl<'a> MessageBuilder<'a> {
@@ -122,6 +126,8 @@ impl<'a> MessageBuilder<'a> {
             reply_to: None,
             silent: false,
             no_webpage: false,
+            after_msg: None,
+            without_updates: false,
         }
     }
 
@@ -143,6 +149,20 @@ impl<'a> MessageBuilder<'a> {
         self
     }
 
+    /// Process this message only after the server handled `msg_id`
+    /// (wraps the query in `invokeAfterMsg`).
+    pub fn after_msg(mut self, msg_id: MsgId) -> Self {
+        self.after_msg = Some(msg_id.0);
+        self
+    }
+
+    /// Suppress update delivery for this request
+    /// (wraps the query in `invokeWithoutUpdates`).
+    pub fn without_updates(mut self) -> Self {
+        self.without_updates = true;
+        self
+    }
+
     /// Send the message, returning the new message id.
     ///
     /// # Errors
@@ -150,15 +170,17 @@ impl<'a> MessageBuilder<'a> {
     /// Returns [`Error::Network`]/[`Error::Rpc`] on transport or server
     /// failures.
     pub async fn send(self) -> Result<MsgId> {
-        let Self { peer, text, reply_to, silent, no_webpage, client } = self;
+        let Self { peer, text, reply_to, silent, no_webpage, after_msg, without_updates, client } = self;
         let mut flags: i32 = 0;
         if no_webpage { flags |= 1 << 1; }
         if reply_to.is_some() { flags |= 1 << 0; }
         if silent { flags |= 1 << 5; }
 
-        let result = client.invoke_with_method(types::MESSAGES_SEND_MESSAGE, |w| {
+        let query = {
+            let mut w = TLWriter::new();
+            w.write_u32(types::MESSAGES_SEND_MESSAGE);
             w.write_i32(flags);
-            peer.write_to(w);
+            peer.write_to(&mut w);
             if let Some(reply_id) = reply_to {
                 // inputReplyToMessage#869fbe10
                 w.write_u32(types::INPUT_REPLY_TO_MESSAGE);
@@ -167,10 +189,19 @@ impl<'a> MessageBuilder<'a> {
             }
             w.write_bytes(text.as_bytes());
             w.write_i64(rand::random::<i64>()); // random_id
-            Ok(())
-        })
-        .await?;
+            w.into_bytes()
+        };
+        let query = match after_msg {
+            Some(after) => crate::mtproto::build_invoke_after_msg(after as u64, &query),
+            None => query,
+        };
+        let query = if without_updates {
+            crate::mtproto::build_invoke_without_updates(&query)
+        } else {
+            query
+        };
 
+        let result = client.invoke_raw(query).await?;
         MsgId::from_rpc_result(&result)
     }
 }

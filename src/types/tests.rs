@@ -383,6 +383,24 @@ fn test_dialog_folder_roundtrip() {
     assert_eq!(df.folder_id, 3);
     assert_eq!(df.folder_title, "My folder");
     assert_eq!(df.top_message, 1000);
-    assert_eq!(df.unread_unmuted_messages_count, 4);
+    assert_eq!(df.unread_unmuted_messages_count, 4);}
+
+#[test]
+fn test_chat_forbidden_roundtrip() {
+    // chatForbidden#7328209: id:int then title:string (historical layout)
+    let mut w = TLWriter::new();
+    w.write_u32(CHAT_FORBIDDEN);
+    w.write_i64(777);
+    w.write_bytes(b"secret club");
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    match Chat::read_from(&mut r).unwrap() {
+        Chat::Forbidden { id, title } => {
+            assert_eq!(id.0, 777);
+            assert_eq!(title, "secret club");
+        }
+        other => panic!("expected Forbidden, got {other:?}"),
+    }
 }
 }

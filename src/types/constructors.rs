@@ -168,8 +168,8 @@ pub const PEER_CHANNEL: u32 = 0xa2a5371e;
 
 // --- Updates (Layer 223) ---
 pub const UPDATES: u32 = 0x74ae4240;
-pub const UPDATE_SHORT: u32 = 0x78d4dec1; // TODO: verify from schema
-pub const UPDATES_COMBINED: u32 = 0x725b04c3; // TODO: verify from schema
+pub const UPDATE_SHORT: u32 = 0x78d4dec1; // updateShort#78d4dec1 — verified against api.tl
+pub const UPDATES_COMBINED: u32 = 0x725b04c3; // updatesCombined#725b04c3 — verified against api.tl
 pub const UPDATE_SHORT_SENT_MESSAGE: u32 = 0x9015e101;
 
 // --- Update events (Layer 223) ---
@@ -269,17 +269,26 @@ pub const MESSAGES_SEND_MEDIA: u32 = 0x0330e77f;
 /// `messages.sendMultiMedia#1bf89d74`
 pub const MESSAGES_SEND_MULTI_MEDIA: u32 = 0x1bf89d74;
 pub const MESSAGES_GET_DIALOGS: u32 = 0xa0f4cb4f;
-pub const MESSAGES_GET_HISTORY: u32 = 0xdc3f8240;
+pub const MESSAGES_GET_HISTORY: u32 = 0x4423e6c5;
 pub const MESSAGES_GET_MESSAGES: u32 = 0x63c66506;
-pub const MESSAGES_GET_BOT_CALLBACK_ANSWER: u32 = 0x934a4ee1;
+/// `messages.getBotCallbackAnswer#9342ca07 flags:# game:flags.1?true
+///  peer:InputPeer msg_id:int data:flags.0?bytes
+///  password:flags.2?InputCheckPasswordSRP` (Layer 223)
+pub const MESSAGES_GET_BOT_CALLBACK_ANSWER: u32 = 0x9342ca07;
+/// `messages.botCallbackAnswer#36585ea4 flags:# alert:flags.1?true
+///  has_url:flags.3?true native_ui:flags.4?true message:flags.0?string
+///  url:flags.2?string cache_time:int`
+pub const MESSAGES_BOT_CALLBACK_ANSWER: u32 = 0x36585ea4;
+/// `messages.affectedMessages#84d19185 pts:int pts_count:int`
+pub const MESSAGES_AFFECTED_MESSAGES: u32 = 0x84d19185;
 pub const MESSAGES_DELETE_MESSAGES: u32 = 0xe58e95c6;
 /// `messages.deleteHistory#b08f922a flags:# just_clear:flags.0?true
 ///  revoke:flags.1?true peer:InputPeer max_id:int min_date:flags.2?int
 ///  max_date:flags.3?int = messages.AffectedHistory;`
 pub const MESSAGES_DELETE_HISTORY: u32 = 0xb08f922a;
-pub const MESSAGES_EDIT_MESSAGE: u32 = 0x48f71768;
+pub const MESSAGES_EDIT_MESSAGE: u32 = 0x51e842e1;
 pub const MESSAGES_READ_HISTORY: u32 = 0x0e306d3a;
-pub const MESSAGES_SEARCH: u32 = 0xd07bbf76;
+pub const MESSAGES_SEARCH: u32 = 0x29ee847a;
 pub const MESSAGES_SEND_CALLBACK_DATA: u32 = 0x934a4ee1;
 /// `messages.affectedHistory#b45c69d1 pts:int pts_count:int offset:int`
 pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
@@ -296,13 +305,13 @@ pub const CONTACTS_RESOLVE_PHONE: u32 = 0x8af94344;
 pub const CONTACTS_SEARCH: u32 = 0x11f812d8;
 /// `contacts.resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat> users:Vector<User>`
 pub const CONTACTS_RESOLVED_PEER: u32 = 0x7f077ad9;
-pub const CONTACTS_RESOLVE_USERNAME: u32 = 0xf93ccba3;
+pub const CONTACTS_RESOLVE_USERNAME: u32 = 0x725afbbc;
 
 // --- Channels ---
-pub const CHANNELS_CREATE_CHANNEL: u32 = 0x3d5d10fd;
-pub const CHANNELS_INVITE_TO_CHANNEL: u32 = 0x199f3a6c;
-pub const CHANNELS_EDIT_ADMIN: u32 = 0x70d896ff;
-pub const CHANNELS_GET_CHANNELS: u32 = 0xa7f6d76b;
+pub const CHANNELS_CREATE_CHANNEL: u32 = 0x91006707;
+pub const CHANNELS_INVITE_TO_CHANNEL: u32 = 0xc9e33d54;
+pub const CHANNELS_EDIT_ADMIN: u32 = 0x9a98ad68;
+pub const CHANNELS_GET_CHANNELS: u32 = 0xa7f6bbb;
 /// `channels.getParticipants#77ced9d0 channel:InputChannel
 ///  filter:ChannelParticipantsFilter offset:int limit:int hash:long`
 pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
@@ -310,7 +319,7 @@ pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
 /// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
 pub const CHANNELS_EDIT_ABOUT: u32 = 0x13e27b46;
 pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
-pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa28;
+pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa95;
 /// `channels.channelParticipants#9ab0feaf count:int participants:...`
 pub const CHANNELS_CHANNEL_PARTICIPANTS: u32 = 0x9ab0feaf;
 /// `channelParticipantsRecent#de3f3c79`
@@ -322,7 +331,7 @@ pub const CHANNEL_PARTICIPANTS_SEARCH: u32 = 0x0656ac4b;
 /// `updates.state#a56c2a3e pts:int qts:int date:int seq:int unread_count:int`
 pub const UPDATES_STATE: u32 = 0xa56c2a3e;
 pub const UPDATES_GET_STATE: u32 = 0xedd4882a;
-pub const UPDATES_GET_DIFFERENCE: u32 = 0x25939104;
+pub const UPDATES_GET_DIFFERENCE: u32 = 0x19c2f763;
 pub const UPDATES_GET_CHANNEL_DIFFERENCE: u32 = 0x3173d78;
 /// updates.differenceEmpty#a9eca690 date:int seq:int pts:int pts_count:int
 pub const DIFFERENCE_EMPTY: u32 = 0xa9eca690;
@@ -401,12 +410,20 @@ pub const INPUT_SINGLE_MEDIA: u32 = 0x1cc6e91f;
 
 // --- Invoke wrappers ---
 pub const INVOKE_WITH_LAYER: u32 = 0xda9b0d0d;
+// initConnection#c1cd5ea9 — identifies the client for RPC (CONNECTION_NOT_INITED)
+pub const INIT_CONNECTION: u32 = 0xc1cd5ea9;
 pub const INVOKE_AFTER_MSG: u32 = 0xcb9f372d;
-pub const INVOKE_WITHOUT_UPDATES: u32 = 0xbf94591b;
+pub const INVOKE_WITHOUT_UPDATES: u32 = 0xbf9459b7;
 
 // --- Help ---
-pub const HELP_GET_CONFIG: u32 = 0xc4f3926c;
+pub const HELP_GET_CONFIG: u32 = 0xc4f9186b;
 pub const HELP_GET_NEAREST_DC: u32 = 0x1fb33026;
+// nearestDc#8e1a1775 country:string this_dc:int nearest_dc:int
+pub const NEAREST_DC: u32 = 0x8e1a1775;
+// config#cc1a241e — help.getConfig response
+pub const CONFIG: u32 = 0xcc1a241e;
+// dcOption#18b7a10d — one entry of config.dc_options
+pub const DC_OPTION: u32 = 0x18b7a10d;
 
 
 // --- Bool ---

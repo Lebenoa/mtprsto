@@ -81,17 +81,27 @@ impl PtsState {
 }
 
 /// Update dispatcher with pts/seq tracking.
+/// Shared handler callback type (Handler dispatch mode).
+pub type UpdateHandler = std::sync::Arc<dyn Fn(&Update) + Send + Sync>;
+
 pub struct UpdateDispatcher {
     /// Per-account pts state.
     account_pts: PtsState,
+    /// Per-account qts (mentions / "quick" update counter, SPEC §6.1).
+    qts: i32,
     /// Per-channel pts states.
     channel_pts: HashMap<i64, PtsState>,
+    /// Channel ids from `UpdateChannelTooLong` awaiting
+    /// `updates.getChannelDifference` resync.
+    channels_too_long: Vec<i64>,
     /// Sender for updates (used in Channel mode).
     sender: Option<mpsc::UnboundedSender<Update>>,
     /// Buffered updates waiting for gap resolution.
     buffered: Vec<Update>,
     /// Maximum buffer size before dropping.
     max_buffer: usize,
+    /// Registered handlers (Handler mode); fired for every filtered update.
+    handlers: Vec<UpdateHandler>,
 }
 
 impl UpdateDispatcher {
@@ -100,10 +110,13 @@ impl UpdateDispatcher {
         let (sender, _receiver) = mpsc::unbounded_channel();
         Self {
             account_pts: PtsState::new(),
+            qts: 0,
             channel_pts: HashMap::new(),
+            channels_too_long: Vec::new(),
             sender: Some(sender),
             buffered: Vec::new(),
             max_buffer: 10_000,
+            handlers: Vec::new(),
         }
     }
 
@@ -113,14 +126,18 @@ impl UpdateDispatcher {
         (
             Self {
                 account_pts: PtsState::new(),
+                qts: 0,
                 channel_pts: HashMap::new(),
+                channels_too_long: Vec::new(),
                 sender: Some(sender),
                 buffered: Vec::new(),
                 max_buffer: 10_000,
+                handlers: Vec::new(),
             },
             receiver,
         )
     }
+
 
     /// Create a dispatcher that drops updates (for testing).
     pub fn noop() -> Self {
@@ -208,9 +225,14 @@ impl UpdateDispatcher {
                 tracing::warn!(
                     channel_id = channel_id.0,
                     ?pts,
-                    "ChannelTooLong — need getChannelDifference"
+                    "ChannelTooLong — queued for getChannelDifference"
                 );
-                // Don't buffer, just log. Caller should request channel diff.
+                if !self.channels_too_long.contains(&channel_id.0) {
+                    self.channels_too_long.push(channel_id.0);
+                }
+                if let Some(pts) = *pts {
+                    self.init_channel_pts(channel_id.0, pts);
+                }
             }
             _ => {}
         }
@@ -219,7 +241,18 @@ impl UpdateDispatcher {
         if let Some(sender) = &self.sender {
             let _ = sender.send(update.clone());
         }
+        // Dispatch to registered handlers (Handler mode)
+        for handler in &self.handlers {
+            handler(&update);
+        }
         vec![update]
+    }
+
+    /// Register a handler fired for every filtered update (Handler mode).
+    ///
+    /// Handlers run inline on the dispatcher task — keep them fast or spawn.
+    pub fn on_update(&mut self, handler: UpdateHandler) {
+        self.handlers.push(handler);
     }
 
     /// Check if we need to call updates.getDifference.
@@ -282,6 +315,44 @@ impl UpdateDispatcher {
             .get(&channel_id)
             .map(|s| s.gap_pending)
             .unwrap_or(false)
+    }
+
+    /// Drain the queue of channels flagged by `UpdateChannelTooLong`
+    /// (SPEC §6.1: each needs `updates.getChannelDifference`).
+    pub fn take_channels_too_long(&mut self) -> Vec<i64> {
+        std::mem::take(&mut self.channels_too_long)
+    }
+
+    /// Store a channel's absolute pts (after a getChannelDifference round).
+    pub fn advance_channel_pts(&mut self, channel_id: i64, pts: i32) {
+        self.channel_pts
+            .entry(channel_id)
+            .and_modify(|s| {
+                s.pts = pts;
+                s.gap_pending = false;
+            })
+            .or_insert_with(|| PtsState {
+                pts,
+                seq: 0,
+                date: 0,
+                gap_pending: false,
+            });
+    }
+
+    /// Get a channel's tracked pts, if any.
+    pub fn channel_pts_of(&self, channel_id: i64) -> Option<i32> {
+        self.channel_pts.get(&channel_id).map(|s| s.pts)
+    }
+
+    /// Record the server-side qts from `updates.getState`
+    /// (SPEC §6.1: qts tracks mentions separately from pts).
+    pub fn set_qts(&mut self, qts: i32) {
+        self.qts = qts;
+    }
+
+    /// Get the tracked qts value.
+    pub fn account_qts(&self) -> i32 {
+        self.qts
     }
 }
 
@@ -449,5 +520,35 @@ mod tests {
         dispatcher.init_channel_pts(12345, 100);
         assert_eq!(dispatcher.channel_pts.get(&12345).unwrap().pts, 100);
         assert!(!dispatcher.channel_needs_difference(12345));
+    }
+
+    #[test]
+    fn test_channel_too_long_queued() {
+        let mut dispatcher = UpdateDispatcher::noop();
+        let updates = Updates::UpdateShort {
+            update: Update::ChannelTooLong {
+                channel_id: crate::types::ChannelId(42),
+                pts: Some(7),
+            },
+            date: 1000,
+            seq: 0,
+        };
+        dispatcher.process_updates(updates);
+        assert_eq!(dispatcher.take_channels_too_long(), vec![42]);
+        // Drained; also seeded the channel pts from the update.
+        assert!(dispatcher.take_channels_too_long().is_empty());
+        assert_eq!(dispatcher.channel_pts_of(42), Some(7));
+
+        // advance_channel_pts stores absolute pts for unknown channels too
+        dispatcher.advance_channel_pts(99, 500);
+        assert_eq!(dispatcher.channel_pts_of(99), Some(500));
+    }
+
+    #[test]
+    fn test_qts_tracking() {
+        let mut dispatcher = UpdateDispatcher::noop();
+        assert_eq!(dispatcher.account_qts(), 0);
+        dispatcher.set_qts(33);
+        assert_eq!(dispatcher.account_qts(), 33);
     }
 }

@@ -113,7 +113,41 @@ impl TelegramClient {
                 AuthKeyResult::Ok => {
                     let auth_key = auth.compute_auth_key()?;
                     let server_salt = auth.compute_server_salt()?;
-                    self.session = Some(MtProtoSession::new(auth_key, server_salt));
+                    let mut sess = MtProtoSession::new(auth_key, server_salt);
+
+                    // Activate the key: production servers only keep a
+                    // freshly negotiated auth key if an encrypted message
+                    // follows the DH exchange promptly (gotd/tdlib send
+                    // their first RPC on the same connection). Send a ping
+                    // here and absorb the reply (pong or bad_server_salt).
+                    let mut w = TLWriter::new();
+                    w.write_u32(0x7abe77ec); // ping#7abe77ec ping_id:long
+                    w.write_i64(rand::random::<i64>());
+                    let payload = w.into_bytes();
+                    let msg_id = sess.next_msg_id();
+                    let seq_no = sess.next_seq_no(true);
+                    let encrypted = sess.encrypt_message(&payload, msg_id, seq_no);
+                    let len = (encrypted.len() as u32).to_le_bytes();
+                    stream.write_all(&len).await?;
+                    stream.write_all(&encrypted).await?;
+                    stream.flush().await?;
+                    let resp = transport::recv_encrypted(&mut stream).await?;
+                    let (_, plaintext) = sess.decrypt_message(&resp)?;
+                    // If the server corrected our initial salt, adopt it.
+                    // bad_server_salt#edab447b bad_msg_id:long(8)
+                    // bad_msg_seqno:int(4) error_code:int(4) new_salt:long(8)
+                    if plaintext.len() >= 28
+                        && u32::from_le_bytes(plaintext[0..4].try_into().unwrap())
+                            == crate::serialize::BAD_SERVER_SALT
+                    {
+                        let new_salt =
+                            u64::from_le_bytes(plaintext[20..28].try_into().unwrap());
+                        tracing::debug!("adopting corrected server salt after handshake");
+                        sess.server_salt = new_salt;
+                    }
+                    tracing::info!("auth key activated via same-connection ping");
+
+                    self.session = Some(sess);
                     return Ok(());
                 }
                 AuthKeyResult::Retry => {
@@ -140,13 +174,153 @@ impl TelegramClient {
     // Bot Authorization
     // ------------------------------------------------------------------
 
+    /// Send an encrypted RPC on a fresh raw Intermediate connection and
+    /// return the decrypted plaintext.
+    ///
+    /// Retries once on a transport error (e.g. the server's 4-byte
+    /// -404/-429 error code) with a new connection and fresh msg_id —
+    /// rapid connect bursts right after the DH handshake occasionally get
+    /// rejected, and a clean reconnect is the fix.
+    /// Unwrap a decrypted reply: `msg_container#73f1f8dc` → its
+    /// rpc_result (or first non-ack) message, then `rpc_result#f35c6d01`
+    /// → its inner body. Bare service messages pass through.
+    fn unwrap_response(plaintext: &[u8]) -> Vec<u8> {
+        let mut data = plaintext;
+        loop {
+            if data.len() < 8 {
+                return data.to_vec();
+            }
+            let ctor = u32::from_le_bytes(data[0..4].try_into().unwrap());
+            if ctor == crate::serialize::MSG_CONTAINER {
+                let count = i32::from_le_bytes(data[4..8].try_into().unwrap());
+                let mut off = 8usize;
+                let mut first: Option<&[u8]> = None;
+                let mut rpc: Option<&[u8]> = None;
+                for _ in 0..count.max(0) {
+                    if off + 12 > data.len() {
+                        break;
+                    }
+                    off += 12; // msg_id:long seq_no:int
+                    if off + 4 > data.len() {
+                        break;
+                    }
+                    let len =
+                        i32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
+                    off += 4;
+                    if off + len > data.len() {
+                        break;
+                    }
+                    let item = &data[off..off + len];
+                    let item_ctor =
+                        u32::from_le_bytes(item[0..4].try_into().unwrap_or([0; 4]));
+                    if item_ctor == crate::serialize::RPC_RESULT && rpc.is_none() {
+                        rpc = Some(item);
+                    }
+                    if first.is_none()
+                        && item_ctor != crate::serialize::MSGS_ACK
+                        && item_ctor != crate::serialize::PONG
+                    {
+                        first = Some(item);
+                    }
+                    off += (len + 3) & !3; // 4-byte aligned
+                }
+                let chosen = rpc.or(first);
+                match chosen {
+                    Some(i) => {
+                        data = i;
+                        continue;
+                    }
+                    None => return data.to_vec(),
+                }
+            }
+            if ctor == crate::serialize::RPC_RESULT {
+                // req_msg_id:long then the inner body
+                return data[12..].to_vec();
+            }
+            return data.to_vec();
+        }
+    }
+
+    async fn exchange_encrypted(&mut self, payload: &[u8]) -> Result<Vec<u8>> {
+        for outer in 0..2u32 {
+            match self.exchange_once(payload).await {
+                Err(Error::Transport(_)) if outer == 0 => {
+                    tracing::warn!("encrypted exchange failed (transport); retrying");
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                other => return other,
+            }
+        }
+        unreachable!("retry loop returns on every path")
+    }
+
+    /// One full exchange on a single connection: send the encrypted
+    /// request, then service the session/salt dance (bad_server_salt,
+    /// new_session_created) by adopting the server state and re-sending
+    /// on the SAME connection — a new connection would just earn a fresh
+    /// session handshake every time.
+    async fn exchange_once(&mut self, payload: &[u8]) -> Result<Vec<u8>> {
+        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
+        let mut stream = transport::connect(self.dc_id).await?;
+        // invokeWithLayer(initConnection(query)) — production servers
+        // answer CONNECTION_NOT_INITED without the initConnection wrapper.
+        let full_payload = crate::mtproto::build_invoke_with_layer(
+            API_LAYER,
+            &crate::mtproto::build_init_connection(
+                self.api_id.unwrap_or(0),
+                "mtprsto",
+                "unknown",
+                env!("CARGO_PKG_VERSION"),
+                "en",
+                payload,
+            ),
+        );
+        for _ in 0..4u32 {
+            let msg_id = session.next_msg_id();
+            let seq_no = session.next_seq_no(true);
+            let encrypted = session.encrypt_message(&full_payload, msg_id, seq_no);
+            let len = (encrypted.len() as u32).to_le_bytes();
+            stream.write_all(&len).await?;
+            stream.write_all(&encrypted).await?;
+            stream.flush().await?;
+            let response = transport::recv_encrypted(&mut stream).await?;
+            let (_, plaintext) = session.decrypt_message(&response)?;
+            let unwrapped = Self::unwrap_response(&plaintext);
+            if unwrapped.len() >= 28 {
+                let ctor = u32::from_le_bytes(unwrapped[0..4].try_into().unwrap());
+                // bad_server_salt#edab447b ... new_salt at [20..28]
+                if ctor == crate::serialize::BAD_SERVER_SALT {
+                    session.server_salt =
+                        u64::from_le_bytes(unwrapped[20..28].try_into().unwrap());
+                    tracing::debug!("bad_server_salt — retrying with fresh salt");
+                    continue;
+                }
+                // new_session_created#9ec20908 first_msg_id:long
+                // unique_id:long server_salt:long — adopt salt, re-send.
+                if ctor == crate::serialize::NEW_SESSION_CREATED {
+                    session.server_salt =
+                        u64::from_le_bytes(unwrapped[20..28].try_into().unwrap());
+                    tracing::debug!("new_session_created — adopting salt, re-sending");
+                    continue;
+                }
+                // new_server_salt#1160b89c new_server_salt:long
+                if ctor == crate::serialize::NEW_SERVER_SALT {
+                    session.server_salt =
+                        u64::from_le_bytes(unwrapped[4..12].try_into().unwrap());
+                    continue;
+                }
+            }
+            return Ok(unwrapped);
+        }
+        Err(Error::Protocol(
+            "exchange did not settle after session/salt corrections".into(),
+        ))
+    }
+
     /// Authorize as a bot using a bot token.
     ///
     /// This sends `auth.importBotAuthorization` to the server.
     pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<()> {
-        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
-
-        // Build the auth.importBotAuthorization request
         // importBotAuthorization flags:0 api_id:int api_hash:string bot_auth_token:string = auth.Authorization;
         let mut payload = TLWriter::new();
         payload.write_u32(types::IMPORT_BOT_AUTH); // auth.importBotAuthorization#67a3ff2c
@@ -155,21 +329,7 @@ impl TelegramClient {
         payload.write_bytes(self.api_hash.as_deref().unwrap_or("").as_bytes());
         payload.write_bytes(bot_token.as_bytes());
 
-        let msg_id = session.next_msg_id();
-        let seq_no = session.next_seq_no(true);
-        let data = payload.into_bytes();
-        let encrypted = session.encrypt_message(&data, msg_id, seq_no);
-
-        // Send over Intermediate transport
-        let mut stream = transport::connect(self.dc_id).await?;
-        let len = (encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&len).await?;
-        stream.write_all(&encrypted).await?;
-        stream.flush().await?;
-
-        // Receive response
-        let response_data = transport::recv_encrypted(&mut stream).await?;
-        let (_, plaintext) = session.decrypt_message(&response_data)?;
+        let plaintext = self.exchange_encrypted(payload.as_bytes()).await?;
 
         // Parse the response
         let mut r = TLReader::new(&plaintext);
@@ -201,7 +361,7 @@ impl TelegramClient {
 
     /// Step 1: Send verification code to phone number.
     pub async fn auth_send_code(&mut self, phone_number: &str) -> Result<AuthSentCodeInfo> {
-        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
+
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SEND_CODE);
@@ -212,19 +372,7 @@ impl TelegramClient {
         // CodeSettings
         payload.write_u32(0); // flags (no settings)
 
-        let msg_id = session.next_msg_id();
-        let seq_no = session.next_seq_no(true);
-        let data = payload.into_bytes();
-        let encrypted = session.encrypt_message(&data, msg_id, seq_no);
-
-        let mut stream = transport::connect(self.dc_id).await?;
-        let len = (encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&len).await?;
-        stream.write_all(&encrypted).await?;
-        stream.flush().await?;
-
-        let response_data = transport::recv_encrypted(&mut stream).await?;
-        let (_, plaintext) = session.decrypt_message(&response_data)?;
+        let plaintext = self.exchange_encrypted(payload.as_bytes()).await?;
 
         let mut r = TLReader::new(&plaintext);
         let constructor = r.read_u32()?;
@@ -259,7 +407,7 @@ impl TelegramClient {
         phone_code_hash: &[u8],
         phone_code: &str,
     ) -> Result<()> {
-        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
+
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_IN);
@@ -268,19 +416,7 @@ impl TelegramClient {
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(phone_code.as_bytes());
 
-        let msg_id = session.next_msg_id();
-        let seq_no = session.next_seq_no(true);
-        let data = payload.into_bytes();
-        let encrypted = session.encrypt_message(&data, msg_id, seq_no);
-
-        let mut stream = transport::connect(self.dc_id).await?;
-        let len = (encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&len).await?;
-        stream.write_all(&encrypted).await?;
-        stream.flush().await?;
-
-        let response_data = transport::recv_encrypted(&mut stream).await?;
-        let (_, plaintext) = session.decrypt_message(&response_data)?;
+        let plaintext = self.exchange_encrypted(payload.as_bytes()).await?;
 
         let mut r = TLReader::new(&plaintext);
         let constructor = r.read_u32()?;
@@ -320,7 +456,7 @@ impl TelegramClient {
         first_name: &str,
         last_name: &str,
     ) -> Result<()> {
-        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
+
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_UP);
@@ -330,19 +466,7 @@ impl TelegramClient {
         payload.write_bytes(first_name.as_bytes());
         payload.write_bytes(last_name.as_bytes());
 
-        let msg_id = session.next_msg_id();
-        let seq_no = session.next_seq_no(true);
-        let data = payload.into_bytes();
-        let encrypted = session.encrypt_message(&data, msg_id, seq_no);
-
-        let mut stream = transport::connect(self.dc_id).await?;
-        let len = (encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&len).await?;
-        stream.write_all(&encrypted).await?;
-        stream.flush().await?;
-
-        let response_data = transport::recv_encrypted(&mut stream).await?;
-        let (_, plaintext) = session.decrypt_message(&response_data)?;
+        let plaintext = self.exchange_encrypted(payload.as_bytes()).await?;
 
         let mut r = TLReader::new(&plaintext);
         let constructor = r.read_u32()?;
@@ -519,58 +643,40 @@ impl TelegramClient {
 
     /// Invoke a raw TL method (generic RPC call).
     pub async fn invoke(&mut self, method_id: u32, payload: &[u8]) -> Result<Vec<u8>> {
-        let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
-
         let mut full_payload = TLWriter::new();
         full_payload.write_u32(method_id);
         full_payload.write_raw_bytes(payload);
 
-        let msg_id = session.next_msg_id();
-        let seq_no = session.next_seq_no(true);
-        let data = full_payload.into_bytes();
-        let encrypted = session.encrypt_message(&data, msg_id, seq_no);
-
-        let mut stream = transport::connect(self.dc_id).await?;
-        let len = (encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&len).await?;
-        stream.write_all(&encrypted).await?;
-        stream.flush().await?;
-
-        let response_data = transport::recv_encrypted(&mut stream).await?;
-        let (resp_msg_id, plaintext) = session.decrypt_message(&response_data)?;
-
-
-        // Send ack
-        let ack = crate::mtproto::build_msgs_ack(&[resp_msg_id]);
-        let ack_msg_id = session.next_msg_id();
-        let ack_seq_no = session.next_seq_no(false);
-        let ack_encrypted = session.encrypt_message(
-            &ack,
-            ack_msg_id,
-            ack_seq_no,
-        );
-        let ack_len = (ack_encrypted.len() as u32).to_le_bytes();
-        stream.write_all(&ack_len).await?;
-        stream.write_all(&ack_encrypted).await?;
-        stream.flush().await?;
-
-        Ok(plaintext)
+        // The ack for this response is intentionally skipped: the one-shot
+        // exchange connection closes right after the reply, and Telegram
+        // re-delivers unacked service frames if it ever matters.
+        self.exchange_encrypted(full_payload.as_bytes()).await
     }
 
     /// Get nearest data center.
-    pub async fn help_get_nearest_dc(&mut self) -> Result<i32> {
+    ///
+    /// Returns `(this_dc, nearest_dc)`. Requires an auth key (any key,
+    /// even unauthenticated) — usable right after the DH handshake.
+    pub async fn help_get_nearest_dc(&mut self) -> Result<(i32, i32)> {
         let result = self.invoke(types::HELP_GET_NEAREST_DC, &[]).await?;
         let mut r = TLReader::new(&result);
         let constructor = r.read_u32()?;
-        if constructor != RPC_ERROR {
-            // nearestDc constructor
-            Ok(r.read_i32()?) // country (skip) → next DC
-        } else {
+        if constructor == types::NEAREST_DC {
+            // nearestDc#8e1a1775 country:string this_dc:int nearest_dc:int
+            let _country = r.read_bytes()?;
+            let this_dc = r.read_i32()?;
+            let nearest_dc = r.read_i32()?;
+            Ok((this_dc, nearest_dc))
+        } else if constructor == RPC_ERROR {
             let (code, msg) = crate::mtproto::parse_rpc_error(&result)?;
             Err(Error::Rpc {
                 error_code: code,
                 error_message: msg,
             })
+        } else {
+            Err(Error::UnexpectedResponse(format!(
+                "unexpected constructor {constructor:#x} in getNearestDc response"
+            )))
         }
     }
 }
@@ -611,7 +717,7 @@ pub enum AuthLoginToken {
 }
 
 /// Parse a `auth.LoginToken` response.
-fn parse_login_token_response(plaintext: &[u8]) -> Result<AuthLoginToken> {
+pub(crate) fn parse_login_token_response(plaintext: &[u8]) -> Result<AuthLoginToken> {
     let mut r = TLReader::new(plaintext);
     let constructor = r.read_u32()?;
 
