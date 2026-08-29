@@ -552,7 +552,7 @@ pure MTProto).
 | 12| `iter_messages` pagination / `getHistory`         | none          | `tg/botfather.rs` history-scan fallback                      | **P2**   |
 | 13| Error type extensions (`FloodWait`, `FileReferenceExpired`, `AuthKeyInvalid`) | partial | `is_auth_error`, `is_file_reference_error`, retry loops | **P1**   |
 | 14| Reply-markup parsing (ButtonRow, Callback data)   | none          | `tg/botfather.rs::markup_buttons`                            | **P1**   |
-| 15| WebSocket transport (fallback for blocked regions)| none          | resilience; not blocking if TCP/Obfs2 path stays open        | **P3**   |
+| 15| WebSocket transport (fallback for blocked regions)| ✅ feature `ws` | `TransportPolicy::Auto` (2 TCP fails/5 min → `wss://`); TCP-only by default | **P3** |
 
 **P0** = required for any migration. **P1** = required for full
 feature parity. **P2** = nice-to-have, can ship without. **P3** =
@@ -818,6 +818,8 @@ default matches the recommendation; operators can disable or tune.
 - WebSocket transport (`wss://...`) used when
   `TransportPolicy::Auto` and TCP connect fails twice on the same DC
   within 5 min. Falls back to TCP/Obfs2 on subsequent success.
+  — **implemented** (feature `ws`, `PoolConfig::transport_policy`);
+  `help.getConfig` refresh and DC rotation remain future work.
 - All of the above are off by default (`TransportPolicy::TcpOnly`,
   `config_refresh: None`, etc.) so operators can opt in per their
   region.

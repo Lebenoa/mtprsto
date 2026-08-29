@@ -23,6 +23,17 @@ use crate::transport;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+
+/// Which wire transport the pool prefers when opening connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TransportPolicy {
+    /// TCP + Obfuscated2 only. Never touches WebSocket. Default.
+    #[default]
+    TcpOnly,
+    /// TCP first; after repeated TCP failures on this DC, fall back to
+    /// WebSocket (`wss://`) for subsequent connects until TCP succeeds again.
+    Auto,
+}
 /// Configuration for the connection pool.
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -30,6 +41,8 @@ pub struct PoolConfig {
     pub min_connections: usize,
     /// Maximum number of connections.
     pub max_connections: usize,
+    /// Which transport to prefer (see [`TransportPolicy`]). Default TcpOnly.
+    pub transport_policy: TransportPolicy,
     /// Threshold for scaling up: if inflight > 2 * aux_count for > 10s.
     pub scale_up_threshold: u32,
     /// Seconds of high load before scaling up.
@@ -44,6 +57,7 @@ pub struct PoolConfig {
     pub reconnect_base_delay_ms: u64,
 }
 
+/// Default pool configuration.
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
@@ -55,6 +69,7 @@ impl Default for PoolConfig {
             keepalive_secs: 30,
             max_reconnect_attempts: 5,
             reconnect_base_delay_ms: 1000,
+            transport_policy: TransportPolicy::TcpOnly,
         }
     }
 }
@@ -63,7 +78,76 @@ impl Default for PoolConfig {
 /// plus `TcpStream`) behind its own mutex so I/O on one connection does not
 /// block the others.
 struct PooledConnection {
-    codec: Mutex<transport::Obfuscated2Transport>,
+    codec: Mutex<PoolCodec>,
+}
+
+/// A codec over any supported wire transport. `send_frame`/`recv_frame`
+/// behave identically regardless of the variant.
+enum PoolCodec {
+    Tcp(transport::Obfuscated2Transport),
+    #[cfg(feature = "ws")]
+    Ws(transport::Obfuscated2Transport<crate::ws::WsTransport>),
+}
+
+impl PoolCodec {
+    async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
+        match self {
+            PoolCodec::Tcp(c) => c.send_frame(payload).await,
+            #[cfg(feature = "ws")]
+            PoolCodec::Ws(c) => c.send_frame(payload).await,
+        }
+    }
+
+    async fn recv_frame(&mut self) -> Result<Vec<u8>> {
+        match self {
+            PoolCodec::Tcp(c) => c.recv_frame().await,
+            #[cfg(feature = "ws")]
+            PoolCodec::Ws(c) => c.recv_frame().await,
+        }
+    }
+}
+
+/// What [`SenderPool::connect_one`] actually did, so the tracker owner can
+/// update failover state correctly (TCP success resets; TCP failure counts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectOutcome {
+    /// TCP connected (tracker resets).
+    TcpOk,
+    /// TCP failed and no WS connect happened (failure counts).
+    TcpFail,
+    /// WS was preferred and connected (tracker untouched).
+    #[cfg(feature = "ws")]
+    Ws,
+    /// TCP failed, WS fallback connected (failure counts).
+    #[cfg(feature = "ws")]
+    TcpFailThenWs,
+}
+
+/// Consecutive-TCP-failure tracker backing `TransportPolicy::Auto`:
+/// 2 failures within 5 minutes switch new connects to `wss://`; a TCP
+/// success resets the tracker.
+#[derive(Debug, Default)]
+struct TcpFailover {
+    recent: Vec<std::time::Instant>,
+}
+
+impl TcpFailover {
+    const WINDOW: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+    const THRESHOLD: usize = 2;
+
+    fn record_failure(&mut self) {
+        let now = std::time::Instant::now();
+        self.recent.retain(|t| now.duration_since(*t) <= Self::WINDOW);
+        self.recent.push(now);
+    }
+
+    fn record_success(&mut self) {
+        self.recent.clear();
+    }
+
+    fn should_prefer_ws(&self) -> bool {
+        self.recent.len() >= Self::THRESHOLD
+    }
 }
 
 /// A pool of connections to a single DC.
@@ -74,6 +158,8 @@ pub struct SenderPool {
     session: Arc<RwLock<MtProtoSession>>,
     /// Active connections, each with its own mutex.
     connections: Vec<Arc<PooledConnection>>,
+    /// TCP failure tracker for `TransportPolicy::Auto` failover.
+    tcp_failover: Mutex<TcpFailover>,
     /// Pool configuration.
     config: PoolConfig,
     /// Next connection index for round-robin.
@@ -87,6 +173,7 @@ impl SenderPool {
             dc_id,
             session: Arc::new(RwLock::new(session)),
             connections: Vec::new(),
+            tcp_failover: Mutex::new(TcpFailover::default()),
             config,
             next_index: Mutex::new(0),
         }
@@ -123,30 +210,34 @@ impl SenderPool {
             return Ok(());
         }
 
-        let codec = transport::connect_obfuscated2(
-            self.dc_id, transport::TransportProtocol::Intermediate,
-        ).await?;
+        // Main connection: failure/success updates the tracker inline.
+        let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
+        let (outcome, res) = Self::connect_one(
+            self.dc_id,
+            self.config.transport_policy,
+            prefer_ws,
+        )
+        .await;
+        self.update_failover(outcome).await;
+        let codec = res?;
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
         }));
 
         // Open additional aux connections in parallel — log failures but
-        // don't abort. tokio::join! runs them concurrently; the first
-        // (main) connection above is already in the pool.
+        // don't abort (tokio::spawn needs 'static futures, so the tracker
+        // is snapshotted up front and outcomes are folded in afterwards).
         let aux_count = (self.config.min_connections.min(self.config.max_connections))
             .saturating_sub(1);
-        let mut joins = Vec::with_capacity(aux_count);
+        let dc_id = self.dc_id;
+        let policy = self.config.transport_policy;
+        let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
+        let mut handles = Vec::with_capacity(aux_count);
         for _ in 0..aux_count {
-            joins.push(transport::connect_obfuscated2(
-                self.dc_id, transport::TransportProtocol::Intermediate,
-            ));
+            handles.push(tokio::spawn(async move {
+                SenderPool::connect_one(dc_id, policy, prefer_ws).await.1
+            }));
         }
-        // Spawn all aux connects concurrently and await them together
-        // (tokio::spawn + JoinHandle::await — no futures crate needed).
-        let handles: Vec<tokio::task::JoinHandle<_>> = joins
-            .into_iter()
-            .map(tokio::spawn)
-            .collect();
         let results = futures_collect(handles).await;
         for (i, res) in results.into_iter().enumerate() {
             match res {
@@ -162,6 +253,19 @@ impl SenderPool {
         }
 
         Ok(())
+    }
+
+    /// Fold a connect outcome into the failover tracker.
+    async fn update_failover(&self, outcome: ConnectOutcome) {
+        let mut t = self.tcp_failover.lock().await;
+        match outcome {
+            ConnectOutcome::TcpOk => t.record_success(),
+            ConnectOutcome::TcpFail => t.record_failure(),
+            #[cfg(feature = "ws")]
+            ConnectOutcome::Ws => {}
+            #[cfg(feature = "ws")]
+            ConnectOutcome::TcpFailThenWs => t.record_failure(),
+        }
     }
 
     /// Round-robin over connections. Each request/response pair is confined
@@ -215,6 +319,7 @@ impl SenderPool {
 
     /// Send an encrypted message, allocate msg_id/seq_no atomically,
     /// and receive the response.
+    #[tracing::instrument(name = "mtprsto::send_encrypted", skip_all, err)]
     pub async fn send_encrypted(&self, payload: &[u8]) -> Result<(u64, Vec<u8>)> {
         // Allocate msg_id and seq_no under write lock
         let (msg_id, seq_no) = {
@@ -238,16 +343,17 @@ impl SenderPool {
     /// sends on one connection, decrypts the response, sends a write-only
     /// ack, unwraps gzip/rpc_result, classifies rpc_error, and returns the
     /// inner result bytes.
+    #[tracing::instrument(name = "mtprsto::send_rpc", skip_all, err)]
     pub async fn send_rpc(&self, method_bytes: &[u8]) -> Result<Vec<u8>> {
-        use crate::serialize::{BAD_SERVER_SALT, RPC_ERROR, RPC_RESULT, TLReader, TLWriter};
-        use crate::types::INVOKE_WITH_LAYER;
+        use crate::serialize::{
+            BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED, FUTURE_SALTS,
+            MSGS_STATE_INFO, RPC_RESULT, TLReader,
+        };
 
         // Build invokeWithLayer
-        let mut w = TLWriter::new();
-        w.write_u32(INVOKE_WITH_LAYER);
-        w.write_i32(crate::api::API_LAYER);
-        w.write_raw_bytes(method_bytes);
-        let full_payload = w.into_bytes();
+        let full_payload = crate::mtproto::build_invoke_with_layer(
+            crate::api::API_LAYER, method_bytes,
+        );
 
         // A bad_server_salt notification is retried transparently once with
         // the fresh salt (already adopted by decrypt_message).
@@ -263,50 +369,122 @@ impl SenderPool {
             // Ack the response on the wire (write-only — no reply expected).
             self.send_write_only_ack(resp_msg_id).await;
 
-            // Unwrap gzip_packed / rpc_result into the inner result bytes.
+            // Unwrap gzip_packed into the message body, then dispatch on the
+            // service-ctor / rpc_result distinction.
             let payload = Self::unwrap_gzip(&plaintext)?;
             let mut r = TLReader::new(&payload);
             let ctor = r.read_u32()?;
 
-            if ctor == BAD_SERVER_SALT {
-                // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int
-                // error_code:int new_server_salt:long
-                let _bad_msg_id = r.read_u64()?;
-                let _bad_msg_seqno = r.read_i32()?;
-                let _error_code = r.read_i32()?;
-                let new_salt = r.read_u64()?;
-                {
-                    let mut session = self.session.write().await;
-                    session.server_salt = new_salt;
+            match ctor {
+                BAD_SERVER_SALT => {
+                    // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int
+                    // error_code:int new_server_salt:long
+                    let _bad_msg_id = r.read_u64()?;
+                    let _bad_msg_seqno = r.read_i32()?;
+                    let _error_code = r.read_i32()?;
+                    let new_salt = r.read_u64()?;
+                    {
+                        let mut session = self.session.write().await;
+                        session.server_salt = new_salt;
+                    }
+                    if attempt == 0 {
+                        continue; // re-send with the fresh salt
+                    }
+                    return Err(Error::Protocol(
+                        "server salt out of sync after retry".into(),
+                    ));
                 }
-                if attempt == 0 {
-                    continue; // re-send with the fresh salt
+                NEW_SERVER_SALT | NEW_SESSION_CREATED => {
+                    // new_server_salt#1160b89c new_server_salt:long
+                    // new_session_created#9ec209d4 first_msg_id:long unique_id:long server_salt:long
+                    let new_salt = if ctor == NEW_SERVER_SALT {
+                        r.read_u64()?
+                    } else {
+                        let _first_msg_id = r.read_u64()?;
+                        let _unique_id = r.read_u64()?;
+                        r.read_u64()?
+                    };
+                    {
+                        let mut session = self.session.write().await;
+                        session.server_salt = new_salt;
+                    }
+                    tracing::debug!(ctor = ctor, dc = self.dc_id, "server salt notification");
+
+                    // This frame was a notification, not our answer. The
+                    // server dedupes by msg_id, so re-sending the same
+                    // encrypted payload is safe and fetches the real result.
+                    let (_retry_id, retry_resp) = self.send_encrypted(&full_payload).await?;
+                    let (retry_ack_id, retry_plain) = {
+                        let mut session = self.session.write().await;
+                        session.decrypt_message(&retry_resp)?
+                    };
+                    self.send_write_only_ack(retry_ack_id).await;
+                    let retry_body = Self::unwrap_gzip(&retry_plain)?;
+                    let mut rr = TLReader::new(&retry_body);
+                    let retry_ctor = rr.read_u32()?;
+                    if retry_ctor == RPC_RESULT {
+                        return Self::parse_rpc_result_body(&retry_body);
+                    }
+                    return Ok(retry_body);
                 }
-                return Err(Error::Protocol("server salt out of sync after retry".into()));
+                FUTURE_SALTS => {
+                    // future_salts#ae500895 req_msg_id:long now:int salts:vector
+                    let (req_msg_id, now, salts) =
+                        crate::mtproto::parse_future_salts(&payload)?;
+                    tracing::debug!(
+                        "future_salts for msg {req_msg_id}: now={now}, {} windows",
+                        salts.len()
+                    );
+                    return Ok(payload);
+                }
+                MSGS_STATE_INFO => {
+                    // msgs_state_info#04deb57d req_msg_id:long info:bytes
+                    let _req_msg_id = r.read_u64()?;
+                    let info = r.read_bytes()?;
+                    tracing::debug!("msgs_state_info: {} bytes", info.len());
+                    return Ok(payload);
+                }
+                _ => {}
             }
 
             if ctor == RPC_RESULT {
-                let _req_msg_id = r.read_u64()?;
-                let inner = payload[r.position()..].to_vec();
-                // rpc_result body may itself be gzipped
-                let inner = Self::unwrap_gzip(&inner)?;
-                // rpc_error is delivered INSIDE rpc_result
-                if inner.len() < 4 {
-                    return Err(Error::Protocol(format!(
-                        "rpc_result body too short: {} bytes", inner.len()
-                    )));
-                }
-                let inner_ctor = u32::from_le_bytes(inner[..4].try_into().unwrap());
-                if inner_ctor == RPC_ERROR {
-                    let (code, msg) = crate::mtproto::parse_rpc_error(&inner)?;
-                    return Err(crate::error::classify_rpc_error(code, &msg));
-                }
-                return Ok(inner);
+                return Self::parse_rpc_result_body(&payload);
             }
 
             return Ok(payload);
         }
         unreachable!("retry loop returns on every path")
+    }
+
+    /// Parse an `rpc_result#f35c6d01` wrapper: request msg_id, gzip, and
+    /// rpc_error classification. `data` starts at the rpc_result ctor.
+    fn parse_rpc_result_body(data: &[u8]) -> Result<Vec<u8>> {
+        use crate::serialize::{RPC_ERROR, RPC_RESULT, TLReader};
+
+        let mut r = TLReader::new(data);
+        let ctor = r.read_u32()?;
+        if ctor != RPC_RESULT {
+            return Err(Error::Protocol(format!(
+                "expected rpc_result, got {ctor:#x}"
+            )));
+        }
+        let _req_msg_id = r.read_u64()?;
+        let inner = data[r.position()..].to_vec();
+        // rpc_result body may itself be gzipped
+        let inner = Self::unwrap_gzip(&inner)?;
+        // rpc_error is delivered INSIDE rpc_result
+        if inner.len() < 4 {
+            return Err(Error::Protocol(format!(
+                "rpc_result body too short: {} bytes",
+                inner.len()
+            )));
+        }
+        let inner_ctor = u32::from_le_bytes(inner[..4].try_into().unwrap());
+        if inner_ctor == RPC_ERROR {
+            let (code, msg) = crate::mtproto::parse_rpc_error(&inner)?;
+            return Err(crate::error::classify_rpc_error(code, &msg));
+        }
+        Ok(inner)
     }
 
     /// Detect gzip_packed (possibly nested) and return decompressed bytes.
@@ -329,6 +507,37 @@ impl SenderPool {
         std::io::Read::read_to_end(&mut decoder, &mut out)
             .map_err(|e| Error::Serialization(format!("gzip decompress: {e}")))?;
         Ok(out)
+    }
+
+    /// Ask the server for its future salt windows
+    /// (`getFutureSalts#b921bd04 num:int` → `future_salts#ae500895`).
+    ///
+    /// Returns `(req_msg_id, server_now, windows)`. Useful for pre-warming
+    /// salts around clock-boundary reconnects; the pool otherwise keeps its
+    /// salt fresh via bad_server_salt / new_server_salt handling.
+    pub async fn get_future_salts(&self, num: i32) -> Result<(u64, i32, Vec<crate::mtproto::SaltWindow>)> {
+        let req = crate::mtproto::build_get_future_salts(num);
+        let payload = self.send_rpc(&req).await?;
+        crate::mtproto::parse_future_salts(&payload)
+    }
+
+    /// Ask the server for the delivery state of the given messages
+    /// (`msgs_state_req#da69fb52` → `msgs_state_info#04deb57d`).
+    ///
+    /// Returns the raw `info` byte string (one status byte per requested
+    /// msg_id, bit 2 = message is known to the server).
+    pub async fn query_msgs_state(&self, msg_ids: &[u64]) -> Result<Vec<u8>> {
+        let req = crate::mtproto::build_msgs_state_req(msg_ids);
+        let payload = self.send_rpc(&req).await?;
+        let mut r = crate::serialize::TLReader::new(&payload);
+        let ctor = r.read_u32()?;
+        if ctor != crate::serialize::MSGS_STATE_INFO {
+            return Err(Error::Protocol(format!(
+                "expected msgs_state_info, got {ctor:#x}"
+            )));
+        }
+        let _req_msg_id = r.read_u64()?;
+        r.read_bytes()
     }
 
     /// Fire-and-forget ack: encrypt and write to the round-robin connection
@@ -364,7 +573,84 @@ impl SenderPool {
         codec.send_frame(data).await
     }
 
-    /// Reconnect a single connection with jittered exponential backoff.
+    /// Open one connection honouring `transport_policy`.
+    ///
+    /// `TcpOnly`: plain `connect_obfuscated2`. `Auto`: TCP first; when the
+    /// failure tracker says the DC's TCP path is blocked (2 failures within
+    /// 5 min) new connects go straight to `wss://` — until a TCP attempt
+    /// succeeds again, which resets the tracker (SPEC BS-6). `prefer_ws`
+    /// reflects the tracker snapshot taken before the attempt; success and
+    /// failure are reported back through [`ConnectOutcome`] so the caller
+    /// (which owns the tracker) can update it.
+    #[allow(unused_variables)]
+    async fn connect_one(
+        dc_id: i32,
+        policy: TransportPolicy,
+        prefer_ws: bool,
+    ) -> (ConnectOutcome, Result<PoolCodec>) {
+        #[cfg(not(feature = "ws"))]
+        let ws_requested = false;
+        #[cfg(feature = "ws")]
+        let ws_requested = matches!(policy, TransportPolicy::Auto) && prefer_ws;
+        #[cfg(feature = "ws")]
+        if ws_requested {
+            match Self::connect_ws(dc_id).await {
+                Ok(c) => return (ConnectOutcome::Ws, Ok(PoolCodec::Ws(c))),
+                Err(ws_err) => {
+                    tracing::warn!("ws connect to DC {dc_id} failed, trying tcp: {ws_err}");
+                }
+            }
+        }
+        match Self::connect_tcp(dc_id).await {
+            Ok(c) => (ConnectOutcome::TcpOk, Ok(PoolCodec::Tcp(c))),
+            Err(tcp_err) => {
+                // TCP tried (and failed) — record it; on the NEXT connect
+                // the tracker will prefer ws.
+                #[cfg(feature = "ws")]
+                if !ws_requested && matches!(policy, TransportPolicy::Auto) {
+                    match Self::connect_ws(dc_id).await {
+                        Ok(c) => {
+                            return (ConnectOutcome::TcpFailThenWs, Ok(PoolCodec::Ws(c)));
+                        }
+                        Err(ws_err) => {
+                            tracing::warn!("ws fallback to DC {dc_id} failed: {ws_err}");
+                        }
+                    }
+                }
+                let _ = (&ws_requested, &policy);
+                (ConnectOutcome::TcpFail, Err(tcp_err))
+            }
+        }
+    }
+
+    async fn connect_tcp(dc_id: i32) -> Result<transport::Obfuscated2Transport> {
+        transport::connect_obfuscated2(
+            dc_id, transport::TransportProtocol::Intermediate,
+        )
+        .await
+    }
+
+    #[cfg(feature = "ws")]
+    async fn connect_ws(
+        dc_id: i32,
+    ) -> Result<transport::Obfuscated2Transport<crate::ws::WsTransport>> {
+        crate::ws::connect_obfuscated2_ws(
+            dc_id, transport::TransportProtocol::Intermediate,
+        )
+        .await
+    }
+
+    /// Stub for no-`ws` builds: keeps `connect_one` uniform. Never called
+    /// because all WS branches are cfg-gated off.
+    #[cfg(not(feature = "ws"))]
+    #[allow(dead_code)]
+    async fn connect_ws(dc_id: i32) -> Result<transport::Obfuscated2Transport> {
+        let _ = dc_id;
+        Err(Error::Transport(
+            "WebSocket fallback requested but the `ws` feature is not enabled".into(),
+        ))
+    }
+
     async fn reconnect_connection(&self, conn: &PooledConnection) -> Result<()> {
         let mut attempts = 0u32;
         loop {
@@ -384,9 +670,11 @@ impl SenderPool {
 
             tokio::time::sleep(delay).await;
 
-            match transport::connect_obfuscated2(
-                self.dc_id, transport::TransportProtocol::Intermediate,
-            ).await {
+            let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
+            let (outcome, res) =
+                Self::connect_one(self.dc_id, self.config.transport_policy, prefer_ws).await;
+            self.update_failover(outcome).await;
+            match res {
                 Ok(codec) => {
                     let mut locked = conn.codec.lock().await;
                     *locked = codec;
@@ -428,9 +716,11 @@ impl SenderPool {
             return Ok(());
         }
 
-        let codec = transport::connect_obfuscated2(
-            self.dc_id, transport::TransportProtocol::Intermediate,
-        ).await?;
+        let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
+        let (outcome, res) =
+            Self::connect_one(self.dc_id, self.config.transport_policy, prefer_ws).await;
+        self.update_failover(outcome).await;
+        let codec = res?;
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
         }));
@@ -480,5 +770,26 @@ mod tests {
     fn test_pool_without_session() {
         let pool = SenderPool::without_session(2, PoolConfig::default());
         assert_eq!(pool.dc_id(), 2);
+    }
+
+    #[test]
+    fn test_failover_tracker_threshold_and_reset() {
+        let mut t = TcpFailover::default();
+        assert!(!t.should_prefer_ws());
+        // One failure: below threshold (2 within 5 min).
+        t.record_failure();
+        assert!(!t.should_prefer_ws());
+        // Second failure within window: tripped.
+        t.record_failure();
+        assert!(t.should_prefer_ws());
+        // A TCP success resets — next connects try TCP again (SPEC BS-6).
+        t.record_success();
+        assert!(!t.should_prefer_ws());
+    }
+
+    #[test]
+    fn test_transport_policy_default_is_tcp_only() {
+        assert_eq!(PoolConfig::default().transport_policy, TransportPolicy::TcpOnly);
+        assert_eq!(TransportPolicy::default(), TransportPolicy::TcpOnly);
     }
 }

@@ -14,6 +14,10 @@ errors, and a pluggable session layer.
   dialogs, updates, message deletion.
 - **SenderPool** — multi-connection pool handling encryption, transport
   framing, decryption, and RPC acks.
+- **WebSocket fallback** (optional `ws` feature) — `TransportPolicy::Auto`
+  switches new connections to `wss://` after 2 TCP failures on a DC within
+  5 minutes, and returns to TCP once it works again. Default is TCP-only;
+  enable with `features = ["ws"]`.
 - **Pluggable session storage** — persist `auth_key`, server salt, and DC
   behind a small trait. JSON file backend included; implement
   [`SessionStorage`](src/session.rs) for SQLite, Postgres, Redis, or anything
@@ -154,6 +158,7 @@ TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --
 | [`updates`](src/updates.rs) | Update dispatching (`UpdateDispatcher`) |
 | [`error`](src/error.rs) | Typed error taxonomy incl. `FloodWait`, `FileReferenceExpired` |
 | [`rpc`](src/rpc.rs) | Response decoding helpers |
+| [`ws`](src/ws.rs) | Obfuscated2-over-WebSocket fallback (feature `ws`) |
 
 ## Session storage
 

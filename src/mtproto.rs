@@ -226,7 +226,13 @@ pub struct AuthKeyCreation {
     pub dh_prime: Option<Vec<u8>>,
     pub g_a: Option<BigUint>,
     pub a: Option<BigUint>,
+    /// auth_key_aux_hash of the previous attempt (64 higher-order bits of
+    /// SHA1(auth_key)); becomes `retry_id` when the server asks for a retry.
+    pub auth_key_aux_hash: Option<u64>,
     pub temp_aes_key: Option<[u8; 32]>,
+    /// `retry_id` for `client_DH_inner_data`: 0 on the first attempt, then
+    /// the previous attempt's auth_key_aux_hash (SPEC §7).
+    pub retry_id: u64,
     pub temp_aes_iv: Option<[u8; 32]>,
     pub server_time_offset: i64,
 }
@@ -246,6 +252,8 @@ impl AuthKeyCreation {
             dh_prime: None,
             g_a: None,
             a: None,
+            auth_key_aux_hash: None,
+            retry_id: 0,
             temp_aes_key: None,
             temp_aes_iv: None,
             server_time_offset: 0,
@@ -465,12 +473,33 @@ impl AuthKeyCreation {
         // Note: in client code, we generate b and compute g_b = g^b mod p.
         // The auth_key = g_a^b mod p = (g^a)^b mod p
 
+        // Candidate auth key for THIS attempt. Its SHA1 prefix is the
+        // auth_key_aux_hash the server refers to if it answers dh_gen_retry
+        // (SPEC §9); the next attempt then echoes it back as retry_id.
+        let candidate_key = {
+            let g_a = self.g_a.as_ref().ok_or(Error::NoAuthKey)?;
+            let shared = g_a.modpow(self.a.as_ref().unwrap(), &dh_prime);
+            let mut key = vec![0u8; 256];
+            let bytes = shared.to_bytes_be();
+            let start = 256usize.saturating_sub(bytes.len());
+            key[start..].copy_from_slice(&bytes);
+            key
+        };
+        let aux_hash_arr = crypto::sha1(&candidate_key);
+        let aux_hash = u64::from_be_bytes([
+            aux_hash_arr[0], aux_hash_arr[1], aux_hash_arr[2], aux_hash_arr[3],
+            aux_hash_arr[4], aux_hash_arr[5], aux_hash_arr[6], aux_hash_arr[7],
+        ]);
+        self.auth_key_aux_hash = Some(aux_hash);
+
         // Build client_DH_inner_data
         let mut inner = TLWriter::new();
         inner.write_u32(CLIENT_DH_INNER_DATA);
         inner.write_raw_bytes(&self.nonce);
         inner.write_raw_bytes(&self.server_nonce.unwrap());
-        inner.write_i64(0); // retry_id = 0 for first attempt
+        // retry_id = 0 on the first attempt; on retries, the aux hash of the
+        // PREVIOUS attempt's candidate key (stored by the caller loop).
+        inner.write_i64(self.retry_id as i64);
         inner.write_bytes(&g_b.to_bytes_be());
 
         let inner_data = inner.into_bytes();
@@ -669,6 +698,125 @@ pub fn parse_rpc_error(data: &[u8]) -> Result<(i32, String)> {
 }
 
 // ---------------------------------------------------------------------------
+// RPC envelopes (SPEC §5)
+// ---------------------------------------------------------------------------
+
+/// Wrap method bytes in `invokeWithLayer#da9b0d0d {layer:int}`.
+pub fn build_invoke_with_layer(layer: i32, method_bytes: &[u8]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(crate::types::INVOKE_WITH_LAYER);
+    w.write_i32(layer);
+    w.write_raw_bytes(method_bytes);
+    w.into_bytes()
+}
+
+/// Wrap query bytes in `invokeAfterMsg#cb9f372d {msg_id:long query:#}`.
+///
+/// Tells the server to process `query` only after `msg_id` was handled —
+/// needed to keep dependent RPCs ordered when pipelining.
+pub fn build_invoke_after_msg(msg_id: u64, query: &[u8]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(crate::types::INVOKE_AFTER_MSG);
+    w.write_u64(msg_id);
+    w.write_raw_bytes(query);
+    w.into_bytes()
+}
+
+/// Wrap query bytes in `invokeWithoutUpdates#bf94591b {query:#}`.
+///
+/// Suppresses update delivery for this request (useful for bulk/poll RPCs
+/// that would otherwise flood the update stream).
+pub fn build_invoke_without_updates(query: &[u8]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(crate::types::INVOKE_WITHOUT_UPDATES);
+    w.write_raw_bytes(query);
+    w.into_bytes()
+}
+
+// ---------------------------------------------------------------------------
+// Server service notifications (SPEC §5)
+// ---------------------------------------------------------------------------
+
+/// Parsed `new_session_created#9ec209d4` notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NewSessionCreated {
+    pub first_msg_id: u64,
+    pub unique_id: u64,
+    pub server_salt: u64,
+}
+
+/// Parse a `new_session_created` body (after the constructor).
+pub fn parse_new_session_created(data: &[u8]) -> Result<NewSessionCreated> {
+    let mut r = TLReader::new(data);
+    let constructor = r.read_u32()?;
+    if constructor != NEW_SESSION_CREATED {
+        return Err(Error::UnexpectedResponse(format!(
+            "expected NEW_SESSION_CREATED, got {constructor:#x}"
+        )));
+    }
+    Ok(NewSessionCreated {
+        first_msg_id: r.read_u64()?,
+        unique_id: r.read_u64()?,
+        server_salt: r.read_u64()?,
+    })
+}
+
+/// A single salt window from `future_salt`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SaltWindow {
+    pub valid_since: i32,
+    pub valid_until: i32,
+    pub salt: u64,
+}
+
+/// Parse `future_salts#ae500895 req_msg_id:long now:int salts:vector<future_salt>`.
+///
+/// `data` is the full service message (constructor included).
+pub fn parse_future_salts(data: &[u8]) -> Result<(u64, i32, Vec<SaltWindow>)> {
+    let mut r = TLReader::new(data);
+    let constructor = r.read_u32()?;
+    if constructor != FUTURE_SALTS {
+        return Err(Error::UnexpectedResponse(format!(
+            "expected FUTURE_SALTS, got {constructor:#x}"
+        )));
+    }
+    let req_msg_id = r.read_u64()?;
+    let now = r.read_i32()?;
+    let count = r.read_i32()?;
+    let mut salts = Vec::with_capacity(count.max(0) as usize);
+    for _ in 0..count {
+        salts.push(SaltWindow {
+            valid_since: r.read_i32()?,
+            valid_until: r.read_i32()?,
+            salt: r.read_u64()?,
+        });
+    }
+    Ok((req_msg_id, now, salts))
+}
+
+/// Build `getFutureSalts#b921bd04 num:int` — asks the server for its salt
+/// windows. The reply is a `future_salts` service message.
+pub fn build_get_future_salts(num: i32) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(FUTURE_SALTS_REQUEST);
+    w.write_i32(num);
+    w.into_bytes()
+}
+
+/// Build `msgs_state_req#da69fb52 msg_ids:Vector<long>` — ask the server
+/// for the delivery state of the given message ids.
+pub fn build_msgs_state_req(msg_ids: &[u64]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(MSGS_STATE_REQ);
+    w.write_u32(VECTOR);
+    w.write_u32(msg_ids.len() as u32);
+    for id in msg_ids {
+        w.write_u64(*id);
+    }
+    w.into_bytes()
+}
+
+// ---------------------------------------------------------------------------
 // Pollard's rho factorization for PQ
 // ---------------------------------------------------------------------------
 
@@ -799,5 +947,153 @@ mod tests {
         auth.pq = Some(BigUint::from(1234567891u64).to_bytes_be()); // This is prime
         // For testing, we'll just verify the structure is valid
         assert!(auth.nonce.len() == 16);
+    }
+
+    #[test]
+    fn test_set_client_dh_params_retry_id_semantics() {
+        // Simulate the DH state the server would have delivered: small
+        // safe-ish params are enough to exercise serialization only.
+        let mut auth = AuthKeyCreation::new();
+        auth.g = Some(3);
+        auth.dh_prime = Some(BigUint::from_bytes_be(&[0xC7, 0x1C, 0xAE, 0xB9]).to_bytes_be());
+        auth.g_a = Some(BigUint::from(7u32));
+        auth.temp_aes_key = Some([0u8; 32]);
+        auth.temp_aes_iv = Some([0u8; 32]);
+        auth.server_nonce = Some([9u8; 16]);
+
+        // Attempt 1: retry_id must be 0; aux hash recorded.
+        let req1 = auth.build_set_client_dh_params().unwrap();
+        let aux1 = auth.auth_key_aux_hash.unwrap();
+        assert_ne!(aux1, 0);
+
+        // Decode the outer set_client_DH_params (unencrypted part) and the
+        // inner retry_id by decrypting with the zero-key IGE we set up.
+        let mut r = TLReader::new(&req1);
+        assert_eq!(r.read_u32().unwrap(), SET_CLIENT_DH_PARAMS);
+        let _nonce = r.read_i128_bytes().unwrap();
+        let _server_nonce = r.read_i128_bytes().unwrap();
+        let encrypted = r.read_bytes().unwrap();
+
+        let mut plain = encrypted.clone();
+        crypto::aes_ige_decrypt(&mut plain, &auth.temp_aes_key.unwrap(), &auth.temp_aes_iv.unwrap()).unwrap();
+        // plain = SHA1(inner) + inner + padding; inner ctor + nonce + server_nonce + retry_id
+        let inner = &plain[20..];
+        let mut ir = TLReader::new(inner);
+        assert_eq!(ir.read_u32().unwrap(), CLIENT_DH_INNER_DATA);
+        let _ = ir.read_i128_bytes().unwrap(); // nonce
+        let _ = ir.read_i128_bytes().unwrap(); // server_nonce
+        let retry_id = ir.read_i64().unwrap() as u64;
+        assert_eq!(retry_id, 0, "first attempt must carry retry_id = 0");
+
+        // Server answers dh_gen_retry: caller promotes aux hash to retry_id.
+        auth.retry_id = aux1;
+
+        // Attempt 2: retry_id must equal attempt 1's aux hash.
+        let req2 = auth.build_set_client_dh_params().unwrap();
+        let mut r2 = TLReader::new(&req2);
+        let _ = r2.read_u32().unwrap();
+        let _ = r2.read_i128_bytes().unwrap();
+        let _ = r2.read_i128_bytes().unwrap();
+        let encrypted2 = r2.read_bytes().unwrap();
+        let mut plain2 = encrypted2.clone();
+        crypto::aes_ige_decrypt(&mut plain2, &auth.temp_aes_key.unwrap(), &auth.temp_aes_iv.unwrap()).unwrap();
+        let mut ir2 = TLReader::new(&plain2[20..]);
+        let _ = ir2.read_u32().unwrap();
+        let _ = ir2.read_i128_bytes().unwrap();
+        let _ = ir2.read_i128_bytes().unwrap();
+        let retry_id2 = ir2.read_i64().unwrap() as u64;
+        assert_eq!(retry_id2, aux1, "second attempt must echo previous aux hash");
+    }
+
+    #[test]
+    fn test_invoke_envelopes_roundtrip() {
+        use crate::types::{INVOKE_AFTER_MSG, INVOKE_WITH_LAYER, INVOKE_WITHOUT_UPDATES};
+
+        // invokeWithLayer
+        let inner = vec![0xAA, 0xBB, 0xCC];
+        let wrapped = build_invoke_with_layer(223, &inner);
+        let mut r = TLReader::new(&wrapped);
+        assert_eq!(r.read_u32().unwrap(), INVOKE_WITH_LAYER);
+        assert_eq!(r.read_i32().unwrap(), 223);
+        assert_eq!(&wrapped[4 + 4..], &inner[..]); // rest is raw query bytes
+
+        // invokeAfterMsg
+        let after = build_invoke_after_msg(0x1234_5678_9abc, &inner);
+        let mut r = TLReader::new(&after);
+        assert_eq!(r.read_u32().unwrap(), INVOKE_AFTER_MSG);
+        assert_eq!(r.read_u64().unwrap(), 0x1234_5678_9abc);
+        assert_eq!(&after[4 + 8..], &inner[..]);
+
+        // invokeWithoutUpdates
+        let quiet = build_invoke_without_updates(&inner);
+        let mut r = TLReader::new(&quiet);
+        assert_eq!(r.read_u32().unwrap(), INVOKE_WITHOUT_UPDATES);
+        assert_eq!(&quiet[4..], &inner[..]);
+
+        // Nesting composes: afterMsg(withoutUpdates(withLayer(query)))
+        let stacked = build_invoke_after_msg(
+            7,
+            &build_invoke_without_updates(&build_invoke_with_layer(223, &inner)),
+        );
+        let mut r = TLReader::new(&stacked);
+        assert_eq!(r.read_u32().unwrap(), INVOKE_AFTER_MSG);
+        assert_eq!(r.read_u64().unwrap(), 7);
+        let mid = stacked[4 + 8..].to_vec();
+        let mut r = TLReader::new(&mid);
+        assert_eq!(r.read_u32().unwrap(), INVOKE_WITHOUT_UPDATES);
+    }
+
+    #[test]
+    fn test_parse_new_session_created() {
+        let mut w = TLWriter::new();
+        w.write_u32(NEW_SESSION_CREATED);
+        w.write_u64(0x1111);
+        w.write_u64(0x2222);
+        w.write_u64(0x3333);
+        let ns = parse_new_session_created(&w.into_bytes()).unwrap();
+        assert_eq!(ns.first_msg_id, 0x1111);
+        assert_eq!(ns.unique_id, 0x2222);
+        assert_eq!(ns.server_salt, 0x3333);
+    }
+
+    #[test]
+    fn test_future_salts_roundtrip() {
+        // future_salts#ae500895 req_msg_id:long now:int salts:vector<future_salt>
+        // future_salt#0949dfe1 valid_since:int valid_until:int salt:long
+        let mut w = TLWriter::new();
+        w.write_u32(FUTURE_SALTS);
+        w.write_u64(42); // req_msg_id
+        w.write_i32(1_700_000_000); // now
+        w.write_i32(2); // count
+        for i in 0..2i32 {
+            w.write_i32(1_700_000_000 + i * 3600);
+            w.write_i32(1_700_003_600 + i * 3600);
+            w.write_u64(0x5A17 + i as u64);
+        }
+        let data = w.into_bytes();
+        let (req_msg_id, now, salts) = parse_future_salts(&data).unwrap();
+        assert_eq!(req_msg_id, 42);
+        assert_eq!(now, 1_700_000_000);
+        assert_eq!(salts.len(), 2);
+        assert_eq!(salts[0].salt, 0x5A17);
+        assert_eq!(salts[1].salt, 0x5A17 + 1);
+    }
+
+    #[test]
+    fn test_msgs_state_req_build() {
+        let req = build_msgs_state_req(&[1, 2, 3]);
+        let mut r = TLReader::new(&req);
+        assert_eq!(r.read_u32().unwrap(), MSGS_STATE_REQ);
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 3);
+        assert_eq!(r.read_u64().unwrap(), 1);
+        assert_eq!(r.read_u64().unwrap(), 2);
+        assert_eq!(r.read_u64().unwrap(), 3);
+
+        // getFutureSalts builder
+        let gfs = build_get_future_salts(64);
+        let mut r = TLReader::new(&gfs);
+        assert_eq!(r.read_u32().unwrap(), FUTURE_SALTS_REQUEST);
+        assert_eq!(r.read_i32().unwrap(), 64);
     }
 }

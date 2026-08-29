@@ -39,7 +39,8 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
 // Obfuscated2 Transport
 // ---------------------------------------------------------------------------
 
-/// Obfuscated2 codec: AES-256-CTR streams over a TcpStream.
+/// Obfuscated2 codec: AES-256-CTR streams over a byte stream (TCP or,
+/// with feature `ws`, a WebSocket pipe).
 ///
 /// Key/IV derivation (https://corefork.telegram.org/mtproto/mtproto-transports):
 /// - init: 64 random bytes (protocol tag at 56..60)
@@ -47,7 +48,7 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
 /// - init_rev = reversed(init); dec_key = init_rev[8..40], dec_iv = init_rev[40..56]
 /// - init[56..64] is replaced with its CTR-encrypted form before sending.
 /// - CTR counters persist across frames until the connection closes.
-struct AesCtr {
+pub(crate) struct AesCtr {
     cipher: aes::Aes256,
     counter: [u8; 16],
 }
@@ -81,20 +82,51 @@ impl AesCtr {
     }
 }
 
-pub struct Obfuscated2Transport {
-    stream: TcpStream,
+pub struct Obfuscated2Transport<S = TcpStream> {
+    stream: S,
+    /// Kept for the connection lifetime (CTR counter state); used during
+    /// the init handshake, then only held.
+    #[allow(dead_code)]
     enc: AesCtr,
     dec: AesCtr,
 }
 
-impl Obfuscated2Transport {
+/// Byte-stream I/O the Obfuscated2 codec needs. Implemented for
+/// `TcpStream` (default) and, with feature `ws`, for the WebSocket pipe;
+/// public so custom transports can plug into [`Obfuscated2Transport`].
+#[allow(async_fn_in_trait)]
+pub trait FrameStream {
+    async fn fs_write_all(&mut self, bytes: &[u8]) -> Result<()>;
+    async fn fs_read_exact(&mut self, buf: &mut [u8]) -> Result<()>;
+}
+
+impl FrameStream for TcpStream {
+    async fn fs_write_all(&mut self, bytes: &[u8]) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        self.write_all(bytes).await.map_err(Error::Network)?;
+        self.flush().await.map_err(Error::Network)
+    }
+    async fn fs_read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        use tokio::io::AsyncReadExt;
+        self.read_exact(buf).await.map(|_| ()).map_err(Error::Network)
+    }
+}
+
+#[cfg(feature = "ws")]
+impl<S> Obfuscated2Transport<S> {
+    /// Wrap an already-connected stream with the given CTR pair (used by
+    /// the WS path, which sends the init itself).
+    pub(crate) fn new(stream: S, enc: AesCtr, dec: AesCtr) -> Self {
+        Self { stream, enc, dec }
+    }
+}
+
+impl<S: FrameStream> Obfuscated2Transport<S> {
     /// Send one Intermediate frame (4-byte LE length + payload), encrypted.
     pub async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
         let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
         frame.extend_from_slice(payload);
-        self.enc.crypt(&mut frame);
-        self.stream.write_all(&frame).await?;
-        self.stream.flush().await?;
+        self.stream.fs_write_all(&frame).await?;
         Ok(())
     }
 
@@ -106,7 +138,7 @@ impl Obfuscated2Transport {
     /// Receive one Intermediate frame, decrypted.
     pub async fn recv_frame(&mut self) -> Result<Vec<u8>> {
         let mut hdr = [0u8; 4];
-        self.stream.read_exact(&mut hdr).await?;
+        self.stream.fs_read_exact(&mut hdr).await?;
         self.dec.crypt(&mut hdr);
         let len = u32::from_le_bytes(hdr) as usize;
         if len > Self::MAX_FRAME {
@@ -116,7 +148,7 @@ impl Obfuscated2Transport {
             )));
         }
         let mut payload = vec![0u8; len];
-        self.stream.read_exact(&mut payload).await?;
+        self.stream.fs_read_exact(&mut payload).await?;
         self.dec.crypt(&mut payload);
         Ok(payload)
     }
@@ -179,24 +211,26 @@ pub async fn connect_obfuscated2(
     dc_id: i32,
     protocol: TransportProtocol,
 ) -> Result<Obfuscated2Transport> {
-    let addr = dc_address(dc_id)?;
-    let stream = TcpStream::connect(addr).await?;
-    let init = generate_obfuscated2_init(protocol, dc_id);
+    let stream = TcpStream::connect(dc_address(dc_id)?).await?;
+    let (enc, dec, init_copy) = obfuscated2_keys(protocol, dc_id);
+    let mut s = stream;
+    s.fs_write_all(&init_copy).await?;
+    Ok(Obfuscated2Transport { stream: s, enc, dec })
+}
 
-    // Derive CTR keys/IVs: encrypt side from init, decrypt side from reversed.
+/// Derive the Obfuscated2 CTR pair and the ready-to-send init payload.
+pub(crate) fn obfuscated2_keys(
+    protocol: TransportProtocol,
+    dc_id: i32,
+) -> (AesCtr, AesCtr, Vec<u8>) {
+    let init = generate_obfuscated2_init(protocol, dc_id);
     let mut init_rev = init;
     init_rev.reverse();
     let mut enc = AesCtr::new(&init[8..40], &init[40..56]);
     let dec = AesCtr::new(&init_rev[8..40], &init_rev[40..56]);
-
-    // Encrypt init; substitute encrypted bytes 56..64 into the payload sent.
     let mut init_copy = init;
     enc.crypt(&mut init_copy[56..64]);
-
-    let mut s = stream;
-    s.write_all(&init_copy).await?;
-    s.flush().await?;
-    Ok(Obfuscated2Transport { stream: s, enc, dec })
+    (enc, dec, init_copy.to_vec())
 }
 
 /// Transport protocol type.

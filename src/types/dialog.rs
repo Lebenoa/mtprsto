@@ -1,7 +1,7 @@
 //! Dialog, Messages, Dialogs, State.
 
 use super::*;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 #[allow(unused_imports)]
 use std::fmt;
@@ -84,6 +84,26 @@ pub struct State {
     pub date: i32,
     pub seq: i32,
     pub unread_count: i32,
+}
+
+impl State {
+    /// Decode `updates.state#a56c2a3e pts:int qts:int date:int seq:int
+    /// unread_count:int`.
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != crate::types::UPDATES_STATE {
+            return Err(Error::Serialization(format!(
+                "expected updates.state, got {ctor:#x}"
+            )));
+        }
+        Ok(Self {
+            pts: r.read_i32()?,
+            qts: r.read_i32()?,
+            date: r.read_i32()?,
+            seq: r.read_i32()?,
+            unread_count: r.read_i32()?,
+        })
+    }
 }
 
 // ===========================================================================

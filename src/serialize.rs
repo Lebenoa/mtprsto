@@ -59,6 +59,11 @@ impl TLWriter {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
+    /// Write a bare TL `double` (8-byte IEEE 754, little-endian on the wire).
+    pub fn write_double(&mut self, v: f64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+
     pub fn write_u64(&mut self, v: u64) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
@@ -361,12 +366,29 @@ pub const BAD_MSG_NOTIFICATION: u32 = 0xa7eff811;
 
 // bad_server_salt
 pub const BAD_SERVER_SALT: u32 = 0xedab447b;
+// new_server_salt#1160b89c new_server_salt:long
+pub const NEW_SERVER_SALT: u32 = 0x1160b89c;
+
 
 // future_salt
+// getFutureSalts#b921bd04 num:int — request; reply is future_salts
+pub const FUTURE_SALTS_REQUEST: u32 = 0xb921bd04;
 pub const FUTURE_SALT: u32 = 0x0949dfe1;
 
 // future_salts
 pub const FUTURE_SALTS: u32 = 0xae500895;
+
+// msgs_state_req#da69fb52 msg_ids:Vector<long>
+pub const MSGS_STATE_REQ: u32 = 0xda69fb52;
+
+// msgs_state_info#04deb57d req_msg_id:long info:bytes
+pub const MSGS_STATE_INFO: u32 = 0x04deb57d;
+
+// msgs_all_info#8cc0d131 info:bytes msg_ids:Vector<long>
+pub const MSGS_ALL_INFO: u32 = 0x8cc0d131;
+
+// msg_resend_req#7d861a08 msg_ids:Vector<long>
+pub const MSGS_RESEND_REQ: u32 = 0x7d861a08;
 
 // rpc_result
 pub const RPC_RESULT: u32 = 0xf35c6d01;

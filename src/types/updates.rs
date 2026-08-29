@@ -72,9 +72,9 @@ impl Updates {
                 let _flags = r.read_i32()?;
                 let date = r.read_i32()?;
                 let seq = r.read_i32()?;
-                let updates = Self::read_update_vector(&mut r)?;
-                let chats = Self::read_chat_vector(&mut r)?;
-                let users = Self::read_user_vector(&mut r)?;
+                let updates = read_update_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
                 Ok(Updates::Updates { updates, users, chats, date, seq })
             }
             UPDATES_COMBINED => {
@@ -84,9 +84,9 @@ impl Updates {
                 let date = r.read_i32()?;
                 let seq = r.read_i32()?;
                 let seq_start = r.read_i32()?;
-                let updates = Self::read_update_vector(&mut r)?;
-                let chats = Self::read_chat_vector(&mut r)?;
-                let users = Self::read_user_vector(&mut r)?;
+                let updates = read_update_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
                 Ok(Updates::UpdatesCombined { updates, users, chats, date, seq, seq_start })
             }
             UPDATE_SHORT => {
@@ -110,34 +110,6 @@ impl Updates {
                 "unknown Updates constructor {other:#x}"
             ))),
         }
-    }
-
-    /// Read a Vector<Update>, decoding each inner update by constructor.
-    fn read_update_vector(r: &mut TLReader) -> Result<Vec<Update>> {
-        let count = r.read_vector_header()?;
-        let mut updates = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            updates.push(Update::read_from(r)?);
-        }
-        Ok(updates)
-    }
-
-    fn read_chat_vector(r: &mut TLReader) -> Result<Vec<Chat>> {
-        let count = r.read_vector_header()?;
-        let mut chats = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            chats.push(Chat::read_from(r)?);
-        }
-        Ok(chats)
-    }
-
-    fn read_user_vector(r: &mut TLReader) -> Result<Vec<User>> {
-        let count = r.read_vector_header()?;
-        let mut users = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            users.push(User::read_from(r)?);
-        }
-        Ok(users)
     }
 
     /// Get the message ID if this is a short sent message update.
@@ -221,4 +193,195 @@ impl Update {
             other => Ok(Update::Other { constructor: other }),
         }
     }
+}
+
+
+/// Result of `updates.getDifference` (SPEC §6).
+#[derive(Debug, Clone)]
+pub enum Difference {
+    /// No updates to apply — session is current as of the returned state.
+    Empty { date: i32, seq: i32, pts: i32, pts_count: i32 },
+    /// Apply these updates; pts/seq tracked by the contained updates.
+    Difference {
+        seq: i32,
+        new_messages: Vec<Message>,
+        other_updates: Vec<Update>,
+        chats: Vec<Chat>,
+        users: Vec<User>,
+    },
+    /// Slice: more difference rounds needed (`intermediate_state` is the
+    /// new pts cursor).
+    Slice {
+        new_messages: Vec<Message>,
+        other_updates: Vec<Update>,
+        chats: Vec<Chat>,
+        users: Vec<User>,
+        intermediate_state: State,
+    },
+    /// Local state too far behind — caller must re-sync via getDialogs etc.
+    TooLong { pts: i32 },
+}
+
+/// Result of `updates.getChannelDifference` (SPEC §6).
+#[derive(Debug, Clone)]
+pub enum ChannelDifference {
+    /// Channel is up to date.
+    Empty { pts: i32, final_: bool },
+    /// Apply messages/updates; if `final_`, loop ends regardless of pts.
+    Difference {
+        pts: i32,
+        final_: bool,
+        timeout: Option<i32>,
+        new_messages: Vec<Message>,
+        other_updates: Vec<Update>,
+        chats: Vec<Chat>,
+        users: Vec<User>,
+    },
+    /// Too far behind — caller should re-fetch the channel's dialogs.
+    TooLong {
+        pts: i32,
+        final_: bool,
+        timeout: Option<i32>,
+        new_messages: Vec<Message>,
+        other_updates: Vec<Update>,
+        chats: Vec<Chat>,
+        users: Vec<User>,
+    },
+}
+
+impl Difference {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut r = TLReader::new(data);
+        let ctor = r.read_u32()?;
+        match ctor {
+            DIFFERENCE_EMPTY => {
+                // differenceEmpty#a9eca690 date seq pts pts_count
+                Ok(Difference::Empty {
+                    date: r.read_i32()?,
+                    seq: r.read_i32()?,
+                    pts: r.read_i32()?,
+                    pts_count: r.read_i32()?,
+                })
+            }
+            DIFFERENCE => {
+                // difference#f46ca0 seq new_messages other_updates chats users
+                let seq = r.read_i32()?;
+                let new_messages = read_msg_vector(&mut r)?;
+                let other_updates = read_update_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
+                Ok(Difference::Difference { seq, new_messages, other_updates, chats, users })
+            }
+            DIFFERENCE_SLICE => {
+                // differenceSlice#a004db6 ... intermediate_state:State
+                let new_messages = read_msg_vector(&mut r)?;
+                let other_updates = read_update_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
+                // intermediate_state#a56c2a3e pts qts date seq unread_count
+                let _st_ctor = r.read_u32()?;
+                let intermediate_state = State {
+                    pts: r.read_i32()?,
+                    qts: r.read_i32()?,
+                    date: r.read_i32()?,
+                    seq: r.read_i32()?,
+                    unread_count: r.read_i32()?,
+                };
+                Ok(Difference::Slice { new_messages, other_updates, chats, users, intermediate_state })
+            }
+            DIFFERENCE_TOO_LONG => {
+                Ok(Difference::TooLong { pts: r.read_i32()? })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown Difference constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+impl ChannelDifference {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut r = TLReader::new(data);
+        let ctor = r.read_u32()?;
+        match ctor {
+            CHANNEL_DIFFERENCE_EMPTY => {
+                // channelDifferenceEmpty#3e11affb flags:# pts:int final:flags.0?true
+                let flags = r.read_i32()?;
+                Ok(ChannelDifference::Empty {
+                    pts: r.read_i32()?,
+                    final_: flags & (1 << 0) != 0,
+                })
+            }
+            CHANNEL_DIFFERENCE => {
+                let (timeout, new_messages, other_updates, chats, users, pts, final_) =
+                    Self::read_full(&mut r)?;
+                Ok(ChannelDifference::Difference { pts, final_, timeout, new_messages, other_updates, chats, users })
+            }
+            CHANNEL_DIFFERENCE_TOO_LONG => {
+                let (timeout, new_messages, other_updates, chats, users, pts, final_) =
+                    Self::read_full(&mut r)?;
+                Ok(ChannelDifference::TooLong { pts, final_, timeout, new_messages, other_updates, chats, users })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown ChannelDifference constructor {other:#x}"
+            ))),
+        }
+    }
+
+    /// Shared tail for channelDifference / channelDifferenceTooLong:
+    /// flags pts final:flags.0 timeout:flags.1 messages chats users
+    #[allow(clippy::type_complexity)]
+    fn read_full(
+        r: &mut TLReader,
+    ) -> Result<(Option<i32>, Vec<Message>, Vec<Update>, Vec<Chat>, Vec<User>, i32, bool)> {
+        let flags = r.read_i32()?;
+        let pts = r.read_i32()?;
+        let final_ = flags & (1 << 0) != 0;
+        let timeout = if flags & (1 << 1) != 0 {
+            Some(r.read_i32()?)
+        } else {
+            None
+        };
+        let new_messages = read_msg_vector(r)?;
+        let other_updates = read_update_vector(r)?;
+        let chats = read_chat_vector(r)?;
+        let users = read_user_vector(r)?;
+        Ok((timeout, new_messages, other_updates, chats, users, pts, final_))
+    }
+}
+/// Read a TL `Vector<Update>`, decoding each element by constructor.
+fn read_update_vector(r: &mut TLReader) -> Result<Vec<Update>> {
+    let count = r.read_vector_header()?;
+    let mut updates = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        updates.push(Update::read_from(r)?);
+    }
+    Ok(updates)
+}
+
+fn read_chat_vector(r: &mut TLReader) -> Result<Vec<Chat>> {
+    let count = r.read_vector_header()?;
+    let mut chats = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        chats.push(Chat::read_from(r)?);
+    }
+    Ok(chats)
+}
+
+fn read_user_vector(r: &mut TLReader) -> Result<Vec<User>> {
+    let count = r.read_vector_header()?;
+    let mut users = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        users.push(User::read_from(r)?);
+    }
+    Ok(users)
+}
+
+fn read_msg_vector(r: &mut TLReader) -> Result<Vec<Message>> {
+    let count = r.read_vector_header()?;
+    let mut messages = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        messages.push(Message::read_from(r)?);
+    }
+    Ok(messages)
 }

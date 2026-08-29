@@ -31,6 +31,7 @@ pub mod api;
 pub mod client;
 pub mod crypto;
 pub mod error;
+pub mod file;
 pub mod mtproto;
 pub mod pool;
 pub mod rpc;
@@ -39,6 +40,9 @@ pub mod session;
 pub mod transport;
 pub mod types;
 pub mod updates;
+pub mod ergonomics;
+#[cfg(feature = "ws")]
+pub mod ws;
 
 // Re-exports for convenience
 pub use error::{Error, Result};

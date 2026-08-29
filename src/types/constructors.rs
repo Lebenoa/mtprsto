@@ -35,8 +35,11 @@ pub const INPUT_FILE_STORY_DOCUMENT: u32 = 0x62dc8b48;
 // --- Input document (Layer 223) ---
 pub const INPUT_DOCUMENT: u32 = 0x1abfb575;
 pub const INPUT_DOCUMENT_EMPTY: u32 = 0x72f0eaae; // inputDocumentEmpty
-/// document#8fd32c0b (Layer 223)
-pub const DOCUMENT: u32 = 0x8fd32c0b;
+/// `document#8fd4c4d8 flags:# id:long access_hash:long file_reference:bytes
+///  date:int mime_type:string size:long thumbs:flags.0?Vector<PhotoSize>
+///  video_thumbs:flags.1?Vector<VideoSize> dc_id:int
+///  attributes:Vector<DocumentAttribute>`
+pub const DOCUMENT: u32 = 0x8fd4c4d8; // document#8fd4c4d8 (Layer 223)
 /// documentEmpty#3631cf4c id:long
 pub const DOCUMENT_EMPTY: u32 = 0x3631cf4c;
 
@@ -91,6 +94,60 @@ pub const MESSAGE_MEDIA_STORY: u32 = 0x68cb6283;
 pub const MESSAGE_MEDIA_GIVEAWAY: u32 = 0xaa073beb;
 pub const MESSAGE_MEDIA_GIVEAWAY_RESULTS: u32 = 0xceaa3ea1;
 pub const MESSAGE_MEDIA_PAID_MEDIA: u32 = 0xa8852491;
+// --- Message entities (Layer 223, verified 2026-08) ---
+pub const MESSAGE_ENTITY_UNKNOWN: u32 = 0xbb92ba95;
+pub const MESSAGE_ENTITY_MENTION: u32 = 0xfa04579d;
+pub const MESSAGE_ENTITY_HASHTAG: u32 = 0x6f635b0d;
+pub const MESSAGE_ENTITY_BOT_COMMAND: u32 = 0x6cef8ac7;
+pub const MESSAGE_ENTITY_URL: u32 = 0x6ed02538;
+pub const MESSAGE_ENTITY_EMAIL: u32 = 0x64e475c2;
+pub const MESSAGE_ENTITY_BOLD: u32 = 0xbd610bc9;
+pub const MESSAGE_ENTITY_ITALIC: u32 = 0x826f8b60;
+pub const MESSAGE_ENTITY_UNDERLINE: u32 = 0x9c4e7e8b;
+pub const MESSAGE_ENTITY_STRIKE: u32 = 0xbf0693d4;
+pub const MESSAGE_ENTITY_CODE: u32 = 0x28a20571;
+pub const MESSAGE_ENTITY_PRE: u32 = 0x73924be0;
+pub const MESSAGE_ENTITY_TEXT_URL: u32 = 0x76a6d327;
+pub const MESSAGE_ENTITY_MENTION_NAME: u32 = 0xdc7b1140;
+pub const MESSAGE_ENTITY_PHONE: u32 = 0x9b69e34b;
+pub const MESSAGE_ENTITY_CASHTAG: u32 = 0x4c4e743f;
+pub const MESSAGE_ENTITY_SPOILER: u32 = 0x32ca960f;
+pub const MESSAGE_ENTITY_CUSTOM_EMOJI: u32 = 0xc8cf05f8;
+pub const MESSAGE_ENTITY_BLOCKQUOTE: u32 = 0xf1ccaaac;
+pub const MESSAGE_ENTITY_BANK_CARD: u32 = 0x761e6af4;
+
+// --- Reply markup (Layer 223, verified 2026-08) ---
+pub const REPLY_KEYBOARD_MARKUP_223: u32 = 0x85dd99d1;
+pub const REPLY_KEYBOARD_HIDE: u32 = 0xa03e5b85;
+pub const REPLY_KEYBOARD_FORCE_REPLY: u32 = 0x86b40b08;
+pub const REPLY_INLINE_MARKUP: u32 = 0x48a30254;
+pub const KEYBOARD_BUTTON_ROW: u32 = 0x77608b83;
+
+// --- Photo sizes (Layer 223) ---
+pub const PHOTO_SIZE: u32 = 0x75c78e60;
+pub const PHOTO_STRIPPED_SIZE: u32 = 0xe0b0bc2e;
+pub const PHOTO_SIZE_PROGRESSIVE: u32 = 0xfa3efb95;
+pub const PHOTO_PATH_SIZE: u32 = 0xd8214d41;
+
+// --- Document attributes (Layer 223) ---
+pub const DOCUMENT_ATTRIBUTE_IMAGE_SIZE: u32 = 0x6c37c15c;
+pub const DOCUMENT_ATTRIBUTE_ANIMATED: u32 = 0x11b58939;
+pub const DOCUMENT_ATTRIBUTE_STICKER: u32 = 0x6319d612;
+pub const DOCUMENT_ATTRIBUTE_VIDEO: u32 = 0x43c57c48;
+pub const DOCUMENT_ATTRIBUTE_AUDIO: u32 = 0x9852f9c6;
+pub const DOCUMENT_ATTRIBUTE_FILENAME: u32 = 0x15590068;
+pub const DOCUMENT_ATTRIBUTE_HAS_STICKERS: u32 = 0x9801d2f7;
+pub const DOCUMENT_ATTRIBUTE_CUSTOM_EMOJI: u32 = 0xfd149899;
+
+// --- Chat full / rights / folder (Layer 223) ---
+pub const CHANNEL_FULL: u32 = 0xe4e0b29d;
+pub const CHAT_ADMIN_RIGHTS: u32 = 0x5fb224d5;
+pub const CHAT_BANNED_RIGHTS: u32 = 0x9f120418;
+pub const FOLDER: u32 = 0xff544e65;
+
+// --- Message media (Layer 223) ---
+pub const MESSAGE_MEDIA_VENUE: u32 = 0x2ec0533f;
+pub const MESSAGE_MEDIA_GEO_LIVE: u32 = 0xb940c666;
 
 // --- Message action (Layer 223) ---
 pub const MESSAGE_ACTION_EMPTY: u32 = 0xb6aef7b0;
@@ -160,31 +217,72 @@ pub const AUTH_SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
 pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc004bac7;
 
 // --- Auth (Layer 223) ---
+// IDs verified against https://core.telegram.org/schema/json (2026-08).
 pub const AUTH_AUTHORIZATION: u32 = 0x2ea2c0d4;
 pub const AUTH_AUTHORIZATION_SIGN_UP_REQUIRED: u32 = 0x44747e9a;
-pub const AUTH_LOG_OUT: u32 = 0x87971c3d; // TODO: verify
+/// `auth.loggedOut#c3a2835f flags:# future_auth_token:flags.0?bytes`
+pub const AUTH_LOGGED_OUT: u32 = 0xc3a2835f;
+/// `auth.logOut#3e72ba19 = auth.LoggedOut;`
+pub const AUTH_LOG_OUT: u32 = 0x3e72ba19;
 
 // --- Auth functions (Layer 223) ---
 pub const AUTH_SEND_CODE: u32 = 0xa677244f;
-pub const AUTH_SIGN_IN: u32 = 0x8d52a951; // TODO: verify
-pub const AUTH_SIGN_UP: u32 = 0x80eead27; // TODO: verify
-pub const AUTH_CHECK_PASSWORD: u32 = 0xd18b4d16; // TODO: verify
+/// `auth.signIn#8d52a951 flags:# ...` — has a `flags:#` field in Layer 223.
+pub const AUTH_SIGN_IN: u32 = 0x8d52a951;
+/// `auth.signUp#aac7b717 flags:# ...` — has a `flags:#` field in Layer 223.
+pub const AUTH_SIGN_UP: u32 = 0xaac7b717;
+/// `auth.checkPassword#d18b4d16 password:InputCheckPasswordSRP = auth.Authorization;`
+pub const AUTH_CHECK_PASSWORD: u32 = 0xd18b4d16;
 pub const IMPORT_BOT_AUTH: u32 = 0x67a3ff2c;
+/// `auth.exportLoginToken#b7e085fe api_id:int api_hash:string except_ids:Vector<long> = auth.LoginToken;`
+pub const AUTH_EXPORT_LOGIN_TOKEN: u32 = 0xb7e085fe;
+/// `auth.importLoginToken#95ac5ce4 token:bytes = auth.LoginToken;`
+pub const AUTH_IMPORT_LOGIN_TOKEN: u32 = 0x95ac5ce4;
+/// `auth.acceptLoginToken#e894ad4d token:bytes = Authorization;`
+pub const AUTH_ACCEPT_LOGIN_TOKEN: u32 = 0xe894ad4d;
+
+// --- Login token results (Layer 223) ---
+/// `auth.loginToken#629f1980 expires:int token:bytes`
+pub const AUTH_LOGIN_TOKEN: u32 = 0x629f1980;
+/// `auth.loginTokenMigrateTo#68e9916 dc_id:int token:bytes`
+pub const AUTH_LOGIN_TOKEN_MIGRATE_TO: u32 = 0x068e9916;
+/// `auth.loginTokenSuccess#390d5c5e authorization:auth.Authorization`
+pub const AUTH_LOGIN_TOKEN_SUCCESS: u32 = 0x390d5c5e;
+
+// --- SRP password check (Layer 223) ---
+/// `inputCheckPasswordEmpty#9880f658`
+pub const INPUT_CHECK_PASSWORD_EMPTY: u32 = 0x9880f658;
+/// `inputCheckPasswordSRP#d27ff082 srp_id:long A:bytes M1:bytes`
+pub const INPUT_CHECK_PASSWORD_SRP: u32 = 0xd27ff082;
+/// `account.getPassword#548a30f5 = account.Password;` (function)
+pub const ACCOUNT_GET_PASSWORD: u32 = 0x548a30f5;
+/// `account.password#5188ee1b ...` (response predicate)
+pub const ACCOUNT_GET_PASSWORD_RESPONSE: u32 = 0x5188ee1b;
+/// `passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow#3a912d4a
+///  salt1:bytes salt2:bytes g:int p:bytes`
+pub const PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512_100K_MODPOW: u32 = 0x3a912d4a;
 
 // --- Messages methods ---
 pub const MESSAGES_SEND_MESSAGE: u32 = 0x545cd15a;
-pub const MESSAGES_SEND_MEDIA: u32 = 0xb8d0afdf;
-pub const MESSAGES_SEND_MULTI_MEDIA: u32 = 0xb6f3e0c0;
+/// `messages.sendMedia#330e77f` — Layer 223 (verified against schema 2026-08).
+pub const MESSAGES_SEND_MEDIA: u32 = 0x0330e77f;
+/// `messages.sendMultiMedia#1bf89d74`
+pub const MESSAGES_SEND_MULTI_MEDIA: u32 = 0x1bf89d74;
 pub const MESSAGES_GET_DIALOGS: u32 = 0xa0f4cb4f;
 pub const MESSAGES_GET_HISTORY: u32 = 0xdc3f8240;
 pub const MESSAGES_GET_MESSAGES: u32 = 0x63c66506;
 pub const MESSAGES_GET_BOT_CALLBACK_ANSWER: u32 = 0x934a4ee1;
 pub const MESSAGES_DELETE_MESSAGES: u32 = 0xe58e95c6;
-pub const MESSAGES_DELETE_HISTORY: u32 = 0xb7e36194;
+/// `messages.deleteHistory#b08f922a flags:# just_clear:flags.0?true
+///  revoke:flags.1?true peer:InputPeer max_id:int min_date:flags.2?int
+///  max_date:flags.3?int = messages.AffectedHistory;`
+pub const MESSAGES_DELETE_HISTORY: u32 = 0xb08f922a;
 pub const MESSAGES_EDIT_MESSAGE: u32 = 0x48f71768;
 pub const MESSAGES_READ_HISTORY: u32 = 0x0e306d3a;
 pub const MESSAGES_SEARCH: u32 = 0xd07bbf76;
 pub const MESSAGES_SEND_CALLBACK_DATA: u32 = 0x934a4ee1;
+/// `messages.affectedHistory#b45c69d1 pts:int pts_count:int offset:int`
+pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
 
 // --- Users ---
 pub const USERS_GET_FULL_USER: u32 = 0xe0b917f2;
@@ -193,50 +291,123 @@ pub const USERS_GET_USERS: u32 = 0x0d91a548;
 pub const USERS_USER_FULL: u32 = 0xd69e83e0;
 /// contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> chats:Vector<Chat> users:Vector<User>
 pub const CONTACTS_FOUND: u32 = 0xb3134d19;
-/// updates.state#a56c2a3e pts:int qts:int date:int seq:int unread_count:int
-pub const UPDATES_STATE: u32 = 0xa56c2a3e;
-
-// --- Contacts ---
-pub const CONTACTS_RESOLVE_USERNAME: u32 = 0xf93ccba3;
-pub const CONTACTS_RESOLVE_PHONE: u32 = 0x8af2a521;
+/// `contacts.resolvePhone#8af94344 phone:string = contacts.ResolvedPeer;`
+pub const CONTACTS_RESOLVE_PHONE: u32 = 0x8af94344;
 pub const CONTACTS_SEARCH: u32 = 0x11f812d8;
+/// `contacts.resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat> users:Vector<User>`
+pub const CONTACTS_RESOLVED_PEER: u32 = 0x7f077ad9;
+pub const CONTACTS_RESOLVE_USERNAME: u32 = 0xf93ccba3;
 
 // --- Channels ---
 pub const CHANNELS_CREATE_CHANNEL: u32 = 0x3d5d10fd;
 pub const CHANNELS_INVITE_TO_CHANNEL: u32 = 0x199f3a6c;
 pub const CHANNELS_EDIT_ADMIN: u32 = 0x70d896ff;
 pub const CHANNELS_GET_CHANNELS: u32 = 0xa7f6d76b;
-pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x123ffe12;
+/// `channels.getParticipants#77ced9d0 channel:InputChannel
+///  filter:ChannelParticipantsFilter offset:int limit:int hash:long`
+pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
+/// `channels.editAbout#13e27b46` was removed from the schema; about is now
+/// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
 pub const CHANNELS_EDIT_ABOUT: u32 = 0x13e27b46;
+pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
 pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa28;
+/// `channels.channelParticipants#9ab0feaf count:int participants:...`
+pub const CHANNELS_CHANNEL_PARTICIPANTS: u32 = 0x9ab0feaf;
+/// `channelParticipantsRecent#de3f3c79`
+pub const CHANNEL_PARTICIPANTS_RECENT: u32 = 0xde3f3c79;
+/// `channelParticipantsSearch#656ac4b q:string`
+pub const CHANNEL_PARTICIPANTS_SEARCH: u32 = 0x0656ac4b;
 
 // --- Updates ---
+/// `updates.state#a56c2a3e pts:int qts:int date:int seq:int unread_count:int`
+pub const UPDATES_STATE: u32 = 0xa56c2a3e;
 pub const UPDATES_GET_STATE: u32 = 0xedd4882a;
 pub const UPDATES_GET_DIFFERENCE: u32 = 0x25939104;
 pub const UPDATES_GET_CHANNEL_DIFFERENCE: u32 = 0x3173d78;
+/// updates.differenceEmpty#a9eca690 date:int seq:int pts:int pts_count:int
+pub const DIFFERENCE_EMPTY: u32 = 0xa9eca690;
+/// updates.difference#f46ca0 seq:int new_messages:Vector<Message>
+///   other_updates:Vector<Update> chats:Vector<Chat> users:Vector<User>
+pub const DIFFERENCE: u32 = 0xf46ca0;
+/// updates.differenceSlice#a004db6 new_messages:... other_updates:...
+///   chats:... users:... intermediate_state:State
+pub const DIFFERENCE_SLICE: u32 = 0xa004db6;
+/// updates.differenceTooLong#4afe8f6d pts:int
+pub const DIFFERENCE_TOO_LONG: u32 = 0x4afe8f6d;
+/// updates.channelDifferenceEmpty#3e11affb flags:# pts:int final:flags.0?true
+pub const CHANNEL_DIFFERENCE_EMPTY: u32 = 0x3e11affb;
+/// updates.channelDifference#2064674e flags:# pts:int final:flags.0?true
+///   timeout:flags.1?int messages:Vector<Message> chats:... users:...
+pub const CHANNEL_DIFFERENCE: u32 = 0x2064674e;
+/// updates.channelDifferenceTooLong#4103bd2d flags:# pts:int final:flags.0?true
+///   timeout:flags.1?int messages:Vector<Message> chats:... users:...
+pub const CHANNEL_DIFFERENCE_TOO_LONG: u32 = 0x4103bd2d;
 
 // --- Upload ---
 pub const UPLOAD_SAVE_FILE_PART: u32 = 0xb304a621;
 pub const UPLOAD_SAVE_BIG_FILE_PART: u32 = 0xde7b673d;
-pub const UPLOAD_GET_FILE: u32 = 0xb3e7e951;
-pub const UPLOAD_GET_WEB_FILE: u32 = 0x24e5e54e;
+/// `upload.getFile#be5335be flags:# precise:flags.0?true
+///  cdn_supported:flags.1?true location:InputFileLocation offset:long limit:int`
+pub const UPLOAD_GET_FILE: u32 = 0xbe5335be;
+/// `upload.getWebFile#24e6818d location:InputWebFileLocation offset:int limit:int`
+pub const UPLOAD_GET_WEB_FILE: u32 = 0x24e6818d;
+/// Historical ID. `upload.saveFile` does not exist in Layer 223; the
+/// upload path is `upload.saveFilePart` / `upload.saveBigFilePart`.
 pub const UPLOAD_SAVE_FILE: u32 = 0x96f18c5e;
-pub const UPLOAD_GET_CDN_FILE: u32 = 0x572f9519;
-
-// --- Help ---
-pub const HELP_GET_CONFIG: u32 = 0xc4f3926c;
-pub const HELP_GET_NEAREST_DC: u32 = 0x1fb33026;
+/// `upload.getCdnFile#395f69da file_token:bytes offset:long limit:int`
+pub const UPLOAD_GET_CDN_FILE: u32 = 0x395f69da;
+/// `upload.webFile#21e753bc size:int mime_type:string file_type:storage.FileType
+///  mtime:int bytes:bytes`
+pub const UPLOAD_WEB_FILE: u32 = 0x21e753bc;
+/// `upload.cdnFile#a99fca4f bytes:bytes`
+pub const UPLOAD_CDN_FILE: u32 = 0xa99fca4f;
+/// `upload.cdnFileReuploadNeeded#eea8e46e request_token:bytes`
+pub const UPLOAD_CDN_FILE_REUPLOAD_NEEDED: u32 = 0xeea8e46e;
+/// `inputWebFileLocation#c239d686 url:string access_hash:long`
+pub const INPUT_WEB_FILE_LOCATION: u32 = 0xc239d686;
 
 // --- Photos ---
-pub const PHOTOS_UPDATE_PROFILE_PHOTO: u32 = 0x1c3c2a85;
-pub const PHOTOS_UPLOAD_PROFILE_PHOTO: u32 = 0x4f32c098;
+/// `photos.updateProfilePhoto#9e82039 flags:# fallback:flags.0?true
+///  bot:flags.1?InputUser id:InputPhoto = photos.Photo;`
+pub const PHOTOS_UPDATE_PROFILE_PHOTO: u32 = 0x09e82039;
+/// `photos.uploadProfilePhoto#388a3b5 flags:# fallback:flags.3?true
+///  bot:flags.5?InputUser file:flags.0?InputFile video:flags.1?InputFile
+///  video_start_ts:flags.2?double video_emoji_markup:flags.4?VideoSize`
+pub const PHOTOS_UPLOAD_PROFILE_PHOTO: u32 = 0x388a3b5;
 pub const PHOTOS_DELETE_PHOTOS: u32 = 0x87cf7f2f;
 pub const PHOTOS_GET_USER_PHOTOS: u32 = 0x91cd32a8;
+/// `photos.photo#20212ca8 photo:Photo users:Vector<User>`
+pub const PHOTOS_PHOTO: u32 = 0x20212ca8;
+/// `photos.photos#8dca6aa5 photos:Vector<Photo> users:Vector<User>`
+pub const PHOTOS_PHOTOS: u32 = 0x8dca6aa5;
+/// `photos.photosSlice#15051f54 count:int photos:Vector<Photo> users:Vector<User>`
+pub const PHOTOS_PHOTOS_SLICE: u32 = 0x15051f54;
+/// `inputPhoto#3bb3b94a id:long access_hash:long file_reference:bytes`
+pub const INPUT_PHOTO: u32 = 0x3bb3b94a;
+pub const INPUT_PHOTO_EMPTY: u32 = 0x1cd7bf0d;
+/// `inputMediaEmpty#9664f57f`
+pub const INPUT_MEDIA_EMPTY: u32 = 0x9664f57f;
+/// `inputMediaContact#f8ab7dfb phone_number:string first_name:string
+///  last_name:string vcard:string`
+pub const INPUT_MEDIA_CONTACT: u32 = 0xf8ab7dfb;
+/// `inputMediaGeoPoint#f9c44144 flags:# lat:double long:double
+///  accuracy_radius:flags.0?int` — wraps an InputGeoPoint.
+pub const INPUT_MEDIA_GEO_POINT: u32 = 0xf9c44144;
+pub const INPUT_GEO_POINT: u32 = 0x48222faf;
+pub const INPUT_GEO_POINT_EMPTY: u32 = 0xe4c123d6;
+/// `inputSingleMedia#1cc6e91f flags:# media:InputMedia random_id:long
+///  message:string entities:flags.0?Vector<MessageEntity>`
+pub const INPUT_SINGLE_MEDIA: u32 = 0x1cc6e91f;
 
 // --- Invoke wrappers ---
 pub const INVOKE_WITH_LAYER: u32 = 0xda9b0d0d;
 pub const INVOKE_AFTER_MSG: u32 = 0xcb9f372d;
 pub const INVOKE_WITHOUT_UPDATES: u32 = 0xbf94591b;
+
+// --- Help ---
+pub const HELP_GET_CONFIG: u32 = 0xc4f3926c;
+pub const HELP_GET_NEAREST_DC: u32 = 0x1fb33026;
+
 
 // --- Bool ---
 pub const BOOL_TRUE: u32 = 0x997275b5;

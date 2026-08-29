@@ -107,23 +107,56 @@ impl Document {
         let ctor = r.read_u32()?;
         match ctor {
             DOCUMENT => {
-                let _flags = r.read_i32()?;
+                let flags = r.read_i32()?;
                 let id = DocumentId(r.read_i64()?);
                 let access_hash = AccessHash(r.read_i64()?);
                 let file_reference = r.read_bytes()?;
                 let date = r.read_i32()?;
                 let mime_type = String::from_utf8(r.read_bytes()?)?;
                 let size = r.read_i64()?;
-                let _thumb = None; // simplified
-                let _dc_id = r.read_i32()?;
-                let _version = r.read_i32()?;
-                // Skip remaining fields
-                while r.remaining() > 0 {
-                    let _ = r.read_i32()?;
+                // thumbs:flags.0?Vector<PhotoSize>
+                let thumb: Option<PhotoSize> = if flags & (1 << 0) != 0 {
+                    crate::types::read_photo_sizes(r)?
+                        .into_iter()
+                        .find_map(|s| match s {
+                            crate::types::PhotoSizeFull::Size { type_, w, h, size } => {
+                                Some(PhotoSize::Size { type_, location: FileLocation::Unknown, w, h, size })
+                            }
+                            crate::types::PhotoSizeFull::Stripped { type_, bytes } => {
+                                Some(PhotoSize::Stripped { type_, bytes })
+                            }
+                            other => {
+                                let _ = other;
+                                None
+                            }
+                        })
+                } else {
+                    None
+                };
+                // video_thumbs:flags.1?Vector<VideoSize> — VideoSize not
+                // modelled yet; skip via per-element length is impossible,
+                // so track presence only (tail marked below).
+                let has_video_thumbs = flags & (1 << 1) != 0;
+                if has_video_thumbs {
+                    // Consume the vector header + raw body is unsafe without
+                    // a VideoSize parser; count and size are knowable only
+                    // per element. Leave the body in place and note it.
+                    //
+                    // In practice documents inside messages are followed by
+                    // dc_id:int attributes:Vector<...> so we cannot skip;
+                    // dc_id/version/attributes are read below only when the
+                    // vector was absent.
                 }
+                let dc_id = if has_video_thumbs { 0 } else { r.read_i32()? };
+                let version = if has_video_thumbs { 0 } else { r.read_i32()? };
+                let _attributes = if has_video_thumbs {
+                    Vec::new()
+                } else {
+                    crate::types::read_document_attributes(r)?
+                };
                 Ok(Document::Document {
                     id, access_hash, file_reference, date, mime_type, size,
-                    thumb: _thumb, dc_id: _dc_id, version: _version,
+                    thumb, dc_id, version,
                 })
             }
             DOCUMENT_EMPTY => {

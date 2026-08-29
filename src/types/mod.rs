@@ -16,6 +16,7 @@ mod peer;
 mod photo;
 mod replies;
 mod reply_markup;
+mod reply_types;
 mod updates;
 mod user;
 
@@ -31,6 +32,7 @@ pub use peer::*;
 pub use photo::*;
 pub use replies::*;
 pub use reply_markup::*;
+pub use reply_types::*;
 pub use updates::*;
 pub use user::*;
 

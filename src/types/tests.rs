@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod type_tests {
     use crate::types::*;
-    use crate::serialize::{TLWriter, TLReader};
+    use crate::serialize::{TLWriter, TLReader, VECTOR};
 
     #[test]
     fn test_user_id_newtype() {
@@ -213,4 +213,176 @@ mod type_tests {
             other => panic!("expected Other, got {other:?}"),
         }
     }
+
+// --- Reply types (SPEC §7) round-trips -------------------------------------
+
+#[test]
+fn test_message_entity_roundtrip() {
+    use crate::types::{read_message_entities, MessageEntityKind};
+
+    // Vector<MessageEntity> with a Bold and a TextUrl entity.
+    let mut w = TLWriter::new();
+    w.write_u32(VECTOR);
+    w.write_i32(2);
+    w.write_u32(MESSAGE_ENTITY_BOLD);
+    w.write_i32(0);
+    w.write_i32(4);
+    w.write_u32(MESSAGE_ENTITY_TEXT_URL);
+    w.write_i32(5);
+    w.write_i32(10);
+    w.write_bytes(b"https://example.com");
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    let ents = read_message_entities(&mut r).unwrap();
+    assert_eq!(ents.len(), 2);
+    assert_eq!(ents[0].kind, MessageEntityKind::Bold);
+    assert_eq!(ents[1].kind, MessageEntityKind::TextUrl { url: "https://example.com".into() });
+    assert_eq!(ents[1].offset, 5);
+    assert_eq!(ents[1].length, 10);
+}
+
+#[test]
+fn test_inline_reply_markup_roundtrip() {
+    use crate::types::{read_reply_markup, KeyboardButtonKind};
+
+    // replyInlineMarkup#48a30254 rows:Vector<KeyboardButtonRow>
+    let mut w = TLWriter::new();
+    w.write_u32(REPLY_INLINE_MARKUP);
+    w.write_u32(VECTOR); // rows
+    w.write_i32(1); // 1 row
+    w.write_u32(KEYBOARD_BUTTON_ROW);
+    w.write_u32(VECTOR); // buttons
+    w.write_i32(2); // 2 buttons
+    // keyboardButtonCallback (ctor carries flags first)
+    w.write_u32(KEYBOARD_BUTTON_CALLBACK);
+    w.write_i32(0); // flags
+    w.write_bytes(b"Yes");
+    w.write_bytes(&[0xDE, 0xAD]);
+    // keyboardButtonUrl
+    w.write_u32(KEYBOARD_BUTTON_URL);
+    w.write_i32(0);
+    w.write_bytes(b"Docs");
+    w.write_bytes(b"https://docs.example");
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    let markup = read_reply_markup(&mut r).unwrap();
+    match markup {
+        IncomingReplyMarkup::Inline { rows } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].buttons.len(), 2);
+            match (&rows[0].buttons[0], &rows[0].buttons[1]) {
+                (
+                    KeyboardButtonKind::Callback { text, data },
+                    KeyboardButtonKind::Url { text: t2, url },
+                ) => {
+                    assert_eq!(text, "Yes");
+                    assert_eq!(data, &vec![0xDE, 0xAD]);
+                    assert_eq!(t2, "Docs");
+                    assert_eq!(url, "https://docs.example");
+                }
+                _ => panic!("wrong button kinds"),
+            }
+        }
+        other => panic!("expected Inline, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_document_attributes_roundtrip() {
+    use crate::types::{read_document_attributes, DocumentAttribute};
+
+    let mut w = TLWriter::new();
+    w.write_u32(VECTOR);
+    w.write_i32(2);
+    // documentAttributeFilename
+    w.write_u32(DOCUMENT_ATTRIBUTE_FILENAME);
+    w.write_bytes(b"report.pdf");
+    // documentAttributeVideo (no optional flags)
+    w.write_u32(DOCUMENT_ATTRIBUTE_VIDEO);
+    w.write_i32(0); // flags
+    w.write_double(120.5); // duration
+    w.write_i32(1920);
+    w.write_i32(1080);
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    let attrs = read_document_attributes(&mut r).unwrap();
+    assert_eq!(attrs.len(), 2);
+    assert_eq!(attrs[0], DocumentAttribute::Filename { file_name: "report.pdf".into() });
+    match &attrs[1] {
+        DocumentAttribute::Video { duration, w, h, supports_streaming, .. } => {
+            assert!((duration - 120.5).abs() < f64::EPSILON);
+            assert_eq!(*w, 1920);
+            assert_eq!(*h, 1080);
+            assert!(!supports_streaming);
+        }
+        other => panic!("expected Video, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_photo_sizes_roundtrip() {
+    use crate::types::{read_photo_sizes, PhotoSizeFull};
+
+    let mut w = TLWriter::new();
+    w.write_u32(VECTOR);
+    w.write_i32(2);
+    // photoSize
+    w.write_u32(PHOTO_SIZE);
+    w.write_bytes(b"x");
+    w.write_i32(800);
+    w.write_i32(600);
+    w.write_i32(123_456);
+    // photoStrippedSize
+    w.write_u32(PHOTO_STRIPPED_SIZE);
+    w.write_bytes(b"i");
+    w.write_bytes(&[1, 2, 3]);
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    let sizes = read_photo_sizes(&mut r).unwrap();
+    assert_eq!(sizes.len(), 2);
+    assert_eq!(
+        sizes[0],
+        PhotoSizeFull::Size { type_: "x".into(), w: 800, h: 600, size: 123_456 }
+    );
+    assert_eq!(
+        sizes[1],
+        PhotoSizeFull::Stripped { type_: "i".into(), bytes: vec![1, 2, 3] }
+    );
+}
+
+#[test]
+fn test_dialog_folder_roundtrip() {
+    use crate::types::DialogFolderFull;
+
+    // dialogFolder#71bd134c flags:# pinned:flags.2?true folder:Folder peer:Peer
+    // top_message:int unread_muted_peers_count:int unread_unmuted_peers_count:int
+    // unread_muted_messages_count:int unread_unmuted_messages_count:int
+    let mut w = TLWriter::new();
+    w.write_u32(DIALOG_FOLDER);
+    w.write_i32(1 << 2); // pinned
+    w.write_u32(FOLDER);
+    w.write_i32(0); // folder flags
+    w.write_i32(3); // folder id
+    w.write_bytes(b"My folder");
+    w.write_u32(PEER_USER);
+    w.write_i64(42);
+    w.write_i32(1000); // top_message
+    w.write_i32(1);
+    w.write_i32(2);
+    w.write_i32(3);
+    w.write_i32(4);
+    let data = w.into_bytes();
+
+    let mut r = TLReader::new(&data);
+    let df = DialogFolderFull::read_from(&mut r).unwrap();
+    assert!(df.pinned);
+    assert_eq!(df.folder_id, 3);
+    assert_eq!(df.folder_title, "My folder");
+    assert_eq!(df.top_message, 1000);
+    assert_eq!(df.unread_unmuted_messages_count, 4);
+}
 }

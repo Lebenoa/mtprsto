@@ -36,7 +36,7 @@ pub struct MessageFull {
     pub date: i32,
     pub message: String,
     pub media: Option<MessageMedia>,
-    pub reply_markup: Option<ReplyMarkup>,
+    pub reply_markup: Option<IncomingReplyMarkup>,
     pub entities: Vec<MessageEntity>,
     pub views: Option<i32>,
     pub edit_date: Option<i32>,
@@ -110,16 +110,15 @@ impl Message {
                     None
                 };
                 let reply_markup = if flags & (1 << 6) != 0 {
-                    // TODO: parse reply_markup
-                    None
+                    super::reply_types::read_reply_markup(r).ok()
                 } else {
                     None
                 };
                 let entities = if flags & (1 << 7) != 0 {
-                    // TODO: parse entities vector
-                    let _ = r.read_u32()?; // vector ctor
-                    let _ = r.read_i32()?; // count
-                    Vec::new()
+                    super::reply_types::read_message_entities(r)?
+                        .into_iter()
+                        .map(|e| MessageEntity { offset: e.offset, length: e.length, kind: MessageEntityType::Known(e.kind) })
+                        .collect()
                 } else {
                     Vec::new()
                 };
@@ -268,7 +267,16 @@ pub enum MessageMedia {
     Game { game: String },
     Poll {},
     Dice { value: i32, emoticon: String },
+    /// `messageMediaVenue` — geo plus a human-readable place name.
+    Venue { geo: GeoPoint, title: String, address: String },
+    /// `messageMediaGeoLive` — live location.
+    GeoLive { geo: GeoPoint, heading: Option<i32>, period: i32 },
+    /// Recognized but variable-length media (poll, invoice, story,
+    /// giveaway, paid media, game). Presence is known; the payload is not
+    /// modelled.
     Unsupported,
+    /// Constructor not recognized by this library version.
+    Unknown(u32),
 }
 
 impl MessageMedia {
@@ -319,13 +327,59 @@ impl MessageMedia {
                 let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageMedia::Dice { value, emoticon })
             }
-            MESSAGE_MEDIA_UNSUPPORTED => Ok(MessageMedia::Unsupported),
-            _ => {
-                // Skip unknown media
-                while r.remaining() > 0 {
-                    let _ = r.read_i32()?;
+            MESSAGE_MEDIA_VENUE => {
+                let geo = GeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let _provider = String::from_utf8(r.read_bytes()?)?;
+                let _venue_id = String::from_utf8(r.read_bytes()?)?;
+                let _venue_type = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageMedia::Venue {
+                    geo,
+                    title,
+                    address,
+                })
+            }
+            MESSAGE_MEDIA_GEO_LIVE => {
+                let flags = r.read_i32()?;
+                let geo = GeoPoint::read_from(r)?;
+                let heading = if flags & (1 << 0) != 0 {
+                    Some(r.read_i32()?)
+                } else {
+                    None
+                };
+                let period = r.read_i32()?;
+                if flags & (1 << 1) != 0 {
+                    let _ = r.read_i32()?; // proximity_notification_radius
                 }
-                Ok(MessageMedia::None)
+                Ok(MessageMedia::GeoLive { geo, heading, period })
+            }
+            MESSAGE_MEDIA_CONTACT => {
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let vcard = String::from_utf8(r.read_bytes()?)?;
+                let user_id = UserId(r.read_i64()?);
+                Ok(MessageMedia::Contact {
+                    user_id,
+                    first_name,
+                    last_name,
+                    phone_number,
+                    vcard,
+                })
+            }
+            MESSAGE_MEDIA_POLL | MESSAGE_MEDIA_INVOICE | MESSAGE_MEDIA_STORY
+            | MESSAGE_MEDIA_GIVEAWAY | MESSAGE_MEDIA_GIVEAWAY_RESULTS
+            | MESSAGE_MEDIA_PAID_MEDIA | MESSAGE_MEDIA_GAME => {
+                // Variable-length nested payloads without per-field skip
+                // support. Mark as present-but-unsupported; the enclosing
+                // message parse completes because we stop consuming here.
+                Ok(MessageMedia::Unsupported)
+            }
+            other => {
+                // Do NOT drain the reader (old behaviour corrupted the
+                // stream); surface the ctor to the caller instead.
+                Ok(MessageMedia::Unknown(other))
             }
         }
     }
@@ -343,6 +397,6 @@ pub struct MessageEntity {
 #[derive(Debug, Clone)]
 pub enum MessageEntityType {
     Unknown(u32),
+    /// Fully-parsed kind (see [`MessageEntityKind`]).
+    Known(MessageEntityKind),
 }
-
-// ===========================================================================

@@ -29,6 +29,7 @@ use crate::pool::{PoolConfig, SenderPool};
 use crate::session::{SessionData, SessionStorage, SessionStore};
 use crate::types::{self, *};
 use crate::serialize::{TLReader, TLWriter};
+use crate::rpc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -131,6 +132,7 @@ impl ClientConfig {
             connected: false,
             pool_config: self.pool,
             pool: None,
+            update_task: None,
             peer_cache: HashMap::new(),
         })
     }
@@ -150,8 +152,9 @@ pub struct Client {
     session_store: Arc<RwLock<Box<dyn SessionStorage>>>,
     connected: bool,
     pool_config: PoolConfig,
-    pool: Option<SenderPool>,
-    /// Access-hash cache from username resolution, keyed by lowercased
+    pool: Option<Arc<SenderPool>>,
+    /// Handle to the background update pump started by [`Client::updates`].
+    update_task: Option<tokio::sync::mpsc::UnboundedSender<crate::types::Updates>>,
     /// username. Entries live for the process lifetime; a stale hash
     /// surfaces as a `PEER_ID_INVALID` RPC error.
     peer_cache: HashMap<String, InputPeer>,
@@ -185,7 +188,9 @@ impl Client {
 
     /// Connect to Telegram (create auth key via DH handshake if no session exists)
     /// and open a SenderPool.
+    #[tracing::instrument(name = "mtprsto::connect", skip(self), err)]
     pub async fn connect(&mut self) -> Result<()> {
+        let _session = crate::ergonomics::session_span(self.dc_id).entered();
         // Try loading existing session
         let session_data = {
             let mut store = self.session_store.write().await;
@@ -234,8 +239,8 @@ impl Client {
         };
 
         // Construct the connection pool with the real session
-        let mut pool = SenderPool::new(self.dc_id, mtproto_session, self.pool_config.clone());
-        pool.connect().await?;
+        let mut pool = Arc::new(SenderPool::new(self.dc_id, mtproto_session, self.pool_config.clone()));
+        Arc::get_mut(&mut pool).expect("pool freshly created").connect().await?;
         self.pool = Some(pool);
         self.connected = true;
 
@@ -255,6 +260,7 @@ impl Client {
     }
 
     /// Authorize as a bot using a bot token.
+    #[tracing::instrument(name = "mtprsto::authorize_bot", skip(self, bot_token), err)]
     pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<()> {
         if !self.connected {
             self.connect().await?;
@@ -281,6 +287,7 @@ impl Client {
     /// Send a text message to a peer.
     ///
     /// `peer` can be a user ID, chat ID, channel ID, or username string.
+    #[tracing::instrument(name = "mtprsto::send", skip(self, text), fields(peer = peer), err)]
     pub async fn send(&mut self, peer: &str, text: &str) -> Result<MsgId> {
         let input_peer = self.resolve_peer(peer).await?;
         let result = self.invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
@@ -383,6 +390,7 @@ impl Client {
     }
 
     /// Get your own user info (users.getFullUser with self).
+    #[tracing::instrument(name = "mtprsto::get_me", skip(self), err)]
     pub async fn get_me(&self) -> Result<User> {
         let mut w = TLWriter::new();
         w.write_u32(USERS_GET_FULL_USER);
@@ -449,6 +457,7 @@ impl Client {
     }
 
     /// Get a list of dialogs (conversations).
+    #[tracing::instrument(name = "mtprsto::get_dialogs", skip(self), err)]
     pub async fn get_dialogs(&self) -> Result<Dialogs> {
         let mut w = TLWriter::new();
         w.write_u32(MESSAGES_GET_DIALOGS);
@@ -490,7 +499,116 @@ impl Client {
         Self::parse_state(&result)
     }
 
+    /// Fetch missed updates since `state` (SPEC §6 pts/seq gap recovery).
+    /// Returns updates to re-dispatch through the dispatcher.
+    pub async fn get_difference(&self, state: &State) -> Result<types::Difference> {
+        let payload = rpc::build_get_difference(state.pts, state.date, state.qts);
+        let result = self.invoke_raw(payload).await?;
+        types::Difference::parse(&result)
+    }
+
+    /// Fetch missed channel updates (SPEC §6, `UpdateChannelTooLong` path).
+    pub async fn get_channel_difference(
+        &self,
+        channel: &InputChannel,
+        pts: i32,
+        limit: i32,
+    ) -> Result<types::ChannelDifference> {
+        let payload = rpc::build_get_channel_difference(channel, pts, limit);
+        let result = self.invoke_raw(payload).await?;
+        types::ChannelDifference::parse(&result)
+    }
+
+    /// Start the background update pump and return a receiver of decoded
+    /// [`Update`] events (SPEC gap item 9).
+    ///
+    /// The pump polls `updates.getState` on `poll_interval_secs`, runs the
+    /// [`UpdateDispatcher`] gap detection over the observed pts, and calls
+    /// `updates.getDifference` whenever the server's pts jumps — feeding the
+    /// recovered messages into the same dispatcher. Channel gaps surface as
+    /// `Update::ChannelTooLong`; the caller decides when to call
+    /// [`Client::get_channel_difference`].
+    ///
+    /// Returns `None` if the pump is already running or the client is not
+    /// connected.
+    pub fn updates(
+        &mut self,
+        poll_interval_secs: u64,
+    ) -> Option<tokio::sync::mpsc::UnboundedReceiver<types::Update>> {
+        use crate::updates::UpdateDispatcher;
+        if self.update_task.is_some() {
+            return None; // pump already running
+        }
+        let pool = self.pool.as_ref()?;
+        let (dispatcher, rx) = UpdateDispatcher::with_channel();
+        let (feed_tx, _keep_open) = tokio::sync::mpsc::unbounded_channel::<types::Updates>();
+        self.update_task = Some(feed_tx);
+        let pool = std::sync::Arc::clone(pool);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(
+                std::time::Duration::from_secs(poll_interval_secs.max(1)),
+            );
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            let mut dispatcher = dispatcher;
+            let mut last_pts = 0i32;
+            let mut have_pts = false;
+
+            loop {
+                interval.tick().await;
+
+                // Poll state to observe server-side pts drift.
+                let state = match pool
+                    .send_rpc(&rpc::build_get_state())
+                    .await
+                    .ok()
+                    .and_then(|bytes| Client::parse_state(&bytes).ok())
+                {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                if have_pts && state.pts > last_pts + 1 {
+                    // Gap detected — recover the missed range.
+                    let payload =
+                        rpc::build_get_difference(last_pts, state.date, state.qts);
+                    if let Ok(bytes) = pool.send_rpc(&payload).await
+                        && let Ok(types::Difference::Difference {
+                            new_messages,
+                            other_updates,
+                            ..
+                        }) = types::Difference::parse(&bytes)
+                    {
+                            for msg in new_messages {
+                                dispatcher.process_updates(types::Updates::UpdateShort {
+                                    update: types::Update::NewMessage {
+                                        message: msg,
+                                        pts: last_pts + 1,
+                                        pts_count: 1,
+                                    },
+                                    date: state.date,
+                                    seq: state.seq,
+                                });
+                            }
+                            for u in other_updates {
+                                dispatcher.process_updates(types::Updates::UpdateShort {
+                                    update: u,
+                                    date: state.date,
+                                    seq: state.seq,
+                                });
+                            }
+                    }
+                }
+
+                last_pts = state.pts;
+                have_pts = true;
+            }
+        });
+
+        Some(rx)
+    }
+
     /// Delete messages by ID.
+    #[tracing::instrument(name = "mtprsto::delete_messages", skip(self, msg_ids), err)]
     pub async fn delete_messages(&self, msg_ids: &[MsgId]) -> Result<()> {
         let mut w = TLWriter::new();
         w.write_u32(MESSAGES_DELETE_MESSAGES);
@@ -519,7 +637,7 @@ impl Client {
     }
 
     /// Helper: invoke a method with a builder closure.
-    async fn invoke_with_method<F>(&self, method_id: u32, build: F) -> Result<Vec<u8>>
+    pub(crate) async fn invoke_with_method<F>(&self, method_id: u32, build: F) -> Result<Vec<u8>>
     where
         F: FnOnce(&mut TLWriter) -> Result<()>,
     {
@@ -528,6 +646,18 @@ impl Client {
         build(&mut w)?;
         self.invoke_raw(w.into_bytes()).await
     }
+
+    /// Internal accessor for the connected pool (ergonomics module).
+    pub(crate) fn pool(&self) -> Arc<SenderPool> {
+        self.pool
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| {
+                // Unreachable via public API: builders check `connected`.
+                panic!("pool accessed before connect()")
+            })
+    }
+
 
     /// Resolve a peer string to an InputPeer.
     ///
@@ -561,6 +691,7 @@ impl Client {
     /// `InputPeer` via `contacts.resolveUsername`. The returned peer carries
     /// the access hash needed for subsequent RPCs; results are cached in
     /// [`Client::peer_cache`] keyed by the lowercased username.
+    #[tracing::instrument(name = "mtprsto::resolve_username", skip(self, username), err)]
     pub async fn resolve_username(&mut self, username: &str) -> Result<InputPeer> {
         let uname = username.trim_start_matches('@');
         if uname.is_empty() {
@@ -702,6 +833,116 @@ impl Client {
             return Ok(peer);
         }
         Err(Error::Other(format!("username @{key} not found")))
+    }
+
+    /// Typed invoke: run a raw TL request and decode the result as `T`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when not connected, plus any transport or
+    /// RPC failure; decoding failures surface as
+    /// [`Error::Protocol`]/[`Error::Serialization`].
+    #[tracing::instrument(name = "mtprsto::invoke", skip_all, err)]
+    pub async fn invoke<T: crate::ergonomics::TlResult>(
+        &self,
+        method_bytes: Vec<u8>,
+    ) -> Result<T> {
+        let raw = self.invoke_raw(method_bytes).await?;
+        T::from_rpc_result(&raw)
+    }
+
+    /// Start a fluent message build:
+    /// `client.message(peer, "hi").reply_to(id).silent().send().await?`.
+    ///
+    /// `peer` accepts the same forms as [`Client::send`] (numeric id or
+    /// `@username`).
+    pub async fn message(
+        &mut self,
+        peer: &str,
+        text: impl Into<String>,
+    ) -> crate::ergonomics::MessageBuilder<'_> {
+        let peer = self.resolve_peer(peer).await.expect("peer resolution");
+        crate::ergonomics::MessageBuilder::new(self, peer, text.into())
+    }
+
+    /// Start a fluent file send:
+    /// `client.send_file(peer, path).caption("hi").send().await?`.
+    ///
+    /// Uploads the file (chunked) and sends it as a document message.
+    pub async fn send_file(
+        &mut self,
+        peer: &str,
+        path: impl Into<std::path::PathBuf>,
+    ) -> crate::ergonomics::SendFileBuilder<'_> {
+        let peer = self.resolve_peer(peer).await.expect("peer resolution");
+        crate::ergonomics::SendFileBuilder::new(self, peer, path.into())
+    }
+
+    /// Start a history iterator over a peer's recent messages:
+    /// `client.messages(peer).take(10).collect().await?`.
+    pub async fn messages(
+        &mut self,
+        peer: &str,
+    ) -> crate::ergonomics::MessagesIter<'_> {
+        let peer = self.resolve_peer(peer).await.expect("peer resolution");
+        crate::ergonomics::MessagesIter::new(self, peer)
+    }
+
+    /// Fetch one page of history (used by [`Client::messages`]).
+    ///
+    /// Returns `limit` messages **older than** `offset_id`, oldest first.
+    #[tracing::instrument(name = "mtprsto::getHistory", skip_all, fields(peer = %peer_debug(peer)), err)]
+    pub(crate) async fn get_history_page(
+        &self,
+        peer: &InputPeer,
+        offset_id: i32,
+        limit: i32,
+    ) -> Result<Vec<crate::types::MessageFull>> {
+        let payload = rpc::build_get_history(peer, offset_id, 0, 0, limit, 0, 0);
+        let result = self.invoke_raw(payload).await?;
+        parse_history_messages(&result)
+    }
+}
+
+/// Debug label for an input peer (used in tracing fields).
+fn peer_debug(peer: &InputPeer) -> String {
+    match peer {
+        InputPeer::UserFromId { user_id } => format!("user:{}", user_id.0),
+        InputPeer::User { user_id, .. } => format!("user:{}", user_id.0),
+        InputPeer::Chat { chat_id } => format!("chat:{}", chat_id.0),
+        InputPeer::Channel { channel_id, .. } => format!("channel:{}", channel_id.0),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Extract the `messages` vector from a `messages.Messages*` response.
+fn parse_history_messages(data: &[u8]) -> Result<Vec<crate::types::MessageFull>> {
+    let mut r = TLReader::new(data);
+    let ctor = r.read_u32()?;
+    if ctor != types::MESSAGES_MESSAGES && ctor != types::MESSAGES_MESSAGES_SLICE
+        && ctor != types::MESSAGES_CHANNEL_MESSAGES
+    {
+        return Err(Error::Protocol(format!(
+            "unexpected getHistory response constructor {ctor:#x}"
+        )));
+    }
+    match ctor {
+        types::MESSAGES_CHANNEL_MESSAGES => {
+            // channel_messages#768b1a60 — different header; not modelled.
+            Ok(Vec::new())
+        }
+        _ => {
+            let count = r.read_vector_header()?;
+            let mut out = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                match crate::types::Message::read_from(&mut r)? {
+                    types::Message::Message(full) => out.push(*full),
+                    types::Message::Empty { .. } => {}
+                    types::Message::Service { .. } => {}
+                }
+            }
+            Ok(out)
+        }
     }
 }
 

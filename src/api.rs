@@ -95,30 +95,45 @@ impl TelegramClient {
         // Step 6: Parse server_DH_params_ok
         auth.parse_server_dh_params(&dh_response)?;
 
-        // Step 7: Build set_client_DH_params
-        let set_dh = auth.build_set_client_dh_params()?;
+        // Steps 7-9: set_client_DH_params, parse answer; on dh_gen_retry,
+        // regenerate b and retry with retry_id = previous attempt's
+        // auth_key_aux_hash (SPEC §7/§9).
+        const MAX_DH_ATTEMPTS: u32 = 4;
+        for attempt in 0..MAX_DH_ATTEMPTS {
+            // Step 7: Build set_client_DH_params (fresh b every attempt;
+            // retry_id inside is 0 first, then the previous aux hash).
+            let set_dh = auth.build_set_client_dh_params()?;
 
-        // Step 8: Send set_client_DH_params
-        transport::send_unencrypted(&mut stream, 0, &set_dh).await?;
-        let (_, dh_gen_response) = transport::recv_unencrypted(&mut stream).await?;
+            // Step 8: Send set_client_DH_params
+            transport::send_unencrypted(&mut stream, 0, &set_dh).await?;
+            let (_, dh_gen_response) = transport::recv_unencrypted(&mut stream).await?;
 
-        // Step 9: Parse dh_gen_ok
-        let result = auth.parse_dh_gen_result(&dh_gen_response)?;
-
-        match result {
-            AuthKeyResult::Ok => {
-                let auth_key = auth.compute_auth_key()?;
-                let server_salt = auth.compute_server_salt()?;
-                self.session = Some(MtProtoSession::new(auth_key, server_salt));
-                Ok(())
-            }
-            AuthKeyResult::Retry => {
-                Err(Error::Protocol("DH retry requested (implement retry logic)".into()))
-            }
-            AuthKeyResult::Fail => {
-                Err(Error::Protocol("DH key creation failed".into()))
+            // Step 9: Parse the answer
+            match auth.parse_dh_gen_result(&dh_gen_response)? {
+                AuthKeyResult::Ok => {
+                    let auth_key = auth.compute_auth_key()?;
+                    let server_salt = auth.compute_server_salt()?;
+                    self.session = Some(MtProtoSession::new(auth_key, server_salt));
+                    return Ok(());
+                }
+                AuthKeyResult::Retry => {
+                    // Server rejected this candidate key: promote this
+                    // attempt's aux hash to the next attempt's retry_id and
+                    // go around again with a fresh b.
+                    auth.retry_id = auth.auth_key_aux_hash.unwrap_or(0);
+                    tracing::warn!(
+                        "dh_gen_retry from server (attempt {}), retrying with retry_id={:#x}",
+                        attempt + 1, auth.retry_id
+                    );
+                }
+                AuthKeyResult::Fail => {
+                    return Err(Error::Protocol("DH key creation failed".into()));
+                }
             }
         }
+        Err(Error::Protocol(format!(
+            "DH key creation still retrying after {MAX_DH_ATTEMPTS} attempts"
+        )))
     }
 
     // ------------------------------------------------------------------
@@ -248,6 +263,7 @@ impl TelegramClient {
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_IN);
+        payload.write_i32(0); // flags# (no phone_code / email_verification flags)
         payload.write_bytes(phone_number.as_bytes());
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(phone_code.as_bytes());
@@ -308,6 +324,7 @@ impl TelegramClient {
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_UP);
+        payload.write_i32(0); // flags# (no_joined_notifications off)
         payload.write_bytes(phone_number.as_bytes());
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(first_name.as_bytes());
@@ -352,6 +369,150 @@ impl TelegramClient {
         }
     }
 
+    /// Log out and invalidate the current authorization.
+    ///
+    /// `auth.logOut#3e72ba19 = auth.LoggedOut;` — server may return a
+    /// `future_auth_token` for resync; we surface it to the caller.
+    pub async fn auth_log_out(&mut self) -> Result<Option<Vec<u8>>> {
+        let plaintext = self.invoke(types::AUTH_LOG_OUT, &[]).await?;
+        let mut r = TLReader::new(&plaintext);
+        let constructor = r.read_u32()?;
+
+        match constructor {
+            types::AUTH_LOGGED_OUT => {
+                let flags = r.read_i32()?;
+                let token = if flags & (1 << 0) != 0 {
+                    Some(r.read_bytes()?)
+                } else {
+                    None
+                };
+                // Our session is dead server-side.
+                self.user_id = None;
+                Ok(token)
+            }
+            RPC_ERROR => {
+                let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
+                Err(crate::error::classify_rpc_error(code, &msg))
+            }
+            _ => Err(Error::UnexpectedResponse(format!(
+                "unexpected constructor {:#x} in auth_log_out response",
+                constructor
+            ))),
+        }
+    }
+
+    /// Verify a 2FA cloud password and finish sign-in.
+    ///
+    /// `auth.checkPassword#d18b4d16 password:InputCheckPasswordSRP`.
+    /// Fetches `account.getPassword` for the server challenge, runs the
+    /// client side of SRP with the password, and sends the proof.
+    pub async fn auth_check_password(&mut self, password: &str) -> Result<()> {
+        // account.getPassword → the SRP challenge (algo + srp_B + srp_id).
+        let raw = self.invoke(types::ACCOUNT_GET_PASSWORD, &[]).await?;
+        let challenge = parse_account_password(&raw)?;
+        let algo = challenge.algo.as_ref().ok_or_else(|| {
+            Error::Protocol("account.password has no current_algo (no password set?)".into())
+        })?;
+
+        let params = crate::crypto::SrpParams {
+            salt1: algo.salt1.clone(),
+            salt2: algo.salt2.clone(),
+            g: algo.g,
+            p: algo.p.clone(),
+            b: challenge.srp_b.clone(),
+            srp_id: challenge.srp_id,
+        };
+        let answer = crate::crypto::srp_check_password(password.as_bytes(), &params);
+
+        // inputCheckPasswordSRP#d27ff082 srp_id:long A:bytes M1:bytes
+        let mut srp_payload = TLWriter::new();
+        srp_payload.write_u32(types::INPUT_CHECK_PASSWORD_SRP);
+        srp_payload.write_i64(answer.srp_id);
+        srp_payload.write_bytes(&answer.a);
+        srp_payload.write_bytes(&answer.m1);
+
+        let plaintext = self.invoke(types::AUTH_CHECK_PASSWORD, &srp_payload.into_bytes()).await?;
+        let mut r = TLReader::new(&plaintext);
+        let constructor = r.read_u32()?;
+
+        match constructor {
+            types::AUTH_AUTHORIZATION => {
+                let user = parse_authorization_user(&mut r)?;
+                self.user_id = Some(user);
+                Ok(())
+            }
+            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => Err(Error::SignUpRequired),
+            RPC_ERROR => {
+                let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
+                Err(crate::error::classify_rpc_error(code, &msg))
+            }
+            _ => Err(Error::UnexpectedResponse(format!(
+                "unexpected constructor {:#x} in auth_check_password response",
+                constructor
+            ))),
+        }
+    }
+
+    /// QR-code login, step 1: request a login token to render as
+    /// `tg://login?token=...`.
+    ///
+    /// `auth.exportLoginToken#b7e085fe api_id:int api_hash:string except_ids:Vector<long>`.
+    pub async fn auth_export_login_token(
+        &mut self,
+        except_ids: &[i64],
+    ) -> Result<AuthLoginToken> {
+        let mut payload = TLWriter::new();
+        payload.write_u32(types::AUTH_EXPORT_LOGIN_TOKEN);
+        payload.write_i32(self.api_id.unwrap_or(0));
+        payload.write_bytes(self.api_hash.as_deref().unwrap_or("").as_bytes());
+        payload.write_i32(except_ids.len() as i32);
+        for id in except_ids {
+            payload.write_i64(*id);
+        }
+
+        let plaintext = self.invoke(types::AUTH_EXPORT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        parse_login_token_response(&plaintext)
+    }
+
+    /// QR-code login, step 2 (caller side): import a token scanned from
+    /// another device and poll until it is approved.
+    ///
+    /// `auth.importLoginToken#95ac5ce4 token:bytes = auth.LoginToken;`
+    pub async fn auth_import_login_token(&mut self, token: &[u8]) -> Result<AuthLoginToken> {
+        let mut payload = TLWriter::new();
+        payload.write_u32(types::AUTH_IMPORT_LOGIN_TOKEN);
+        payload.write_bytes(token);
+
+        let plaintext = self.invoke(types::AUTH_IMPORT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        parse_login_token_response(&plaintext)
+    }
+
+    /// QR-code login, other side: accept a token scanned from a QR code.
+    ///
+    /// `auth.acceptLoginToken#e894ad4d token:bytes = Authorization;`
+    /// Returns the authorized user id, if the token was valid.
+    pub async fn auth_accept_login_token(&mut self, token: &[u8]) -> Result<i64> {
+        let mut payload = TLWriter::new();
+        payload.write_u32(types::AUTH_ACCEPT_LOGIN_TOKEN);
+        payload.write_bytes(token);
+
+        let plaintext = self.invoke(types::AUTH_ACCEPT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        let mut r = TLReader::new(&plaintext);
+        let constructor = r.read_u32()?;
+
+        match constructor {
+            types::AUTH_AUTHORIZATION => parse_authorization_user(&mut r),
+            RPC_ERROR => {
+                let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
+                Err(crate::error::classify_rpc_error(code, &msg))
+            }
+            _ => Err(Error::UnexpectedResponse(format!(
+                "unexpected constructor {:#x} in auth_accept_login_token response",
+                constructor
+            ))),
+        }
+    }
+
     // ------------------------------------------------------------------
     // General API methods
     // ------------------------------------------------------------------
@@ -377,6 +538,7 @@ impl TelegramClient {
 
         let response_data = transport::recv_encrypted(&mut stream).await?;
         let (resp_msg_id, plaintext) = session.decrypt_message(&response_data)?;
+
 
         // Send ack
         let ack = crate::mtproto::build_msgs_ack(&[resp_msg_id]);
@@ -429,6 +591,150 @@ pub struct AuthSentCodeInfo {
 /// Sent code type constants.
 pub const SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
 pub const SENT_CODE_TYPE_SMS: u32 = 0xc004bac7;
+
+
+/// Result of an `auth.exportLoginToken` / `auth.importLoginToken` call.
+#[derive(Debug, Clone)]
+pub enum AuthLoginToken {
+    /// Token active — poll again or render the QR code.
+    Token {
+        expires: i32,
+        token: Vec<u8>,
+    },
+    /// Login must continue on another DC.
+    MigrateTo {
+        dc_id: i32,
+        token: Vec<u8>,
+    },
+    /// The other device approved the login.
+    Success,
+}
+
+/// Parse a `auth.LoginToken` response.
+fn parse_login_token_response(plaintext: &[u8]) -> Result<AuthLoginToken> {
+    let mut r = TLReader::new(plaintext);
+    let constructor = r.read_u32()?;
+
+    match constructor {
+        types::AUTH_LOGIN_TOKEN => {
+            let expires = r.read_i32()?;
+            let token = r.read_bytes()?;
+            Ok(AuthLoginToken::Token { expires, token })
+        }
+        types::AUTH_LOGIN_TOKEN_MIGRATE_TO => {
+            let dc_id = r.read_i32()?;
+            let token = r.read_bytes()?;
+            Ok(AuthLoginToken::MigrateTo { dc_id, token })
+        }
+        types::AUTH_LOGIN_TOKEN_SUCCESS => Ok(AuthLoginToken::Success),
+        RPC_ERROR => {
+            let (code, msg) = crate::mtproto::parse_rpc_error(plaintext)?;
+            Err(crate::error::classify_rpc_error(code, &msg))
+        }
+        _ => Err(Error::UnexpectedResponse(format!(
+            "unexpected constructor {:#x} in login token response",
+            constructor
+        ))),
+    }
+}
+
+/// Parse an `auth.Authorization` body (after the constructor) and return
+/// the authorized user's id.
+fn parse_authorization_user(r: &mut TLReader) -> Result<i64> {
+    // auth.authorization#2ea2c0d4 flags:# setup_password_required:flags.1?true
+    // otherwise_relogin_days:flags.1?int tmp_sessions:flags.0?int
+    // future_auth_token:flags.2?bytes user:User
+    let flags = r.read_i32()?;
+    if flags & (1 << 0) != 0 {
+        let _ = r.read_i32()?; // tmp_sessions
+    }
+    if flags & (1 << 1) != 0 {
+        let _ = r.read_i32()?; // otherwise_relogin_days
+    }
+    if flags & (1 << 2) != 0 {
+        let _ = r.read_bytes()?; // future_auth_token
+    }
+    let user = types::User::read_from(r)?;
+    Ok(user.id().0)
+}
+
+/// The parts of `account.password` that `auth.checkPassword` needs.
+#[derive(Debug, Clone)]
+pub struct AccountPasswordChallenge {
+    /// `current_algo` payload — None when no password is set.
+    pub algo: Option<PasswordKdfAlgo>,
+    /// `srp_B`.
+    pub srp_b: Vec<u8>,
+    /// `srp_id`.
+    pub srp_id: i64,
+}
+
+/// `passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow` body.
+#[derive(Debug, Clone)]
+pub struct PasswordKdfAlgo {
+    pub salt1: Vec<u8>,
+    pub salt2: Vec<u8>,
+    pub g: u32,
+    pub p: Vec<u8>,
+}
+
+/// Parse an `account.password` response.
+fn parse_account_password(plaintext: &[u8]) -> Result<AccountPasswordChallenge> {
+    // account.password#5188ee1b flags:# has_recovery:flags.0?true
+    // has_secure_values:flags.1?true has_password:flags.2?true
+    // current_algo:flags.2?PasswordKdfAlgo srp_B:flags.2?bytes
+    // srp_id:flags.2?long hint:flags.3?string
+    // email_unconfirmed_pattern:flags.4?string new_algo:PasswordKdfAlgo
+    // new_secure_algo:SecurePasswordKdfAlgo secure_random:bytes
+    // pending_reset_date:flags.5?int login_email_pattern:flags.6?string
+    let mut r = TLReader::new(plaintext);
+    let constructor = r.read_u32()?;
+    if constructor != types::ACCOUNT_GET_PASSWORD_RESPONSE {
+        return Err(Error::UnexpectedResponse(format!(
+            "expected account.password, got {constructor:#x}"
+        )));
+    }
+
+    let flags = r.read_i32()?;
+    let has_password = flags & (1 << 2) != 0;
+    let algo = if has_password {
+        let algo_ctor = r.read_u32()?;
+        if algo_ctor != types::PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512_100K_MODPOW {
+            return Err(Error::UnexpectedResponse(format!(
+                "unsupported passwordKdfAlgo {algo_ctor:#x}"
+            )));
+        }
+        Some(PasswordKdfAlgo {
+            salt1: r.read_bytes()?,
+            salt2: r.read_bytes()?,
+            g: r.read_i32()? as u32,
+            p: r.read_bytes()?,
+        })
+    } else {
+        None
+    };
+    let srp_b = if has_password { r.read_bytes()? } else { Vec::new() };
+    let srp_id = if has_password { r.read_i64()? } else { 0 };
+    let hint = if flags & (1 << 3) != 0 { r.read_bytes()? } else { Vec::new() };
+    let _ = hint;
+    let email = if flags & (1 << 4) != 0 { r.read_bytes()? } else { Vec::new() };
+    let _ = email;
+    let _new_algo_ctor = r.read_u32()?; // skip new_algo (only ctor id read)
+    let _new_secure_algo_ctor = r.read_u32()?; // skip new_secure_algo
+    let _secure_random = r.read_bytes()?;
+    if flags & (1 << 5) != 0 {
+        let _ = r.read_i32()?; // pending_reset_date
+    }
+    if flags & (1 << 6) != 0 {
+        let _ = r.read_bytes()?; // login_email_pattern
+    }
+
+    Ok(AccountPasswordChallenge {
+        algo,
+        srp_b,
+        srp_id,
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Serialization helpers for common TL types
@@ -484,5 +790,96 @@ mod tests {
         let client = TelegramClient::new(2, Some(12345), Some("hash".into()));
         assert!(client.session.is_none());
         assert_eq!(client.dc_id, 2);
+    }
+
+    #[test]
+    fn test_parse_login_token_response_variants() {
+        // auth.loginToken#629f1980 expires:int token:bytes
+        let mut w = TLWriter::new();
+        w.write_u32(types::AUTH_LOGIN_TOKEN);
+        w.write_i32(3600);
+        w.write_bytes(&[1, 2, 3, 4]);
+        match parse_login_token_response(&w.into_bytes()).unwrap() {
+            AuthLoginToken::Token { expires, token } => {
+                assert_eq!(expires, 3600);
+                assert_eq!(token, vec![1, 2, 3, 4]);
+            }
+            _ => panic!("expected Token"),
+        }
+
+        // auth.loginTokenMigrateTo#68e9916 dc_id:int token:bytes
+        let mut w = TLWriter::new();
+        w.write_u32(types::AUTH_LOGIN_TOKEN_MIGRATE_TO);
+        w.write_i32(2);
+        w.write_bytes(&[9]);
+        match parse_login_token_response(&w.into_bytes()).unwrap() {
+            AuthLoginToken::MigrateTo { dc_id, token } => {
+                assert_eq!(dc_id, 2);
+                assert_eq!(token, vec![9]);
+            }
+            _ => panic!("expected MigrateTo"),
+        }
+
+        // auth.loginTokenSuccess#390d5c5e
+        let mut w = TLWriter::new();
+        w.write_u32(types::AUTH_LOGIN_TOKEN_SUCCESS);
+        assert!(matches!(
+            parse_login_token_response(&w.into_bytes()).unwrap(),
+            AuthLoginToken::Success
+        ));
+    }
+
+    #[test]
+    fn test_parse_account_password_roundtrip() {
+        // Build account.password#5188ee1b with has_password + no optional extras.
+        let mut w = TLWriter::new();
+        w.write_u32(types::ACCOUNT_GET_PASSWORD_RESPONSE);
+        let flags: i32 = 1 << 2; // has_password
+        w.write_i32(flags);
+        w.write_u32(types::PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512_100K_MODPOW);
+        w.write_bytes(&[0xAA, 0xBB]); // salt1
+        w.write_bytes(&[0xCC]); // salt2
+        w.write_i32(3); // g
+        w.write_bytes(&[0x11; 256]); // p
+        w.write_bytes(&[0x22; 128]); // srp_B
+        w.write_i64(0x1234_5678_9abc); // srp_id
+        // new_algo / new_secure_algo ctor ids + secure_random
+        w.write_u32(0); // passwordKdfAlgoUnknown
+        w.write_u32(0); // securePasswordKdfAlgoUnknown
+        w.write_bytes(&[0; 32]);
+
+        let challenge = parse_account_password(&w.into_bytes()).unwrap();
+        let algo = challenge.algo.expect("has_password set");
+        assert_eq!(algo.salt1, vec![0xAA, 0xBB]);
+        assert_eq!(algo.salt2, vec![0xCC]);
+        assert_eq!(algo.g, 3);
+        assert_eq!(algo.p, vec![0x11_u8; 256]);
+        assert_eq!(challenge.srp_b, vec![0x22_u8; 128]);
+        assert_eq!(challenge.srp_id, 0x1234_5678_9abc);
+    }
+
+    #[test]
+    fn test_srp_check_password_is_deterministic_shape() {
+        // SRP mixes a random a, so M1 differs run to run — but the answer
+        // must always be well-formed: A padded to 255 bytes, M1 = 32 bytes.
+        let params = crate::crypto::SrpParams {
+            salt1: vec![1, 2, 3],
+            salt2: vec![4, 5, 6],
+            g: 3,
+            p: {
+                // A 2048-bit odd number is enough for a shape test (ModPow
+                // works for any modulus; correctness vs server is covered
+                // by interoperability, not unit tests).
+                let mut p = vec![0x7F; 256];
+                p[255] |= 1;
+                p
+            },
+            b: vec![0x42; 255],
+            srp_id: 77,
+        };
+        let ans = crate::crypto::srp_check_password(b"hunter2", &params);
+        assert_eq!(ans.srp_id, 77);
+        assert_eq!(ans.a.len(), 255);
+        assert_eq!(ans.m1.len(), 32);
     }
 }
