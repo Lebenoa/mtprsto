@@ -1,14 +1,12 @@
-//! Telegram MTProto 2.0 client — supports both user and bot authorization.
+//! Offline protocol demo and live authorization smoke tests.
 //!
 //! Usage:
-//!   mtprsto --bot-token <TOKEN>
-//!   mtprsto --user-phone <PHONE>
-//!   mtprsto --demo (runs offline crypto tests)
+//!   cargo run --example demo -- --demo            (offline crypto checks, no network)
+//!   cargo run --example demo -- --bot-token <TOKEN>
+//!   cargo run --example demo -- --user-phone <PHONE>
 //!
-//! For bot authorization, you need an API ID and API hash from https://my.telegram.org.
-//! Set them via environment variables:
-//!   TELEGRAM_API_ID=12345
-//!   TELEGRAM_API_HASH=abcdef1234567890
+//! Live modes need TELEGRAM_API_ID and TELEGRAM_API_HASH from
+//! https://my.telegram.org.
 
 use mtprsto::api::TelegramClient;
 use mtprsto::crypto;
@@ -57,18 +55,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_usage() {
-    println!("Telegram MTProto 2.0 Client");
+    println!("Telegram MTProto 2.0 demo");
     println!();
     println!("Usage:");
-    println!("  mtprsto --demo                        Run offline crypto tests");
-    println!("  mtprsto --bot-token <TOKEN>            Authorize as a bot");
-    println!("  mtprsto --user-phone <PHONE>           Authorize as a user");
+    println!("  cargo run --example demo -- --demo              Offline crypto tests");
+    println!("  cargo run --example demo -- --bot-token <TOKEN>  Authorize as a bot");
+    println!("  cargo run --example demo -- --user-phone <PHONE> Authorize as a user");
     println!();
     println!("Environment variables:");
     println!("  TELEGRAM_API_ID      API ID from https://my.telegram.org");
     println!("  TELEGRAM_API_HASH    API Hash from https://my.telegram.org");
 }
-
 fn run_demo() {
     println!("=== MTProto 2.0 Offline Demo ===\n");
 
@@ -200,9 +197,9 @@ fn run_demo() {
     println!("     export TELEGRAM_API_ID=your_api_id");
     println!("     export TELEGRAM_API_HASH=your_api_hash");
     println!("  3. For bot auth:");
-    println!("     mtprsto --bot-token 123456:ABC-DEF...");
+    println!("     cargo run --example demo -- --bot-token 123456:ABC-DEF...");
     println!("  4. For user auth:");
-    println!("     mtprsto --user-phone +1234567890");
+    println!("     cargo run --example demo -- --user-phone +1234567890");
 }
 
 async fn bot_auth(token: &str) -> Result<(), Box<dyn std::error::Error>> {

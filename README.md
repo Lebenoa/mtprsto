@@ -107,19 +107,19 @@ Run it:
 cargo run --example session_storage
 ```
 
-### CLI demo
+### Demo and smoke tests
 
-The repository ships a binary for exercising the stack directly:
+The repository ships an example that exercises the stack directly:
 
 ```sh
 # Offline crypto and TL round-trip checks (no network)
-cargo run -- --demo
+cargo run --example demo -- --demo
 
 # Authorize as a bot against the real DCs
-TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run -- --bot-token 123456:TOKEN
+TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --bot-token 123456:TOKEN
 
 # User authorization (interactive code entry)
-TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run -- --user-phone +15551234567
+TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --user-phone +15551234567
 ```
 
 ## Architecture
@@ -181,8 +181,8 @@ is reused across runs. Pass `.session("path.json")` or a custom
 ## Testing
 
 ```sh
-cargo test          # unit + doc tests
-cargo run -- --demo # offline protocol self-check
+cargo test                          # unit + doc tests
+cargo run --example demo -- --demo  # offline protocol self-check
 ```
 
 ## License
