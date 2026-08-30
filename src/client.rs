@@ -25,7 +25,7 @@
 use crate::api::TelegramClient;
 use crate::error::{Error, Result};
 use crate::mtproto::MtProtoSession;
-use crate::pool::{PoolConfig, SenderPool};
+use crate::pool::{PoolConfig, ProtocolConfig, SenderPool};
 use crate::session::{SessionData, SessionStorage, SessionStore};
 use crate::types::{self, *};
 use crate::serialize::{TLReader, TLWriter};
@@ -44,6 +44,7 @@ pub struct ClientConfig {
     /// `None` = auto-select the nearest DC after bootstrapping (default).
     dc_id: Option<i32>,
     pool: PoolConfig,
+    protocol: ProtocolConfig,
     download: crate::file::DownloadConfig,
 }
 
@@ -57,6 +58,7 @@ impl ClientConfig {
             session_storage: None,
             dc_id: None,
             pool: PoolConfig::default(),
+            protocol: ProtocolConfig::default(),
             download: crate::file::DownloadConfig::default(),
         }
     }
@@ -102,6 +104,13 @@ impl ClientConfig {
         self
     }
 
+    /// Set protocol-level knobs: keepalive/ack/salt timers and
+    /// anti-fingerprinting random padding (see [`ProtocolConfig`]).
+    pub fn protocol_config(mut self, config: ProtocolConfig) -> Self {
+        self.protocol = config;
+        self
+    }
+
     /// Set download configuration (parallel range fetching, SPEC BS-5).
     pub fn download_config(mut self, config: crate::file::DownloadConfig) -> Self {
         self.download = config;
@@ -144,6 +153,7 @@ impl ClientConfig {
             session_store: Arc::new(RwLock::new(session_store)),
             connected: false,
             pool_config: self.pool,
+            protocol_config: self.protocol,
             download_config: self.download,
             pool: None,
             update_task: None,
@@ -168,6 +178,7 @@ pub struct Client {
     session_store: Arc<RwLock<Box<dyn SessionStorage>>>,
     connected: bool,
     pool_config: PoolConfig,
+    protocol_config: ProtocolConfig,
     /// Download knobs (parallel threshold/count, SPEC BS-5).
     download_config: crate::file::DownloadConfig,
     pool: Option<Arc<SenderPool>>,
@@ -323,11 +334,16 @@ impl Client {
         };
 
         // Construct the connection pool with the real session
+        // Apply the anti-fingerprinting knob to the live session before
+        // any traffic flows through it.
+        let mut mtproto_session = mtproto_session;
+        mtproto_session.set_random_padding(self.protocol_config.random_padding);
         let mut pool = Arc::new(SenderPool::new(
             self.dc_id,
             self.api_id.unwrap_or(0),
             mtproto_session,
             self.pool_config.clone(),
+            self.protocol_config.clone(),
         ));
         Arc::get_mut(&mut pool).expect("pool freshly created").connect().await?;
         self.pool = Some(pool);
@@ -858,7 +874,7 @@ impl Client {
     }
 
     /// Internal accessor for the connected pool (ergonomics module).
-    pub(crate) fn pool(&self) -> Arc<SenderPool> {
+    pub fn pool(&self) -> Arc<SenderPool> {
         self.pool
             .as_ref()
             .cloned()

@@ -508,6 +508,7 @@ mod obf_probe {
         let seq_no = session.next_seq_no(true);
         let encrypted = session.encrypt_message(&payload, msg_id, seq_no);
 
+        #[allow(dead_code)]
         async fn dial() -> tokio::net::TcpStream {
             let addr = dc_address(2).unwrap();
             tokio::net::TcpStream::connect(addr).await.unwrap()

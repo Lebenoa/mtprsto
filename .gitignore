@@ -4,3 +4,4 @@
 bot.session
 *.session
 tl*.json
+.gotdref/

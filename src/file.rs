@@ -207,7 +207,7 @@ pub fn parse_get_file(data: &[u8]) -> Result<GetFile> {
 async fn get_file_chunk(
     pool: &crate::pool::SenderPool,
     location: &FileLocation,
-    offset: i32,
+    offset: i64,
     limit: usize,
 ) -> Result<Vec<u8>> {
     let payload = rpc::build_get_file(location, offset, limit as i32);
@@ -226,15 +226,15 @@ pub async fn download(
     location: &FileLocation,
 ) -> Result<Vec<u8>> {
     let mut out = Vec::new();
-    let mut offset: i32 = 0;
+    let mut offset: i64 = 0;
     loop {
         let chunk = get_file_chunk(&pool, location, offset, DOWNLOAD_CHUNK).await?;
         let n = chunk.len();
         out.extend_from_slice(&chunk);
-        if (n as usize) < DOWNLOAD_CHUNK {
+        if n < DOWNLOAD_CHUNK {
             break;
         }
-        offset = offset.saturating_add(n as i32);
+        offset = offset.saturating_add(n as i64);
     }
     Ok(out)
 }
@@ -277,7 +277,7 @@ pub async fn download_parallel(
             let mut offset = start;
             while offset < end {
                 let chunk =
-                    get_file_chunk(&pool, &location, offset as i32, DOWNLOAD_CHUNK).await?;
+                    get_file_chunk(&pool, &location, offset as i64, DOWNLOAD_CHUNK).await?;
                 if chunk.is_empty() {
                     return Err(Error::Other(format!(
                         "download ended early at offset {offset} (expected end {end})"
@@ -307,7 +307,7 @@ pub async fn for_each_chunk(
     location: &FileLocation,
     mut f: impl FnMut(usize, &[u8]) -> Result<()>,
 ) -> Result<()> {
-    let mut offset: i32 = 0;
+    let mut offset: i64 = 0;
     loop {
         let chunk = get_file_chunk(&pool, location, offset, DOWNLOAD_CHUNK).await?;
         let n = chunk.len();
@@ -315,7 +315,7 @@ pub async fn for_each_chunk(
         if n < DOWNLOAD_CHUNK {
             break;
         }
-        offset = offset.saturating_add(n as i32);
+        offset = offset.saturating_add(n as i64);
     }
     Ok(())
 }

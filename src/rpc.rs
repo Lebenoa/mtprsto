@@ -6,41 +6,9 @@
 //!
 //! # Methods implemented
 //!
-//! ## Messages (§7)
-//! - `messages.sendMessage` 0x44942323
-//! - `messages.sendMedia` 0xb8d0afdf
-//! - `messages.getDialogs` 0x19109d5f
-//! - `messages.getHistory` 0xdc3f8240
-//! - `messages.getMessages` 0x63c66506
-//! - `messages.deleteMessages` 0xe58e95c6
-//! - `messages.editMessage` 0x48f71768
-//! - `messages.readHistory` 0x0e306d3a
-//! - `messages.search` 0xd07bbf76
-//! - `messages.getBotCallbackAnswer` 0x934a4ee1
-//!
-//! ## Users (§7)
-//! - `users.getFullUser` 0xe0b917f2
-//! - `users.getUsers` 0x0d91a548
-//!
-//! ## Contacts (§7)
-//! - `contacts.resolveUsername` 0xf93ccba3
-//!
-//! ## Channels (§7)
-//! - `channels.createChannel` 0x3d5d10fd
-//! - `channels.inviteToChannel` 0x199f3a6c
-//! - `channels.editAdmin` 0x70d896ff
-//! - `channels.getChannels` 0xa7f6d76b
-//! - `channels.getParticipants` 0x123ffe12
-//! - `channels.leaveChannel` 0xf836aa28
-//!
-//! ## Upload (§7)
-//! - `upload.saveFilePart` 0xb304a621
-//! - `upload.saveBigFilePart` 0xde7b673d
-//! - `upload.getFile` 0xb3e7e951
-//!
-//! ## Help (§7)
-//! - `help.getConfig` 0xc4f3926c
-//! - `help.getNearestDc` 0x1fb33026
+//! All constructor IDs verified against the published TL schema
+//! (layer 223, core.telegram.org/schema/json) — see
+//! `types/constructors.rs` for the constants.
 
 use crate::error::{Error, Result};
 use crate::serialize::{TLWriter, TLReader, RPC_ERROR, RPC_RESULT};
@@ -401,14 +369,19 @@ pub fn build_save_big_file_part(
 }
 
 /// Build `upload.getFile` payload.
+///
+/// Schema: `upload.getFile#be5335be flags:# precise:flags.0?true
+/// cdn_supported:flags.1?true location:InputFileLocation offset:long
+/// limit:int = upload.File;`
 pub fn build_get_file(
     location: &FileLocation,
-    offset: i32,
+    offset: i64,
     limit: i32,
 ) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(UPLOAD_GET_FILE);
-    // Simplified: write location as InputFileLocation
+    w.write_i32(0); // flags (no precise / cdn_supported)
+    // Write the location as InputFileLocation
     match location {
         FileLocation::VolumeId { volume_id, local_id, secret, reference, dc_id: _ } => {
             w.write_u32(0xdfdaabe1); // inputFileLocation
@@ -422,7 +395,7 @@ pub fn build_get_file(
             w.write_u32(0);
         }
     }
-    w.write_i32(offset);
+    w.write_i64(offset);
     w.write_i32(limit);
     w.into_bytes()
 }

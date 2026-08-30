@@ -353,6 +353,8 @@ pub const GZIP_PACKED: u32 = 0x3072cfa1;
 
 // ping / pong
 pub const PING: u32 = 0x7abe77ec;
+/// `ping_delay_disconnect#f3427b8c ping_id:long disconnect_delay:int = Pong;`
+pub const PING_DELAY_DISCONNECT: u32 = 0xf3427b8c;
 pub const PONG: u32 = 0x347773c5;
 
 // msgs_ack

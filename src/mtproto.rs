@@ -29,6 +29,11 @@ pub struct MtProtoSession {
     pub server_time_offset: i64,
     /// Message ID to use for the next outgoing message.
     pub last_msg_id: u64,
+    /// Anti-fingerprinting: append a random number (0..15) of extra
+    /// 16-byte padding blocks to each encrypted message, mirroring
+    /// Telegram Desktop / gotd. On by default; deterministic-length
+    /// messages make traffic trivially fingerprintable.
+    pub random_padding: bool,
 }
 
 impl MtProtoSession {
@@ -44,7 +49,13 @@ impl MtProtoSession {
             seq_no: 0,
             server_time_offset: 0,
             last_msg_id: 0,
+            random_padding: true,
         }
+    }
+
+    /// Toggle randomized padding (see [`MtProtoSession::random_padding`]).
+    pub fn set_random_padding(&mut self, enabled: bool) {
+        self.random_padding = enabled;
     }
 
     /// Generate the next message ID (client messages are divisible by 4).
@@ -87,24 +98,20 @@ impl MtProtoSession {
 
         let mut plaintext = w.into_bytes();
 
-        // MTProto 2.0 padding: 12..1024 bytes so total is divisible by 16
+        // MTProto 2.0 padding: align to the 16-byte block size with at
+        // least 12 bytes, then (anti-fingerprinting, gotd parity) add a
+        // random 0..15 extra 16-byte blocks so encrypted-message length
+        // does not deterministically fingerprint the client.
         let mut rng = rand::rng();
-        let min_pad = 12;
-        let max_pad = 1024;
         let base = plaintext.len();
-        // Pad to next multiple of 16, then add at least 12 bytes
-        let current_mod = base % 16;
-        let pad_to_align = if current_mod == 0 { 0 } else { 16 - current_mod };
-        let total_pad = if pad_to_align >= min_pad {
-            pad_to_align
-        } else {
-            // We need at least min_pad bytes; pick the smallest amount >= min_pad that keeps alignment
-            let needed = min_pad - pad_to_align;
-            let extra_chunks = needed.div_ceil(16);
-            pad_to_align + extra_chunks * 16
-        };
-        let actual_pad = total_pad.min(max_pad);
-        let mut padding = vec![0u8; actual_pad];
+        let mut pad_len = (16 - (base % 16)) % 16;
+        if pad_len < 12 {
+            pad_len += 16;
+        }
+        if self.random_padding {
+            pad_len += (rand::random::<u8>() & 0x0F) as usize * 16;
+        }
+        let mut padding = vec![0u8; pad_len];
         rng.fill_bytes(&mut padding);
         plaintext.extend_from_slice(&padding);
 
@@ -648,6 +655,19 @@ pub fn build_ping(id: i64) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(PING);
     w.write_i64(id);
+    w.into_bytes()
+}
+
+/// Build `ping_delay_disconnect#f3427b8c ping_id:long disconnect_delay:int`.
+///
+/// Like [`build_ping`] but instructs the server to drop the connection if
+/// no further pings arrive within `disconnect_delay` seconds — matches
+/// gotd's keepalive, which relies on this to reap dead connections.
+pub fn build_ping_delay_disconnect(id: i64, disconnect_delay: i32) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(PING_DELAY_DISCONNECT);
+    w.write_i64(id);
+    w.write_i32(disconnect_delay);
     w.into_bytes()
 }
 

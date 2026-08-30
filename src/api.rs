@@ -174,73 +174,6 @@ impl TelegramClient {
     // Bot Authorization
     // ------------------------------------------------------------------
 
-    /// Send an encrypted RPC on a fresh raw Intermediate connection and
-    /// return the decrypted plaintext.
-    ///
-    /// Retries once on a transport error (e.g. the server's 4-byte
-    /// -404/-429 error code) with a new connection and fresh msg_id —
-    /// rapid connect bursts right after the DH handshake occasionally get
-    /// rejected, and a clean reconnect is the fix.
-    /// Unwrap a decrypted reply: `msg_container#73f1f8dc` → its
-    /// rpc_result (or first non-ack) message, then `rpc_result#f35c6d01`
-    /// → its inner body. Bare service messages pass through.
-    fn unwrap_response(plaintext: &[u8]) -> Vec<u8> {
-        let mut data = plaintext;
-        loop {
-            if data.len() < 8 {
-                return data.to_vec();
-            }
-            let ctor = u32::from_le_bytes(data[0..4].try_into().unwrap());
-            if ctor == crate::serialize::MSG_CONTAINER {
-                let count = i32::from_le_bytes(data[4..8].try_into().unwrap());
-                let mut off = 8usize;
-                let mut first: Option<&[u8]> = None;
-                let mut rpc: Option<&[u8]> = None;
-                for _ in 0..count.max(0) {
-                    if off + 12 > data.len() {
-                        break;
-                    }
-                    off += 12; // msg_id:long seq_no:int
-                    if off + 4 > data.len() {
-                        break;
-                    }
-                    let len =
-                        i32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
-                    off += 4;
-                    if off + len > data.len() {
-                        break;
-                    }
-                    let item = &data[off..off + len];
-                    let item_ctor =
-                        u32::from_le_bytes(item[0..4].try_into().unwrap_or([0; 4]));
-                    if item_ctor == crate::serialize::RPC_RESULT && rpc.is_none() {
-                        rpc = Some(item);
-                    }
-                    if first.is_none()
-                        && item_ctor != crate::serialize::MSGS_ACK
-                        && item_ctor != crate::serialize::PONG
-                    {
-                        first = Some(item);
-                    }
-                    off += (len + 3) & !3; // 4-byte aligned
-                }
-                let chosen = rpc.or(first);
-                match chosen {
-                    Some(i) => {
-                        data = i;
-                        continue;
-                    }
-                    None => return data.to_vec(),
-                }
-            }
-            if ctor == crate::serialize::RPC_RESULT {
-                // req_msg_id:long then the inner body
-                return data[12..].to_vec();
-            }
-            return data.to_vec();
-        }
-    }
-
     async fn exchange_encrypted(&mut self, payload: &[u8]) -> Result<Vec<u8>> {
         for outer in 0..2u32 {
             match self.exchange_once(payload).await {
@@ -283,34 +216,125 @@ impl TelegramClient {
             stream.write_all(&len).await?;
             stream.write_all(&encrypted).await?;
             stream.flush().await?;
-            let response = transport::recv_encrypted(&mut stream).await?;
-            let (_, plaintext) = session.decrypt_message(&response)?;
-            let unwrapped = Self::unwrap_response(&plaintext);
-            if unwrapped.len() >= 28 {
-                let ctor = u32::from_le_bytes(unwrapped[0..4].try_into().unwrap());
-                // bad_server_salt#edab447b ... new_salt at [20..28]
-                if ctor == crate::serialize::BAD_SERVER_SALT {
-                    session.server_salt =
-                        u64::from_le_bytes(unwrapped[20..28].try_into().unwrap());
-                    tracing::debug!("bad_server_salt — retrying with fresh salt");
-                    continue;
+
+            // Read frames until OUR answer arrives. The server re-delivers
+            // unacknowledged messages from earlier exchanges on reconnect,
+            // so correlate rpc_result by req_msg_id and ack everything —
+            // reading the first result blindly answers a request with the
+            // previous one's response (they can be byte-shape identical,
+            // e.g. auth.sendCode vs auth.signIn).
+            let mut answer: Option<Vec<u8>> = None;
+            let mut resend = false;
+            for _ in 0..16usize {
+                let response = transport::recv_encrypted(&mut stream).await?;
+                let (_, plaintext) = session.decrypt_message(&response)?;
+                let mut ack_ids: Vec<i64> = Vec::new();
+
+                // Iterate messages in the frame (single body or container).
+                let mut items: Vec<&[u8]> = Vec::new();
+                if plaintext.len() >= 8
+                    && u32::from_le_bytes(plaintext[0..4].try_into().unwrap())
+                        == crate::serialize::MSG_CONTAINER
+                {
+                    let count = i32::from_le_bytes(plaintext[4..8].try_into().unwrap());
+                    let mut off = 8usize;
+                    for _ in 0..count.max(0) {
+                        if off + 12 > plaintext.len() {
+                            break;
+                        }
+                        off += 12; // msg_id:long seq_no:int
+                        if off + 4 > plaintext.len() {
+                            break;
+                        }
+                        let len =
+                            i32::from_le_bytes(plaintext[off..off + 4].try_into().unwrap()) as usize;
+                        off += 4;
+                        if off + len > plaintext.len() {
+                            break;
+                        }
+                        items.push(&plaintext[off..off + len]);
+                        off += (len + 3) & !3;
+                    }
+                } else {
+                    items.push(&plaintext[..]);
                 }
-                // new_session_created#9ec20908 first_msg_id:long
-                // unique_id:long server_salt:long — adopt salt, re-send.
-                if ctor == crate::serialize::NEW_SESSION_CREATED {
-                    session.server_salt =
-                        u64::from_le_bytes(unwrapped[20..28].try_into().unwrap());
-                    tracing::debug!("new_session_created — adopting salt, re-sending");
-                    continue;
+
+                for item in items {
+                    if item.len() < 4 {
+                        continue;
+                    }
+                    let ctor = u32::from_le_bytes(item[0..4].try_into().unwrap());
+                    match ctor {
+                        crate::serialize::BAD_SERVER_SALT => {
+                            // The query was NOT processed — adopt the fresh
+                            // salt (at [20..28]) and re-send it.
+                            if item.len() >= 28 {
+                                session.server_salt =
+                                    u64::from_le_bytes(item[20..28].try_into().unwrap());
+                            }
+                            resend = true;
+                        }
+                        crate::serialize::NEW_SESSION_CREATED => {
+                            // The server re-earned the session but DOES
+                            // process the triggering message — adopt the
+                            // salt and keep waiting for the answer.
+                            // Re-sending would execute the query twice
+                            // (double sendCode, self-inflicted flood on
+                            // the second copy).
+                            if item.len() >= 28 {
+                                session.server_salt =
+                                    u64::from_le_bytes(item[20..28].try_into().unwrap());
+                            }
+                        }
+                        crate::serialize::NEW_SERVER_SALT => {
+                            if item.len() >= 12 {
+                                session.server_salt =
+                                    u64::from_le_bytes(item[4..12].try_into().unwrap());
+                            }
+                        }
+                        crate::serialize::MSGS_ACK | crate::serialize::PONG => {}
+                        crate::serialize::RPC_RESULT if item.len() >= 12 => {
+                            let req = i64::from_le_bytes(item[4..12].try_into().unwrap());
+                            ack_ids.push(req);
+                            if req == msg_id as i64 && answer.is_none() {
+                                answer = Some(item[12..].to_vec());
+                            }
+                        }
+                        _ => {} // updates / pong-like payloads: ignored
+                    }
                 }
-                // new_server_salt#1160b89c new_server_salt:long
-                if ctor == crate::serialize::NEW_SERVER_SALT {
-                    session.server_salt =
-                        u64::from_le_bytes(unwrapped[4..12].try_into().unwrap());
-                    continue;
+
+                // Ack the results we consumed so the server stops
+                // re-delivering them on the next exchange.
+                if !ack_ids.is_empty() {
+                    let mut ack = TLWriter::new();
+                    ack.write_u32(crate::serialize::MSGS_ACK);
+                    ack.write_u32(crate::serialize::VECTOR);
+                    ack.write_i32(ack_ids.len() as i32);
+                    for id in ack_ids {
+                        ack.write_i64(id);
+                    }
+                    let aid = session.next_msg_id();
+                    let asn = session.next_seq_no(false);
+                    let enc = session.encrypt_message(&ack.into_bytes(), aid, asn);
+                    let alen = (enc.len() as u32).to_le_bytes();
+                    let _ = stream.write_all(&alen).await;
+                    let _ = stream.write_all(&enc).await;
+                    let _ = stream.flush().await;
+                }
+
+                if answer.is_some() || resend {
+                    break;
                 }
             }
-            return Ok(unwrapped);
+
+            if let Some(a) = answer {
+                return Ok(a);
+            }
+            if resend {
+                tracing::debug!("session/salt correction — re-sending query");
+                continue;
+            }
         }
         Err(Error::Protocol(
             "exchange did not settle after session/salt corrections".into(),
@@ -375,8 +399,10 @@ impl TelegramClient {
         payload.write_bytes(phone_number.as_bytes());
         payload.write_i32(self.api_id.unwrap_or(0));
         payload.write_bytes(self.api_hash.as_deref().unwrap_or("").as_bytes());
-        // CodeSettings
-        payload.write_u32(0); // flags (no settings)
+        // CodeSettings is a full TL object in modern layers:
+        // codeSettings#ad253d78 flags:# ... (no optional fields when flags=0)
+        payload.write_u32(types::CODE_SETTINGS);
+        payload.write_i32(0);
 
         let plaintext = self.exchange_encrypted(payload.as_bytes()).await?;
 
@@ -384,17 +410,7 @@ impl TelegramClient {
         let constructor = r.read_u32()?;
 
         match constructor {
-            types::AUTH_SENT_CODE => {
-                let phone_code_hash = r.read_bytes()?;
-                let sent_code_type = r.read_u32()?;
-                // timeout field
-                let _timeout = r.read_i32()?;
-
-                Ok(AuthSentCodeInfo {
-                    phone_code_hash,
-                    sent_code_type,
-                })
-            }
+            types::AUTH_SENT_CODE => parse_sent_code_response(&plaintext),
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
                 Err(crate::error::classify_rpc_error(code, &msg))
@@ -417,7 +433,9 @@ impl TelegramClient {
 
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_IN);
-        payload.write_i32(0); // flags# (no phone_code / email_verification flags)
+        // auth.signIn#8d52a951 flags:# phone_number:string phone_code_hash:string
+        //   phone_code:flags.0?string email_verification:flags.1?EmailVerification
+        payload.write_i32(1 << 0); // phone_code provided
         payload.write_bytes(phone_number.as_bytes());
         payload.write_bytes(phone_code_hash);
         payload.write_bytes(phone_code.as_bytes());
@@ -439,6 +457,12 @@ impl TelegramClient {
                 let user = types::User::read_from(&mut r)?;
                 self.user_id = Some(user.id().0);
                 Ok(())
+            }
+            types::AUTH_SENT_CODE => {
+                // The code session expired while the user was typing — the
+                // server sent a fresh code. Retry sign-in with the new hash.
+                let sent = parse_sent_code_response(&plaintext)?;
+                Err(Error::CodeResent { phone_code_hash: sent.phone_code_hash })
             }
             types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
                 Err(Error::SignUpRequired)
@@ -487,6 +511,10 @@ impl TelegramClient {
                 let user = types::User::read_from(&mut r)?;
                 self.user_id = Some(user.id().0);
                 Ok(())
+            }
+            types::AUTH_SENT_CODE => {
+                let sent = parse_sent_code_response(&plaintext)?;
+                Err(Error::CodeResent { phone_code_hash: sent.phone_code_hash })
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
@@ -687,6 +715,90 @@ impl TelegramClient {
     }
 }
 
+/// Parse an `auth.sentCode#5e002502` response into [`AuthSentCodeInfo`].
+pub(crate) fn parse_sent_code_response(plaintext: &[u8]) -> Result<AuthSentCodeInfo> {
+    let mut r = TLReader::new(plaintext);
+    let _ctor = r.read_u32()?;
+    // flags:# type:auth.SentCodeType phone_code_hash:string
+    //   next_type:flags.1?auth.CodeType timeout:flags.2?int
+    let flags = r.read_i32()?;
+    let sent_code_type = read_sent_code_type(&mut r)?;
+    let phone_code_hash = r.read_bytes()?;
+    if flags & (1 << 1) != 0 { skip_code_type(&mut r)?; }
+    if flags & (1 << 2) != 0 { let _ = r.read_i32()?; }
+    Ok(AuthSentCodeInfo { phone_code_hash, sent_code_type })
+}
+
+/// Parse/skip an `auth.SentCodeType` object, returning its constructor ID.
+/// The caller can match it against the `SENT_CODE_TYPE_*` constants.
+pub(crate) fn read_sent_code_type(r: &mut TLReader) -> Result<u32> {
+    let ctor = r.read_u32()?;
+    match ctor {
+        // sentCodeTypeApp#3dbb5986 length:int | sentCodeTypeSms#c000bba2 length:int
+        // | sentCodeTypeCall#5353e5a7 length:int
+        types::AUTH_SENT_CODE_TYPE_APP | types::AUTH_SENT_CODE_TYPE_SMS | SENT_CODE_TYPE_CALL => {
+            let _length = r.read_i32()?;
+        }
+        // sentCodeTypeFlashCall#ab03c6d9 pattern:string
+        SENT_CODE_TYPE_FLASH_CALL => {
+            let _pattern = r.read_bytes()?;
+        }
+        // sentCodeTypeMissedCall#82006484 prefix:string length:int
+        SENT_CODE_TYPE_MISSED_CALL => {
+            let _prefix = r.read_bytes()?;
+            let _length = r.read_i32()?;
+        }
+        // sentCodeTypeEmailCode#f450f59b flags:# apple_signin_allowed:flags.0?true
+        //   google_signin_allowed:flags.1?true email_pattern:string length:int
+        //   reset_available_period:flags.3?int reset_pending_date:flags.4?int
+        SENT_CODE_TYPE_EMAIL_CODE => {
+            let flags = r.read_i32()?;
+            let _email_pattern = r.read_bytes()?;
+            let _length = r.read_i32()?;
+            if flags & (1 << 3) != 0 { let _ = r.read_i32()?; }
+            if flags & (1 << 4) != 0 { let _ = r.read_i32()?; }
+        }
+        // sentCodeTypeSetUpEmailRequired#a5491dea flags:# apple_signin_allowed:flags.0?true
+        //   google_signin_allowed:flags.1?true
+        SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED => {
+            let _flags = r.read_i32()?;
+        }
+        // sentCodeTypeFragmentSms#d9565c39 url:string length:int
+        SENT_CODE_TYPE_FRAGMENT_SMS => {
+            let _url = r.read_bytes()?;
+            let _length = r.read_i32()?;
+        }
+        // sentCodeTypeFirebaseSms#9fd736 flags:# nonce:flags.0?bytes
+        //   play_integrity_project_id:flags.2?long play_integrity_nonce:flags.2?bytes
+        //   receipt:flags.1?string push_timeout:flags.1?int length:int
+        SENT_CODE_TYPE_FIREBASE_SMS => {
+            let flags = r.read_i32()?;
+            if flags & (1 << 0) != 0 { let _ = r.read_bytes()?; }
+            if flags & (1 << 1) != 0 { let _ = r.read_bytes()?; let _ = r.read_i32()?; }
+            if flags & (1 << 2) != 0 { let _ = r.read_i64()?; let _ = r.read_bytes()?; }
+            let _length = r.read_i32()?;
+        }
+        // sentCodeTypeSmsWord#a416ac81 flags:# beginning:flags.0?string
+        // sentCodeTypeSmsPhrase#b37794af flags:# beginning:flags.0?string
+        SENT_CODE_TYPE_SMS_WORD | SENT_CODE_TYPE_SMS_PHRASE => {
+            let flags = r.read_i32()?;
+            if flags & (1 << 0) != 0 { let _ = r.read_bytes()?; }
+        }
+        other => {
+            return Err(Error::Serialization(format!(
+                "unknown auth.SentCodeType constructor {other:#x}"
+            )))
+        }
+    }
+    Ok(ctor)
+}
+
+/// Skip an `auth.CodeType` object (bare constructor, no fields).
+fn skip_code_type(r: &mut TLReader) -> Result<()> {
+    r.read_u32()?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Auth flow result types
 // ---------------------------------------------------------------------------
@@ -702,7 +814,16 @@ pub struct AuthSentCodeInfo {
 
 /// Sent code type constants.
 pub const SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
-pub const SENT_CODE_TYPE_SMS: u32 = 0xc004bac7;
+pub const SENT_CODE_TYPE_SMS: u32 = 0xc000bba2;
+pub const SENT_CODE_TYPE_CALL: u32 = 0x5353e5a7;
+pub const SENT_CODE_TYPE_FLASH_CALL: u32 = 0xab03c6d9;
+pub const SENT_CODE_TYPE_MISSED_CALL: u32 = 0x82006484;
+pub const SENT_CODE_TYPE_EMAIL_CODE: u32 = 0xf450f59b;
+pub const SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED: u32 = 0xa5491dea;
+pub const SENT_CODE_TYPE_FRAGMENT_SMS: u32 = 0xd9565c39;
+pub const SENT_CODE_TYPE_FIREBASE_SMS: u32 = 0x9fd736;
+pub const SENT_CODE_TYPE_SMS_WORD: u32 = 0xa416ac81;
+pub const SENT_CODE_TYPE_SMS_PHRASE: u32 = 0xb37794af;
 
 
 /// Result of an `auth.exportLoginToken` / `auth.importLoginToken` call.

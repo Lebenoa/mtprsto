@@ -55,6 +55,11 @@ pub enum Error {
     /// Sign up is required (new account).
     SignUpRequired,
 
+    /// `auth.signIn` came back with a fresh `auth.sentCode`: the previous
+    /// code session expired before sign-in. A new code was sent — retry
+    /// sign-in with the returned hash and the new code.
+    CodeResent { phone_code_hash: Vec<u8> },
+
     // --- File handling ---
     /// `FILE_REFERENCE_EXPIRED` — the file reference must be refreshed.
     FileReferenceExpired { detail: String },
@@ -160,6 +165,9 @@ impl fmt::Display for Error {
             Error::InvalidCode { detail } => write!(f, "InvalidCode: {detail}"),
             Error::InvalidPassword { detail } => write!(f, "InvalidPassword: {detail}"),
             Error::SignUpRequired => write!(f, "SignUpRequired: new account"),
+            Error::CodeResent { .. } => {
+                write!(f, "CodeResent: a new verification code was sent")
+            }
             Error::FileReferenceExpired { detail } => {
                 write!(f, "FileReferenceExpired: {detail}")
             }

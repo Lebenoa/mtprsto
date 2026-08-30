@@ -197,7 +197,6 @@ pub const UPDATE_READ_MESSAGES: u32 = 0xf8227181;
 pub const UPDATE_WEB_PAGE: u32 = 0x7f891213;
 /// replyKeyboardMarkup#350284c2
 pub const REPLY_KEYBOARD_MARKUP: u32 = 0x85dd99d1;
-pub const FORCE_REPLY: u32 = 0x86872538;
 pub mod inline_keyboard_markup { pub const CONSTRUCTOR_ID: u32 = 0x48a30254; }
 
 // --- Keyboard buttons ---
@@ -230,6 +229,9 @@ pub const AUTH_SENT_CODE_SUCCESS: u32 = 0x2390fe44;
 pub const AUTH_SENT_CODE_PAYMENT_REQUIRED: u32 = 0xe0955a3c;
 pub const AUTH_SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
 pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc000bba2;
+/// `codeSettings#ad253d78 flags:# ...` — full TL object in modern layers
+/// (was a bare flags int before).
+pub const CODE_SETTINGS: u32 = 0xad253d78;
 
 // --- Auth (Layer 223) ---
 // IDs verified against https://core.telegram.org/schema/json (2026-08).

@@ -32,8 +32,11 @@ impl ReplyMarkup {
         match self {
             ReplyMarkup::None => {}
             ReplyMarkup::ForceReply { selective } => {
-                let flags: i32 = if *selective { 1 << 2 } else { 0 };
-                w.write_u32(FORCE_REPLY);
+                // replyKeyboardForceReply#86b40b08 flags:# single_use:flags.1?true
+                //   selective:flags.2?true placeholder:flags.3?string
+                let mut flags: i32 = 0;
+                if *selective { flags |= 1 << 2; }
+                w.write_u32(REPLY_KEYBOARD_FORCE_REPLY);
                 w.write_i32(flags);
             }
             ReplyMarkup::InlineKeyboard { rows } => {

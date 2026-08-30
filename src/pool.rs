@@ -34,6 +34,40 @@ pub enum TransportPolicy {
     /// WebSocket (`wss://`) for subsequent connects until TCP succeeds again.
     Auto,
 }
+/// Protocol-level timings and knobs (ack batching, keepalive, salt
+/// refresh, padding). Defaults follow gotd/mtproto practice; tighten or
+/// loosen via [`crate::Client::builder`].
+#[derive(Debug, Clone)]
+pub struct ProtocolConfig {
+    /// Interval between keepalive `ping_delay_disconnect` messages.
+    pub ping_interval: std::time::Duration,
+    /// Reconnect if no pong arrives within this window.
+    pub pong_timeout: std::time::Duration,
+    /// How often to pre-fetch future server salts.
+    pub salt_refresh_interval: std::time::Duration,
+    /// Send a batched `msgs_ack` once this many results are pending.
+    pub ack_batch_max: usize,
+    /// ...or after this long, whichever comes first.
+    pub ack_flush_interval: std::time::Duration,
+    /// Anti-fingerprinting random padding blocks on every encrypted
+    /// message (gotd/Telegram-Desktop parity). Disable only if a proxy
+    /// or test harness needs deterministic message sizes.
+    pub random_padding: bool,
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        Self {
+            ping_interval: PING_INTERVAL,
+            pong_timeout: PONG_TIMEOUT,
+            salt_refresh_interval: SALT_REFRESH_INTERVAL,
+            ack_batch_max: ACK_BATCH_MAX,
+            ack_flush_interval: ACK_FLUSH_INTERVAL,
+            random_padding: true,
+        }
+    }
+}
+
 /// Configuration for the connection pool.
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -166,10 +200,13 @@ pub struct SenderPool {
     tcp_failover: Mutex<TcpFailover>,
     /// Pool configuration.
     config: PoolConfig,
+    /// Protocol timers/knobs (see [`ProtocolConfig`]).
+    protocol: ProtocolConfig,
     /// Next connection index for round-robin.
     next_index: Mutex<usize>,
     /// Received msg_ids awaiting a batched msgs_ack (flushed at
-    /// [`ACK_BATCH_MAX`] pending or after [`ACK_FLUSH_INTERVAL`], per
+    /// [`ProtocolConfig::ack_batch_max`] pending or after
+    /// [`ProtocolConfig::ack_flush_interval`], per
     /// SPEC §5.4).
     pending_acks: Arc<Mutex<Vec<u64>>>,
 }
@@ -187,7 +224,13 @@ const SALT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 
 impl SenderPool {
     /// Create a new pool for the given DC with an existing session.
-    pub fn new(dc_id: i32, api_id: i32, session: MtProtoSession, config: PoolConfig) -> Self {
+    pub fn new(
+        dc_id: i32,
+        api_id: i32,
+        session: MtProtoSession,
+        config: PoolConfig,
+        protocol: ProtocolConfig,
+    ) -> Self {
         Self {
             dc_id,
             api_id,
@@ -195,6 +238,7 @@ impl SenderPool {
             connections: Vec::new(),
             tcp_failover: Mutex::new(TcpFailover::default()),
             config,
+            protocol,
             next_index: Mutex::new(0),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
         }
@@ -203,7 +247,7 @@ impl SenderPool {
     /// Create a pool with just a DC ID and config (no session yet).
     pub fn without_session(dc_id: i32, config: PoolConfig) -> Self {
         let session = MtProtoSession::new(vec![0u8; 256], 0);
-        Self::new(dc_id, 0, session, config)
+        Self::new(dc_id, 0, session, config, ProtocolConfig::default())
     }
 
     /// Set the session on the pool.
@@ -448,10 +492,20 @@ impl SenderPool {
                     }
                     let ctor = u32::from_le_bytes(item[0..4].try_into().unwrap());
                     match ctor {
-                        BAD_SERVER_SALT | NEW_SERVER_SALT | NEW_SESSION_CREATED => {
+                        BAD_SERVER_SALT => {
+                            // The query was NOT processed — adopt the fresh
+                            // salt and re-send it.
                             self.adopt_service_state(ctor, item).await;
                             re_send = true;
                             conclusive = true;
+                        }
+                        NEW_SERVER_SALT | NEW_SESSION_CREATED => {
+                            // Service state adoption only. The server DOES
+                            // process the triggering message when it sends
+                            // new_session_created — re-sending would execute
+                            // the query twice (double sendCode, self-inflicted
+                            // flood on the duplicate).
+                            self.adopt_service_state(ctor, item).await;
                         }
                         crate::serialize::BAD_MSG_NOTIFICATION => {
                             let (bad_msg_id, _seqno, code) =
@@ -725,13 +779,13 @@ impl SenderPool {
     }
 
     /// Queue an ack for the given received msg_id (SPEC §5.4 batching:
-    /// flush immediately at [`ACK_BATCH_MAX`] pending, otherwise wait for
+    /// flush immediately at [`ProtocolConfig::ack_batch_max`] pending, otherwise wait for
     /// the flusher task). Best-effort — flush errors are logged, not fatal.
     async fn queue_ack(&self, resp_msg_id: u64) {
         let flush = {
             let mut pending = self.pending_acks.lock().await;
             pending.push(resp_msg_id);
-            pending.len() >= ACK_BATCH_MAX
+            pending.len() >= self.protocol.ack_batch_max
         };
         if flush {
             self.flush_acks().await;
@@ -760,12 +814,13 @@ impl SenderPool {
         }
     }
 
-    /// Spawn the periodic ack flusher (every [`ACK_FLUSH_INTERVAL`]).
-    /// Call once after `connect`.
+    /// Spawn the periodic ack flusher (every
+    /// [`ProtocolConfig::ack_flush_interval`]). Call once after `connect`.
     pub fn spawn_ack_flusher(self: &Arc<Self>) {
+        let protocol = self.protocol.clone();
         let pool_arc = self.clone();
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(ACK_FLUSH_INTERVAL);
+            let mut tick = tokio::time::interval(protocol.ack_flush_interval);
             loop {
                 tick.tick().await;
                 pool_arc.flush_acks().await;
@@ -774,17 +829,19 @@ impl SenderPool {
     }
 
     /// Spawn the ping/pong keepalive: pings every idle connection on
-    /// [`PING_INTERVAL`]; a connection that goes [`PONG_TIMEOUT`] without
+    /// [`ProtocolConfig::ping_interval`]; a connection that goes
+    /// [`ProtocolConfig::pong_timeout`] without
     /// a pong is silently disconnected and reconnected with the same
     /// auth_key (SPEC BS-1).
     pub fn spawn_keepalive(self: &Arc<Self>) {
+        let protocol = self.protocol.clone();
         let pool_arc = self.clone();
         for i in 0..pool_arc.connections.len() {
             let conn = pool_arc.connections[i].clone();
             let pool_arc = pool_arc.clone();
             tokio::spawn(async move {
                 loop {
-                    tokio::time::sleep(PING_INTERVAL).await;
+                    tokio::time::sleep(protocol.ping_interval).await;
                     // Only ping when the codec is idle; a locked codec means
                     // an RPC exchange is in flight and traffic itself proves
                     // liveness.
@@ -792,7 +849,12 @@ impl SenderPool {
                         continue;
                     };
                     let ping_id = rand::random::<i64>();
-                    let ping = crate::mtproto::build_ping(ping_id);
+                    // gotd parity: ping_delay_disconnect makes the server reap the
+                    // connection itself if we stop pinging (delay = interval
+                    // + timeout, like gotd's pingLoop).
+                    let delay = (protocol.ping_interval.as_secs()
+                        + protocol.pong_timeout.as_secs()) as i32;
+                    let ping = crate::mtproto::build_ping_delay_disconnect(ping_id, delay);
                     let encrypted = {
                         let mut session = pool_arc.session.write().await;
                         let msg_id = session.next_msg_id();
@@ -803,7 +865,7 @@ impl SenderPool {
                         tracing::debug!("keepalive ping failed: {e}");
                         continue;
                     }
-                    match tokio::time::timeout(PONG_TIMEOUT, codec.recv_frame()).await {
+                    match tokio::time::timeout(protocol.pong_timeout, codec.recv_frame()).await {
                         Ok(Ok(resp)) => {
                             if let Ok((_, plaintext)) =
                                 pool_arc.session.write().await.decrypt_message(&resp)
@@ -831,7 +893,7 @@ impl SenderPool {
                         Err(_) => {
                             tracing::warn!(
                                 "no pong within {:?} on DC {} conn {i} — reconnecting",
-                                PONG_TIMEOUT,
+                                protocol.pong_timeout,
                                 pool_arc.dc_id
                             );
                             if let Err(e) = pool_arc.reconnect_connection(&conn).await {
@@ -845,15 +907,17 @@ impl SenderPool {
         }
     }
 
-    /// Spawn the periodic salt refresher: every [`SALT_REFRESH_INTERVAL`]
+    /// Spawn the periodic salt refresher: every
+    /// [`ProtocolConfig::salt_refresh_interval`]
     /// ask for future salt windows and adopt the one currently valid
     /// (SPEC §9: salt validity ~30 min).
-    pub fn spawn_salt_refresher(self: &Arc<Self>) {        let pool_arc = self.clone();
+    pub fn spawn_salt_refresher(self: &Arc<Self>) {
+        let protocol = self.protocol.clone();        let pool_arc = self.clone();
         tokio::spawn(async move {
             // Sleep FIRST: a tokio interval fires its first tick
             // immediately, which would spam getFutureSalts at startup.
             loop {
-                tokio::time::sleep(SALT_REFRESH_INTERVAL).await;
+                tokio::time::sleep(protocol.salt_refresh_interval).await;
                 match pool_arc.get_future_salts(3).await {
                     Ok((_req_id, server_now, windows)) => {
                         let fresh = windows.iter().find(|w| {
@@ -1073,15 +1137,16 @@ pub fn describe_bad_msg_code(code: i32) -> &'static str {
     match code {
         16 => "msg_id too low",
         17 => "msg_id too high",
-        18 => "bad msg_key",
-        20 => "server salt invalidated",
+        18 => "incorrect two lower order msg_id bits",
+        20 => "message too old",
+        19 => "container msg_id identical to a previously received one",
         32 => "msg_seqno too low",
         33 => "msg_seqno too high",
-        34 => "msg_seqno parity mismatch (even/odd)",
-        48 => "incorrect server salt for seq_no",
+        34 => "even msg_seqno expected, but odd received",
+        35 => "odd msg_seqno expected, but even received",
+        48 => "incorrect server salt",
         64 => "invalid container",
         65 => "message not authorised (no auth_key)",
-        96 => "user banned / flood wait",
         _ => "unknown bad_msg code",
     }
 }
@@ -1110,10 +1175,10 @@ mod bad_msg_tests {
     #[test]
     fn test_describe_bad_msg_codes() {
         assert_eq!(describe_bad_msg_code(16), "msg_id too low");
-        assert_eq!(describe_bad_msg_code(20), "server salt invalidated");
-        assert_eq!(describe_bad_msg_code(48), "incorrect server salt for seq_no");
+        assert_eq!(describe_bad_msg_code(18), "incorrect two lower order msg_id bits");
+        assert_eq!(describe_bad_msg_code(20), "message too old");
+        assert_eq!(describe_bad_msg_code(48), "incorrect server salt");
         assert_eq!(describe_bad_msg_code(65), "message not authorised (no auth_key)");
-        assert_eq!(describe_bad_msg_code(96), "user banned / flood wait");
         assert!(describe_bad_msg_code(42).starts_with("unknown"));
     }
 
@@ -1198,7 +1263,7 @@ mod tests {
     #[test]
     fn test_pool_creation() {
         let session = MtProtoSession::new(vec![0u8; 256], 12345);
-        let pool = SenderPool::new(2, 0, session, PoolConfig::default());
+        let pool = SenderPool::new(2, 0, session, PoolConfig::default(), ProtocolConfig::default());
         assert_eq!(pool.dc_id(), 2);
     }
 
@@ -1232,7 +1297,6 @@ mod tests {
 
 #[cfg(test)]
 mod envelope_debug_tests {
-    use super::*;
 
     /// Decode the full RPC envelope field-by-field per the layer 223
     /// schema to catch layout drift without hitting the network.
