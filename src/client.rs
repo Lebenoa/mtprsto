@@ -338,6 +338,7 @@ impl Client {
         // any traffic flows through it.
         let mut mtproto_session = mtproto_session;
         mtproto_session.set_random_padding(self.protocol_config.random_padding);
+        mtproto_session.set_compress_threshold(self.protocol_config.compress_threshold);
         let mut pool = Arc::new(SenderPool::new(
             self.dc_id,
             self.api_id.unwrap_or(0),

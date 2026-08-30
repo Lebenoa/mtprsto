@@ -164,6 +164,7 @@ use mtprsto::pool::ProtocolConfig;
 
 let mut protocol = ProtocolConfig::default();
 protocol.ping_interval = std::time::Duration::from_secs(60);
+protocol.compress_threshold = 1024; // gzip_packed for larger payloads (0 = off)
 protocol.random_padding = false; // only if you really need deterministic sizes
 
 let client = Client::builder()

@@ -53,6 +53,9 @@ pub struct ProtocolConfig {
     /// message (gotd/Telegram-Desktop parity). Disable only if a proxy
     /// or test harness needs deterministic message sizes.
     pub random_padding: bool,
+    /// Compress outgoing TL payloads above this size with
+    /// `gzip_packed` (gotd default: 1024; `0` disables).
+    pub compress_threshold: usize,
 }
 
 impl Default for ProtocolConfig {
@@ -64,6 +67,7 @@ impl Default for ProtocolConfig {
             ack_batch_max: ACK_BATCH_MAX,
             ack_flush_interval: ACK_FLUSH_INTERVAL,
             random_padding: true,
+            compress_threshold: 1024,
         }
     }
 }

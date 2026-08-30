@@ -34,6 +34,10 @@ pub struct MtProtoSession {
     /// Telegram Desktop / gotd. On by default; deterministic-length
     /// messages make traffic trivially fingerprintable.
     pub random_padding: bool,
+    /// Compress outgoing TL payloads larger than this many bytes by
+    /// wrapping them in `gzip_packed#3072cfa1` (gotd default: 1024).
+    /// Only applied when gzip actually shrinks the payload. `0` disables.
+    pub compress_threshold: usize,
 }
 
 impl MtProtoSession {
@@ -50,12 +54,19 @@ impl MtProtoSession {
             server_time_offset: 0,
             last_msg_id: 0,
             random_padding: true,
+            compress_threshold: 1024,
         }
     }
 
     /// Toggle randomized padding (see [`MtProtoSession::random_padding`]).
     pub fn set_random_padding(&mut self, enabled: bool) {
         self.random_padding = enabled;
+    }
+
+    /// Set the outgoing gzip compression threshold in bytes (0 disables;
+    /// gotd default is 1024).
+    pub fn set_compress_threshold(&mut self, threshold: usize) {
+        self.compress_threshold = threshold;
     }
 
     /// Generate the next message ID (client messages are divisible by 4).
@@ -121,7 +132,33 @@ impl MtProtoSession {
     /// Encrypt a message payload for transmission.
     ///
     /// Returns the serialized encrypted message: `auth_key_id (8) + msg_key (16) + encrypted_data`.
+    fn compress_payload(&self, payload: &[u8]) -> Vec<u8> {
+        if self.compress_threshold == 0 || payload.len() <= self.compress_threshold {
+            return payload.to_vec();
+        }
+        let mut encoder = flate2::write::GzEncoder::new(
+            Vec::with_capacity(payload.len() / 2),
+            flate2::Compression::default(),
+        );
+        use std::io::Write;
+        if encoder.write_all(payload).is_err() {
+            return payload.to_vec();
+        }
+        let Ok(packed) = encoder.finish() else {
+            return payload.to_vec();
+        };
+        // gzip_packed ctor + TL bytes framing ≈ 8 bytes overhead
+        if packed.len() + 8 >= payload.len() {
+            return payload.to_vec();
+        }
+        let mut w = TLWriter::new();
+        w.write_u32(crate::serialize::GZIP_PACKED);
+        w.write_bytes(&packed);
+        w.into_bytes()
+    }
+
     pub fn encrypt_message(&self, payload: &[u8], msg_id: u64, seq_no: i32) -> Vec<u8> {
+        let payload = &self.compress_payload(payload);
         let plaintext = self.build_plaintext(msg_id, seq_no, payload);
 
         // Compute msg_key (x=0 for client→server)
@@ -950,6 +987,41 @@ fn biguint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
     x
 }
 
+
+    #[test]
+    fn test_compress_wraps_large_payload() {
+        let session = MtProtoSession::new(vec![7u8; 256], 12345);
+        // Repetitive payload compresses well.
+        let payload = vec![b'a'; 8192];
+        let wrapped = session.compress_payload(&payload);
+        assert!(wrapped.len() < 256, "expected gzip_packed wrap, got {}", wrapped.len());
+        assert_eq!(u32::from_le_bytes(wrapped[0..4].try_into().unwrap()), crate::serialize::GZIP_PACKED);
+        // Decompresses back to the original (server-side view).
+        let mut r = crate::serialize::TLReader::new(&wrapped);
+        r.read_u32().unwrap();
+        let packed = r.read_bytes().unwrap();
+        let mut d = flate2::read::GzDecoder::new(&packed[..]);
+        let mut out = Vec::new();
+        std::io::Read::read_to_end(&mut d, &mut out).unwrap();
+        assert_eq!(out, payload);
+    }
+
+    #[test]
+    fn test_compress_skips_incompressible_and_small() {
+        let mut session = MtProtoSession::new(vec![7u8; 256], 12345);
+        // Random data does not shrink — must be sent raw.
+        let mut payload = vec![0u8; 8192];
+        rand::rng().fill_bytes(&mut payload);
+        assert_eq!(session.compress_payload(&payload), payload);
+        // Below threshold — untouched.
+        session.set_compress_threshold(1024);
+        let small = vec![0u8; 100];
+        assert_eq!(session.compress_payload(&small), small);
+        // Disabled — untouched.
+        session.set_compress_threshold(0);
+        let big = vec![0u8; 8192];
+        assert_eq!(session.compress_payload(&big), big);
+    }
 #[cfg(test)]
 mod tests {
     use super::*;
