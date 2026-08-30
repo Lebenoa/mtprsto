@@ -5,3 +5,5 @@ bot.session
 *.session
 tl*.json
 .gotdref/
+tools/schema.tl
+__pycache__

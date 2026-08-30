@@ -9,6 +9,9 @@ mod chat;
 mod constructors;
 mod dialog;
 mod file_input;
+/// Schema-generated parsers (tools/gentl.py) — namespaced to avoid
+/// collisions with the hand-written types below.
+pub mod tl_gen;
 mod ids;
 mod input;
 mod message;

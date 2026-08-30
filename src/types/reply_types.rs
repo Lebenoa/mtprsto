@@ -510,17 +510,21 @@ pub fn read_photo_size(r: &mut TLReader) -> Result<PhotoSizeFull> {
 }
 
 /// Skip one `VideoSize` element (ctor included) to stay stream-aligned.
-/// `videoSize#de339455 type:string location:string w:int h:int size:int`
-/// parses cleanly; the markup variants are rare — fail loudly on those.
+/// `videoSize#de33b094 flags:# type:string w:int h:int size:int
+/// video_start_ts:flags.0?double`; the markup variants are rare — fail
+/// loudly on those.
 pub fn skip_video_size(r: &mut TLReader) -> Result<()> {
     let ctor = r.read_u32()?;
     match ctor {
         VIDEO_SIZE => {
+            let vflags = r.read_i32()?;
             let _type_ = r.read_bytes()?;
-            let _location = r.read_bytes()?;
             let _w = r.read_i32()?;
             let _h = r.read_i32()?;
             let _size = r.read_i32()?;
+            if vflags & (1 << 0) != 0 {
+                let _start_ts = r.read_u64()?;
+            }
             Ok(())
         }
         other => Err(Error::Serialization(format!(

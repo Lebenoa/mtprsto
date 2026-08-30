@@ -407,4 +407,54 @@ fn test_chat_forbidden_roundtrip() {
         other => panic!("expected Forbidden, got {other:?}"),
     }
 }
+
+/// Generated (tools/gentl.py) decoder must decode the schema-defined
+/// field order from hand-built wire bytes.
+#[test]
+fn test_tl_gen_user_roundtrip() {
+    use crate::types::tl_gen;
+
+    let mut w = TLWriter::new();
+    w.write_u32(tl_gen::USER_ID); // user#b1b8cc83
+    let flags = (1 << 0) | (1 << 1) | (1 << 4) | (1 << 14); // access_hash, first_name, phone, bot
+    w.write_i32(flags);
+    w.write_i32(0); // flags2
+    w.write_i64(4242); // id
+    w.write_i64(7777); // access_hash
+    w.write_bytes(b"Yuka"); // first_name
+    w.write_bytes(b"+66988962019"); // phone
+    w.write_i32(9); // bot_info_version
+
+    let data = w.into_bytes();
+    let mut r = TLReader::new(&data);
+    let user = tl_gen::User::read_from(&mut r).unwrap();
+    match user {
+        tl_gen::User::User { id, access_hash, first_name, phone, bot, .. } => {
+            assert_eq!(id, 4242);
+            assert_eq!(access_hash, Some(7777));
+            assert_eq!(first_name.as_deref(), Some("Yuka"));
+            assert_eq!(phone.as_deref(), Some("+66988962019"));
+            assert!(bot);
+        }
+        other => panic!("expected User::User, got {other:?}"),
+    }
+}
+
+/// Generated request builders must produce wire-identical payloads to the
+/// hand-written ones (schema order + flags are the contract).
+#[test]
+fn test_tl_gen_builder_matches_handwritten() {
+    use crate::types::tl_gen;
+
+    let generated = tl_gen::build_messages_delete_messages(true, &[1, 2]);
+    let hand = crate::rpc::build_delete_messages(
+        &[crate::types::MsgId(1), crate::types::MsgId(2)],
+        true,
+    );
+    assert_eq!(generated, hand, "deleteMessages payloads diverge");
+
+    let generated = tl_gen::build_contacts_resolve_username("lebenoa", None);
+    let hand = crate::rpc::build_resolve_username("lebenoa");
+    assert_eq!(generated, hand, "resolveUsername payloads diverge");
+}
 }

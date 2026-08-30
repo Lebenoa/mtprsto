@@ -57,7 +57,7 @@ pub const PEER_NOTIFY_SETTINGS: u32 = 0x99622c0c;
 /// `notificationSoundDefault#97e8bebe` / `None#6f0c344c` /
 /// `Local#830b9ae9` / `Ringtone#50640d3d`
 pub const NOTIFICATION_SOUND_DEFAULT: u32 = 0x97e8bebe;
-pub const NOTIFICATION_SOUND_NONE: u32 = 0x6f0c344c;
+pub const NOTIFICATION_SOUND_NONE: u32 = 0x6f0c34df;
 pub const NOTIFICATION_SOUND_LOCAL: u32 = 0x830b9ae9;
 pub const NOTIFICATION_SOUND_RINGTONE: u32 = 0x50640d3d;
 pub const USER_STATUS_EMPTY: u32 = 0x9d05049;
@@ -173,8 +173,9 @@ pub const PHOTO_SIZE_PROGRESSIVE: u32 = 0xfa3efb95;
 pub const PHOTO_PATH_SIZE: u32 = 0xd8214d41;
 /// `photoSizeEmpty#e17e23c type:string`
 pub const PHOTO_SIZE_EMPTY: u32 = 0xe17e23c;
-/// `videoSize#de339455 type:string location:string w:int h:int size:int`
-pub const VIDEO_SIZE: u32 = 0xde339455;
+/// `videoSize#de33b094 flags:# type:string w:int h:int size:int
+///   video_start_ts:flags.0?double`
+pub const VIDEO_SIZE: u32 = 0xde33b094;
 /// `forumTopicDeleted#23f109b id:int`
 pub const FORUM_TOPIC_DELETED: u32 = 0x23f109b;
 /// `peerSettings#f47741f7 flags:# ...` (all-bool + optional scalars)
@@ -267,8 +268,8 @@ pub const MESSAGES_MESSAGES_SLICE: u32 = 0x5f206716;
 pub const MESSAGES_CHANNEL_MESSAGES: u32 = 0xc776ba4e;
 pub const MESSAGES_MESSAGES_NOT_MODIFIED: u32 = 0x74535f21;
 
-// --- Dialog (Layer 223) ---
-pub const DIALOG: u32 = 0xd58a08c6;
+// --- Dialog (layer 225: dialog#fc89f7f3; old 0xd58a08c6 stale) ---
+pub const DIALOG: u32 = 0xfc89f7f3;
 pub const DIALOG_FOLDER: u32 = 0x71bd134c;
 
 // --- Sent code (Layer 223) ---
