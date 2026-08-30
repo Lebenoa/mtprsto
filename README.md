@@ -132,8 +132,8 @@ cargo run --example session_storage
 | Example | What it shows |
 |---|---|
 | [`advanced_rpc.rs`](examples/advanced_rpc.rs) | raw `invoke_raw`, `invokeAfterMsg` ordering, `invokeWithoutUpdates`, `getFutureSalts`, transient-retry loops |
-| [`callback_buttons.rs`](examples/callback_buttons.rs) | reading inline keyboards off messages and pressing buttons via `getBotCallbackAnswer` (user session) |
-| [`channel_admin.rs`](examples/channel_admin.rs) | channel create / re-fetch / invite / `editAdmin` rights / participants / leave (user session) |
+| [`callback_buttons.rs`](examples/callback_buttons.rs) | reading inline keyboards off messages and pressing buttons via `getBotCallbackAnswer` (user session, auto-loads the demo login) |
+| [`channel_admin.rs`](examples/channel_admin.rs) | channel create / re-fetch / invite / `editAdmin` rights / participants / leave (user session, auto-loads the demo login) |
 | [`file_transfer.rs`](examples/file_transfer.rs) | parallel upload workers and parallel range downloads (`DownloadConfig`) |
 | [`updates_listener.rs`](examples/updates_listener.rs) | the update pump: pts/seq/qts gap recovery, `UpdateChannelTooLong` resync |
 | [`session_storage.rs`](examples/session_storage.rs) | custom `SessionStorage` backends (SQLite-style, in-memory) |

@@ -234,6 +234,7 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
     let api_hash = env::var("TELEGRAM_API_HASH").unwrap_or_default();
 
     println!("=== User Authorization ===");
+    let mut dc_used = 2;
 
     // Step 0: Pick the right DC up front. Sending the code from the wrong
     // DC makes the server deliver an SMS we can't pair with the hash on
@@ -244,6 +245,7 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (this_dc, nearest_dc) = client.help_get_nearest_dc().await?;
     if nearest_dc != this_dc {
         println!("Nearest DC is {nearest_dc} (we are on {this_dc}) — reconnecting...");
+        dc_used = nearest_dc;
         client = TelegramClient::new(nearest_dc, Some(api_id), Some(api_hash.clone()));
         client.create_auth_key().await?;
     } else {
@@ -257,6 +259,7 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
         Ok(sent) => sent,
         Err(mtprsto::error::Error::Migration { dc_id }) => {
             println!("phone's home DC is {dc_id} — migrating...");
+            dc_used = dc_id;
             client = TelegramClient::new(dc_id, Some(api_id), Some(api_hash.clone()));
             client.create_auth_key().await?;
             client.auth_send_code(phone).await?
@@ -279,6 +282,7 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
         match client.auth_sign_in(phone, &phone_code_hash, code).await {
             Ok(()) => {
                 println!("✓ Sign-in successful!");
+                save_user_session(&client, dc_used)?;
                 break;
             }
             Err(mtprsto::error::Error::FloodWait { seconds, .. }) => {
@@ -310,6 +314,7 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
                     .auth_sign_up(phone, &phone_code_hash, first_name.trim(), last_name.trim())
                     .await?;
                 println!("✓ Sign-up successful!");
+                save_user_session(&client, dc_used)?;
                 break;
             }
             Err(e) => return Err(e.into()),
@@ -317,6 +322,25 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nYou are now authenticated. You can make API calls.");
+    Ok(())
+}
+
+/// Persist the user session so the user-session examples
+/// (channel_admin, callback_buttons) can load it afterwards.
+fn save_user_session(
+    client: &TelegramClient,
+    dc_id: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use mtprsto::session::SessionData;
+
+    let session = client.session.as_ref().ok_or("no session to save")?;
+    let mut data =
+        SessionData::from_auth_key(&session.auth_key, session.server_salt, dc_id);
+    data.user_id = client.user_id.unwrap_or(0);
+    let path = env::temp_dir().join("mtprsto_demo_session.json");
+    let mut store = mtprsto::SessionStore::new(&path);
+    store.save(&data)?;
+    println!("✓ user session saved to {}", path.display());
     Ok(())
 }
 

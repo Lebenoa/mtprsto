@@ -21,8 +21,11 @@
 //! Then run, passing the target user to invite/promote:
 //!
 //! ```sh
-//! cargo run --example channel_admin -- "$TMP/mtprsto_demo_session.json" @someuser
+//! TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... //!   cargo run --example channel_admin -- @someuser
 //! ```
+//!
+//! (An explicit session path can be passed instead of relying on the
+//! demo's default location.)
 //!
 //! The target user must be contactable (username, or a shared chat).
 
@@ -30,16 +33,49 @@ use mtprsto::rpc::ChannelParticipantsFilter;
 use mtprsto::types::{AccessHash, ChannelId, InputChannel, InputUser};
 use mtprsto::Client;
 
+
+/// Default to the demo's saved user session when no path is given:
+/// the demo's `--user-phone` login writes it to %TEMP%/mtprsto_demo_session.json.
+fn default_session_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("mtprsto_demo_session.json")
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let mut args = std::env::args().skip(1);
-    let session_path = args.next().expect("usage: channel_admin <SESSION> <USER>");
-    let user = args.next().expect("missing <USER>");
+    // Only treat the first argument as a session path if it is not
+    // the target handle itself (handles start with "@").
+    let (session_path, user) = match args.next() {
+        Some(first) if !first.starts_with("@") => {
+            let user = args.next().unwrap_or_else(|| panic!("missing <USER>"));
+            (std::path::PathBuf::from(first), user)
+        }
+        first => (default_session_path(), first.expect("missing <USER>")),
+    };
 
-    // A user-authorized session file (see prerequisite above).
-    let mut client = Client::builder().session(&session_path).build()?;
+    // The API ID/hash must match the ones the session was created with
+    // (they are baked into initConnection on every request).
+    let api_id: i32 = std::env::var("TELEGRAM_API_ID")?.parse()?;
+    let api_hash = std::env::var("TELEGRAM_API_HASH")?;
+
+    // A user-authorized session file — defaults to the demo's saved
+    // session (see prerequisite above). Fail fast with instructions
+    // instead of a confusing auth failure mid-run.
+    if !session_path.exists() {
+        return Err(format!(
+            "no user session at {} — create one first:
+               cargo run --example demo -- --user-phone +15551234567",
+            session_path.display()
+        )
+        .into());
+    }
+    let mut client = Client::builder()
+        .api_id(api_id)
+        .api_hash(api_hash)
+        .session(&session_path)
+        .build()?;
     client.connect().await?;
     println!("connected with user session");
 
