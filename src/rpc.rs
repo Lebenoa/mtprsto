@@ -390,6 +390,13 @@ pub fn build_get_file(
             w.write_i64(*secret);
             w.write_bytes(reference);
         }
+        FileLocation::Document { id, access_hash, reference, thumb_size, dc_id: _ } => {
+            w.write_u32(0xbad07584); // inputDocumentFileLocation
+            w.write_i64(*id);
+            w.write_i64(*access_hash);
+            w.write_bytes(reference);
+            w.write_bytes(thumb_size.as_bytes());
+        }
         _ => {
             // Unsupported location type — write empty
             w.write_u32(0);

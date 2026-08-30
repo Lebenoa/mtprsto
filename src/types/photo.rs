@@ -74,6 +74,10 @@ pub enum PhotoSize {
 #[derive(Debug, Clone)]
 pub enum FileLocation {
     VolumeId { volume_id: i64, local_id: i32, secret: i64, reference: Vec<u8>, dc_id: i32 },
+    /// `inputDocumentFileLocation#bad07584` — documents/files. Build from
+    /// a fetched [`Document::Document`]. Empty `thumb_size` downloads the
+    /// full file; a value like "m" fetches a thumbnail.
+    Document { id: i64, access_hash: i64, reference: Vec<u8>, thumb_size: String, dc_id: i32 },
     Web { dc_id: i32, url: String, size: i32 },
     EmojiStickerSet { version: i32, set_id: i64 },
     Unknown,
@@ -100,6 +104,23 @@ impl Document {
     pub fn id(&self) -> DocumentId {
         match self {
             Document::Document { id, .. } | Document::Empty { id, .. } => *id,
+        }
+    }
+
+    /// Download location for this document (for
+    /// [`crate::Client::download`]). `None` for empty/placeholder docs.
+    pub fn location(&self) -> Option<FileLocation> {
+        match self {
+            Document::Document { id, access_hash, file_reference, dc_id, .. } => {
+                Some(FileLocation::Document {
+                    id: id.0,
+                    access_hash: access_hash.0,
+                    reference: file_reference.clone(),
+                    thumb_size: String::new(),
+                    dc_id: *dc_id,
+                })
+            }
+            Document::Empty { .. } => None,
         }
     }
 

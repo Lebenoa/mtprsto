@@ -52,14 +52,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("uploaded and sent as message {msg_id:?}");
 
-    // Download it back. The media's file location and size come from the
-    // sent message; here we just demonstrate the client-level API — pass
-    // the FileLocation from a fetched message's Document/Photo and its size.
+    // Download it back: fetch the sent message, pull the Document's file
+    // location and size, then download through the configured parallelism.
+    let messages = client.messages(&peer).await.page_size(10).collect(10).await?;
+    let sent = messages
+        .iter()
+        .find(|m| m.id == msg_id)
+        .ok_or("sent message not found in history")?;
+    let Some(mtprsto::types::MessageMedia::Document { document, .. }) = &sent.media else {
+        return Err("sent message carries no document".into());
+    };
+    let location = document
+        .location()
+        .ok_or("document has no download location")?;
+    let size = match document {
+        mtprsto::types::Document::Document { size, .. } => Some(*size as u64),
+        _ => None,
+    };
     println!(
-        "download config in effect: threshold={} bytes, {} parallel ranges",
+        "downloading {} bytes (threshold={}, {} parallel ranges)...",
+        size.unwrap_or(0),
         client.download_config().parallel_threshold,
         client.download_config().parallel_count,
     );
+    let downloaded = client.download(&location, size).await?;
+    let original = std::fs::read(&path)?;
+    if downloaded == original {
+        println!("✓ downloaded {} bytes, content matches the original", downloaded.len());
+    } else {
+        return Err(format!(
+            "download mismatch: {} bytes vs {} original",
+            downloaded.len(),
+            original.len()
+        )
+        .into());
+    }
 
     // Clean up the sent message.
     client.delete_messages(&[msg_id]).await?;
