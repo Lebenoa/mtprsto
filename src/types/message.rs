@@ -128,6 +128,9 @@ impl Message {
                 if flags2 & (1 << 0) != 0 {
                     let _via_business_bot = r.read_i64()?;
                 }
+                if flags2 & (1 << 19) != 0 {
+                    let _guestchat_via_from = Peer::read_from(r)?;
+                }
                 let reply_to = if flags & (1 << 3) != 0 {
                     Some(ReplyHeader::read_from(r)?)
                 } else {
@@ -185,9 +188,14 @@ impl Message {
                     ));
                 }
                 if flags & (1 << 22) != 0 {
-                    return Err(Error::Serialization(
-                        "message restriction_reason parsing not supported".into(),
-                    ));
+                    // restrictionReason#d072acb4 platform reason text
+                    let n = r.read_vector_header()?;
+                    for _ in 0..n {
+                        let _ctor = r.read_u32()?;
+                        let _platform = r.read_bytes()?;
+                        let _reason = r.read_bytes()?;
+                        let _text = r.read_bytes()?;
+                    }
                 }
                 if flags & (1 << 25) != 0 {
                     let _ttl_period = r.read_i32()?;
@@ -220,6 +228,11 @@ impl Message {
                 if flags2 & (1 << 11) != 0 {
                     let _summary_from_language = r.read_bytes()?;
                 }
+                if flags2 & (1 << 13) != 0 {
+                    return Err(Error::Serialization(
+                        "message rich_message (RichMessage) parsing not supported".into(),
+                    ));
+                }
                 let post = flags & (1 << 14) != 0;
                 let edit_hide = flags & (1 << 21) != 0;
                 Ok(Message::Message(Box::new(MessageFull {
@@ -235,9 +248,11 @@ impl Message {
                 Ok(Message::Empty { id })
             }
             MESSAGE_SERVICE => {
-                // messageService#7a800e0a flags:# ... id:int ... action
+                // messageService#7a800e0a flags:# (no flags2) id:int
+                //   from_id:flags.8?Peer peer_id:Peer saved_peer_id:flags.28?Peer
+                //   reply_to:flags.3?MessageReplyHeader date:int
+                //   action:MessageAction reactions:flags.20? ttl_period:flags.25?int
                 let flags = r.read_i32()?;
-                let _flags2 = r.read_i32()?;
                 let id = MsgId(r.read_i32()? as i64);
                 let from_id = if flags & (1 << 8) != 0 {
                     Some(Peer::read_from(r)?)
@@ -245,6 +260,9 @@ impl Message {
                     None
                 };
                 let peer_id = Peer::read_from(r)?;
+                if flags & (1 << 28) != 0 {
+                    let _saved_peer_id = Peer::read_from(r)?;
+                }
                 let reply_to = if flags & (1 << 3) != 0 {
                     Some(ReplyHeader::read_from(r)?)
                 } else {
@@ -252,6 +270,14 @@ impl Message {
                 };
                 let date = r.read_i32()?;
                 let action = MessageAction::read_from(r)?;
+                if flags & (1 << 20) != 0 {
+                    return Err(Error::Serialization(
+                        "messageService reactions (MessageReactions) not supported".into(),
+                    ));
+                }
+                if flags & (1 << 25) != 0 {
+                    let _ttl_period = r.read_i32()?;
+                }
                 Ok(Message::Service {
                     id, from_id, peer_id, date, action, reply_to,
                 })
@@ -275,6 +301,15 @@ impl ReplyHeader {
     /// messageReplyHeader#6917560b (layer 223).
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
+        if ctor == MESSAGE_REPLY_STORY_HEADER {
+            // messageReplyStoryHeader#0e5af939 peer:Peer story_id:int —
+            // consume so the stream stays aligned, then fail loudly.
+            let _peer = Peer::read_from(r)?;
+            let _story_id = r.read_i32()?;
+            return Err(Error::Serialization(
+                "story reply (messageReplyStoryHeader) not supported".into(),
+            ));
+        }
         if ctor != MESSAGE_REPLY_HEADER && ctor != MESSAGE_REPLY_HEADER_V225 {
             return Err(Error::Serialization(format!(
                 "unknown MessageReplyHeader constructor {ctor:#x}"
@@ -314,6 +349,9 @@ impl ReplyHeader {
         }
         if flags & (1 << 11) != 0 {
             let _todo_item_id = r.read_i32()?;
+        }
+        if flags & (1 << 12) != 0 {
+            let _poll_option = r.read_bytes()?;
         }
         Ok(ReplyHeader {
             reply_to_msg_id: reply_to_msg_id
@@ -356,8 +394,55 @@ impl MessageAction {
             MESSAGE_ACTION_EMPTY => Ok(MessageAction::Empty),
             MESSAGE_ACTION_HISTORY_CLEAR => Ok(MessageAction::MessageActionHistoryClear),
             MESSAGE_ACTION_PIN_MESSAGE => Ok(MessageAction::MessageActionPinMessage),
+            MESSAGE_ACTION_CONTACT_SIGN_UP => Ok(MessageAction::Other),
+            MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST => Ok(MessageAction::Other),
+            MESSAGE_ACTION_CHAT_CREATE => {
+                // messageActionChatCreate#bd47cbad title:string users:Vector<long>
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    users.push(UserId(r.read_i64()?));
+                }
+                Ok(MessageAction::MessageActionChatCreate { title, users })
+            }
+            MESSAGE_ACTION_CHAT_EDIT_TITLE => {
+                let title = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageAction::MessageActionChatEditTitle { title })
+            }
+            MESSAGE_ACTION_CHAT_ADD_USER => {
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    users.push(UserId(r.read_i64()?));
+                }
+                Ok(MessageAction::MessageActionChatAddUser { users })
+            }
+            MESSAGE_ACTION_CHAT_DELETE_USER => {
+                Ok(MessageAction::MessageActionChatDeleteUser {
+                    user_id: UserId(r.read_i64()?),
+                })
+            }
+            MESSAGE_ACTION_CHAT_JOINED_BY_LINK => {
+                // inviter_id:long
+                Ok(MessageAction::MessageActionChatJoinedByLink {
+                    inviter_id: UserId(r.read_i64()?),
+                    via_link: true,
+                })
+            }
+            MESSAGE_ACTION_CHANNEL_CREATE => {
+                let title = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageAction::MessageActionChannelCreate { title })
+            }
+            MESSAGE_ACTION_GAME_SCORE => {
+                let game_id = r.read_i64()?;
+                let score = r.read_i32()?;
+                Ok(MessageAction::MessageActionGameScore { game_id, score })
+            }
             _ => {
-                // Skip unknown action: consume remaining bytes
+                // Unknown action: no safe way to know its length — drain the
+                // rest of the frame (only safe because callers treat the
+                // messageService tail as terminal after this).
                 while r.remaining() > 0 {
                     let _ = r.read_i32()?;
                 }
@@ -398,36 +483,59 @@ impl MessageMedia {
         match ctor {
             MESSAGE_MEDIA_EMPTY => Ok(MessageMedia::None),
             MESSAGE_MEDIA_PHOTO => {
+                // messageMediaPhoto#e216eb63 flags:# spoiler:flags.3?true
+                //   live_photo:flags.4?true photo:flags.0?Photo
+                //   ttl_seconds:flags.2?int video:flags.4?Document
                 let flags = r.read_i32()?;
+                let photo = if flags & (1 << 0) != 0 {
+                    Photo::read_from(r)?
+                } else {
+                    Photo::Empty { id: PhotoId(0) }
+                };
                 if flags & (1 << 2) != 0 {
                     let _ttl_seconds = r.read_i32()?;
                 }
-                let photo = Photo::read_from(r)?;
-                let _caption = if flags & (1 << 7) != 0 {
-                    String::from_utf8(r.read_bytes()?)?
-                } else {
-                    String::new()
-                };
+                if flags & (1 << 4) != 0 {
+                    Document::read_from(r)?; // live_photo video
+                }
                 Ok(MessageMedia::Photo { photo })
             }
             MESSAGE_MEDIA_DOCUMENT => {
+                // messageMediaDocument#52d8ccd9 flags:# nopremium:flags.3?true
+                //   spoiler:flags.4?true video:flags.6?true round:flags.7?true
+                //   voice:flags.8?true document:flags.0?Document
+                //   alt_documents:flags.5?Vector<Document>
+                //   video_cover:flags.9?Photo video_timestamp:flags.10?int
+                //   ttl_seconds:flags.2?int
                 let flags = r.read_i32()?;
-                let document = if flags & (1 << 2) != 0 {
+                let document = if flags & (1 << 0) != 0 {
                     Some(Document::read_from(r)?)
                 } else {
                     None
                 };
-                let caption = if flags & (1 << 7) != 0 {
-                    String::from_utf8(r.read_bytes()?)?
-                } else {
-                    String::new()
-                };
+                if flags & (1 << 5) != 0 {
+                    let n = r.read_vector_header()?;
+                    for _ in 0..n {
+                        Document::read_from(r)?;
+                    }
+                }
+                if flags & (1 << 9) != 0 {
+                    Photo::read_from(r)?; // video_cover
+                }
+                if flags & (1 << 10) != 0 {
+                    let _video_timestamp = r.read_i32()?;
+                }
+                if flags & (1 << 2) != 0 {
+                    let _ttl_seconds = r.read_i32()?;
+                }
                 Ok(MessageMedia::Document {
                     document: document.unwrap_or(Document::Empty { id: DocumentId(0), access_hash: AccessHash(0), file_reference: Vec::new() }),
-                    caption,
+                    caption: String::new(),
                 })
             }
             MESSAGE_MEDIA_WEB_PAGE => {
+                // messageMediaWebPage#ddf10c3b flags:# webpage:WebPage
+                let _flags = r.read_i32()?;
                 let webpage = WebPage::read_from(r)?;
                 Ok(MessageMedia::WebPage { webpage })
             }
@@ -436,8 +544,16 @@ impl MessageMedia {
                 Ok(MessageMedia::Geo { geo })
             }
             MESSAGE_MEDIA_DICE => {
+                // messageMediaDice#8cbec07 flags:# value:int emoticon:string
+                //   game_outcome:flags.0?messages.EmojiGameOutcome
+                let flags = r.read_i32()?;
                 let value = r.read_i32()?;
                 let emoticon = String::from_utf8(r.read_bytes()?)?;
+                if flags & (1 << 0) != 0 {
+                    return Err(Error::Serialization(
+                        "messageMediaDice game_outcome not supported".into(),
+                    ));
+                }
                 Ok(MessageMedia::Dice { value, emoticon })
             }
             MESSAGE_MEDIA_VENUE => {

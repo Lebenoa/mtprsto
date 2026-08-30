@@ -180,11 +180,14 @@ mod type_tests {
         let mut w = TLWriter::new();
         w.write_u32(UPDATE_SHORT);
         w.write_u32(UPDATE_READ_MESSAGES);
+        w.write_i32(0); // flags
         // messages:Vector<int>
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(2);
         w.write_i32(1);
         w.write_i32(2);
+        w.write_i32(100); // pts
+        w.write_i32(2); // pts_count
         w.write_i32(1_700_000_000); // date
 
         let updates = Updates::parse(&w.into_bytes()).unwrap();

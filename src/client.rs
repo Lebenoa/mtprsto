@@ -519,45 +519,203 @@ impl Client {
         }
     }
 
+    /// Field-by-field skip of `userFull#6cbe645` (layer 225). Heavy
+    /// unsupported unions (BotInfo, WallPaper, PeerStories, business
+    /// settings, TextWithEntities) fail loudly rather than desync.
+    fn skip_user_full(r: &mut TLReader) -> Result<()> {
+        use crate::types::{Document as TlDocument, Photo as TlPhoto};
+
+        let flags = r.read_i32()?;
+        let flags2 = r.read_i32()?;
+        let _id = r.read_i64()?;
+        if flags & (1 << 1) != 0 {
+            let _about = r.read_bytes()?;
+        }
+        // settings:PeerSettings — ctor + flags + optional ints/strings
+        let ps_ctor = r.read_u32()?;
+        if ps_ctor != types::PEER_SETTINGS {
+            return Err(Error::Protocol(format!(
+                "expected peerSettings in userFull, got {ps_ctor:#x}"
+            )));
+        }
+        let ps_flags = r.read_i32()?;
+        for bit in [6, 9, 9, 13, 13, 14, 15, 16, 17, 18] {
+            if ps_flags & (1 << bit) != 0 {
+                if bit == 13 {
+                    let _ = r.read_i64()?; // business_bot_id
+                    let _ = r.read_bytes()?; // business_bot_manage_url
+                } else if bit == 6 {
+                    let _ = r.read_i32()?; // geo_distance
+                } else if bit == 9 {
+                    let _ = r.read_bytes()?; // request_chat_title
+                    let _ = r.read_i32()?; // request_chat_date
+                } else {
+                    let _ = r.read_bytes()?;
+                }
+            }
+        }
+        if flags & (1 << 21) != 0 {
+            TlPhoto::read_from(r)?;
+        }
+        if flags & (1 << 2) != 0 {
+            TlPhoto::read_from(r)?;
+        }
+        if flags & (1 << 22) != 0 {
+            TlPhoto::read_from(r)?;
+        }
+        crate::types::skip_peer_notify_settings_public(r)?;
+        if flags & (1 << 3) != 0 {
+            return Err(Error::Protocol(
+                "userFull bot_info (BotInfo) parsing not supported".into(),
+            ));
+        }
+        if flags & (1 << 6) != 0 {
+            let _pinned = r.read_i32()?;
+        }
+        let _common_chats = r.read_i32()?;
+        if flags & (1 << 11) != 0 {
+            let _folder_id = r.read_i32()?;
+        }
+        if flags & (1 << 14) != 0 {
+            let _ttl = r.read_i32()?;
+        }
+        if flags & (1 << 15) != 0 {
+            // chatTheme#c3dffc04 emoticon:string
+            let _ctor = r.read_u32()?;
+            let _emoticon = r.read_bytes()?;
+        }
+        if flags & (1 << 16) != 0 {
+            let _private_forward_name = r.read_bytes()?;
+        }
+        for bit in [17, 18] {
+            if flags & (1 << bit) != 0 {
+                // ChatAdminRights — ctor + flags
+                let _ctor = r.read_u32()?;
+                let _rights = r.read_i32()?;
+            }
+        }
+        if flags & (1 << 24) != 0 {
+            return Err(Error::Protocol(
+                "userFull wallpaper (WallPaper) parsing not supported".into(),
+            ));
+        }
+        if flags & (1 << 25) != 0 {
+            return Err(Error::Protocol(
+                "userFull stories (PeerStories) parsing not supported".into(),
+            ));
+        }
+        let business = |_r: &mut TLReader, what: &str| -> Result<()> {
+            Err(Error::Protocol(format!(
+                "userFull {what} parsing not supported"
+            )))
+        };
+        if flags2 & (1 << 0) != 0 {
+            business(r, "business_work_hours")?;
+        }
+        if flags2 & (1 << 1) != 0 {
+            business(r, "business_location")?;
+        }
+        if flags2 & (1 << 2) != 0 {
+            business(r, "business_greeting_message")?;
+        }
+        if flags2 & (1 << 3) != 0 {
+            business(r, "business_away_message")?;
+        }
+        if flags2 & (1 << 4) != 0 {
+            business(r, "business_intro")?;
+        }
+        if flags2 & (1 << 5) != 0 {
+            // birthday#6c8e1e06 flags:# day:int month:int year:flags.0?int
+            let _ctor = r.read_u32()?;
+            let bflags = r.read_i32()?;
+            let _day = r.read_i32()?;
+            let _month = r.read_i32()?;
+            if bflags & (1 << 0) != 0 {
+                let _year = r.read_i32()?;
+            }
+        }
+        if flags2 & (1 << 6) != 0 {
+            let _personal_channel_id = r.read_i64()?;
+            let _personal_channel_message = r.read_i32()?;
+        }
+        if flags2 & (1 << 8) != 0 {
+            let _stargifts_count = r.read_i32()?;
+        }
+        if flags2 & (1 << 11) != 0 {
+            return Err(Error::Protocol(
+                "userFull starref_program parsing not supported".into(),
+            ));
+        }
+        if flags2 & (1 << 12) != 0 {
+            // botVerification#f93cd45c bot_id:long icon:long description:string
+            let _ctor = r.read_u32()?;
+            let _bot_id = r.read_i64()?;
+            let _icon = r.read_i64()?;
+            let _description = r.read_bytes()?;
+        }
+        if flags2 & (1 << 14) != 0 {
+            let _paid_stars = r.read_i64()?;
+        }
+        if flags2 & (1 << 15) != 0 {
+            // disallowedGiftsSettings#71f276c4 flags:#
+            let _ctor = r.read_u32()?;
+            let _dflags = r.read_i32()?;
+        }
+        // starsRating#1b0e4f07 flags:# level:int current_level_stars:long
+        //   stars:long next_level_stars:flags.0?long
+        for bit in [17, 18] {
+            if flags2 & (1 << bit) != 0 {
+                let _ctor = r.read_u32()?;
+                let rflags = r.read_i32()?;
+                let _level = r.read_i32()?;
+                let _current = r.read_i64()?;
+                let _stars = r.read_i64()?;
+                if rflags & (1 << 0) != 0 {
+                    let _next = r.read_i64()?;
+                }
+            }
+        }
+        if flags2 & (1 << 19) != 0 {
+            let _pending_rating_date = r.read_i32()?;
+        }
+        if flags2 & (1 << 20) != 0 {
+            return Err(Error::Protocol(
+                "userFull main_tab (ProfileTab) parsing not supported".into(),
+            ));
+        }
+        if flags2 & (1 << 21) != 0 {
+            TlDocument::read_from(r)?;
+        }
+        if flags2 & (1 << 22) != 0 {
+            return Err(Error::Protocol(
+                "userFull note (TextWithEntities) parsing not supported".into(),
+            ));
+        }
+        if flags2 & (1 << 25) != 0 {
+            let _bot_manager_id = r.read_i64()?;
+        }
+        Ok(())
+    }
+
     /// Parse `users.userFull` / bare `User` response into the user itself.
     fn parse_user_container(data: &[u8]) -> Result<User> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
         match ctor {
             types::USERS_USER_FULL => {
-                // users.userFull#d69e83e0 full_user:UserFull chats:Vector<Chat> users:Vector<User>
-                // Skip the UserFull object header — its layout is not
-                // modeled, so we only consume the constructor here and
-                // locate the chats vector by scanning below.
+                // users.userFull#3b6d152e full_user:UserFull chats users.
+                // Skip the embedded UserFull field-by-field (see
+                // skip_user_full) so the chats/users vectors align.
                 let _fu_ctor = r.read_u32()?;
-                // Skip UserFull by scanning to the first vector constructor.
-                // UserFull is a fixed-shape object; we locate the chats
-                // vector by searching for VECTOR at a 4-byte boundary after
-                // the full_user constructor.
-                let bytes = data;
-                let fu_start = 4 + 4; // users.userFull ctor + full_user ctor
-                let mut chats_off = None;
-                let mut off = fu_start;
-                while off + 4 <= bytes.len() {
-                    let v = u32::from_le_bytes(bytes[off..off + 4].try_into().unwrap());
-                    if v == crate::serialize::VECTOR {
-                        chats_off = Some(off);
-                        break;
-                    }
-                    off += 4;
-                }
-                let chats_off = chats_off.ok_or_else(|| {
-                    Error::Protocol("users.userFull: chats vector not found".into())
-                })?;
-                let mut r2 = TLReader::new(&bytes[chats_off..]);
-                let chat_count = r2.read_vector_header()?;
+                Self::skip_user_full(&mut r)?;
+                let chat_count = r.read_vector_header()?;
                 for _ in 0..chat_count {
-                    let _ = types::Chat::read_from(&mut r2)?;
+                    let _ = types::Chat::read_from(&mut r)?;
                 }
-                let user_count = r2.read_vector_header()?;
+                let user_count = r.read_vector_header()?;
                 let mut user = User::Empty { id: UserId(0) };
                 for _ in 0..user_count {
-                    let u = types::User::read_from(&mut r2)?;
+                    let u = types::User::read_from(&mut r)?;
                     user = u;
                 }
                 Ok(user)
@@ -591,27 +749,28 @@ impl Client {
         let ctor = r.read_u32()?;
         match ctor {
             types::MESSAGES_DIALOGS | types::MESSAGES_DIALOGS_SLICE => {
-                // dialogsSlice#71e094f3 count:int messages:Vector<Message>
-                //   dialogs:Vector<Dialog> chats:Vector<Chat> users:Vector<User>
-                // messages.dialogs#15ba6c40 has the same tail without count.
+                // messages.dialogs#15ba6c40 dialogs:Vector<Dialog>
+                //   messages:Vector<Message> chats:Vector<Chat> users:Vector<User>
+                // messages.dialogsSlice#71e094f3 count:int then the same tail.
+                // NOTE: dialogs come FIRST — messages are the second vector.
                 let _count = if ctor == types::MESSAGES_DIALOGS_SLICE {
                     Some(r.read_i32()?)
                 } else {
                     None
                 };
 
-                // messages:Vector<Message>
-                let msg_count = r.read_vector_header()?;
-                let mut messages = Vec::with_capacity(msg_count as usize);
-                for _ in 0..msg_count {
-                    messages.push(types::Message::read_from(&mut r)?);
-                }
-
                 // dialogs:Vector<Dialog>
                 let dlg_count = r.read_vector_header()?;
                 let mut dialogs = Vec::with_capacity(dlg_count as usize);
                 for _ in 0..dlg_count {
                     dialogs.push(types::Dialog::read_from(&mut r)?);
+                }
+
+                // messages:Vector<Message>
+                let msg_count = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(msg_count as usize);
+                for _ in 0..msg_count {
+                    messages.push(types::Message::read_from(&mut r)?);
                 }
 
                 // chats:Vector<Chat>
@@ -1255,23 +1414,74 @@ fn parse_history_messages(data: &[u8]) -> Result<Vec<crate::types::MessageFull>>
         )));
     }
     match ctor {
+        types::MESSAGES_MESSAGES_SLICE => {
+            // messagesSlice#5f206716 flags:# inexact:flags.1?true count:int
+            //   next_rate:flags.0?int offset_id_offset:flags.2?int
+            //   search_flood:flags.3?SearchPostsFlood messages topics chats users
+            let flags = r.read_i32()?;
+            let _count = r.read_i32()?;
+            if flags & (1 << 0) != 0 {
+                let _next_rate = r.read_i32()?;
+            }
+            if flags & (1 << 2) != 0 {
+                let _offset_id_offset = r.read_i32()?;
+            }
+            if flags & (1 << 3) != 0 {
+                return Err(Error::Protocol(
+                    "messagesSlice carries search_flood (SearchPostsFlood) — not supported"
+                        .into(),
+                ));
+            }
+            read_messages_tail(&mut r)
+        }
         types::MESSAGES_CHANNEL_MESSAGES => {
-            // channel_messages#768b1a60 — different header; not modelled.
-            Ok(Vec::new())
+            // channelMessages#c776ba4e flags:# inexact:flags.1?true pts:int
+            //   count:int offset_id_offset:flags.2?int messages topics chats users
+            let flags = r.read_i32()?;
+            let _pts = r.read_i32()?;
+            let _count = r.read_i32()?;
+            if flags & (1 << 2) != 0 {
+                let _offset_id_offset = r.read_i32()?;
+            }
+            read_messages_tail(&mut r)
         }
         _ => {
-            let count = r.read_vector_header()?;
-            let mut out = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                match crate::types::Message::read_from(&mut r)? {
-                    types::Message::Message(full) => out.push(*full),
-                    types::Message::Empty { .. } => {}
-                    types::Message::Service { .. } => {}
-                }
-            }
-            Ok(out)
+            // messages.messages#1d73e7ea messages topics chats users
+            read_messages_tail(&mut r)
         }
     }
+}
+
+/// Shared tail of messages.Messages*: messages, topics, chats, users.
+/// Returns the parsed non-empty/non-service messages.
+fn read_messages_tail(
+    r: &mut TLReader,
+) -> Result<Vec<crate::types::MessageFull>> {
+    let count = r.read_vector_header()?;
+    let mut out = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        match crate::types::Message::read_from(r)? {
+            crate::types::Message::Message(full) => out.push(*full),
+            crate::types::Message::Empty { .. } => {}
+            crate::types::Message::Service { .. } => {}
+        }
+    }
+    // topics:Vector<ForumTopic> — rare in plain history fetches; must be
+    // consumed (or refused loudly) before the chats vector.
+    let topic_count = r.read_vector_header()?;
+    for _ in 0..topic_count {
+        let tctor = r.read_u32()?;
+        if tctor == types::FORUM_TOPIC_DELETED {
+            let _id = r.read_i32()?;
+        } else {
+            return Err(Error::Protocol(format!(
+                "unsupported ForumTopic constructor {tctor:#x} in messages container"
+            )));
+        }
+    }
+    let _chats = crate::types::read_chat_vector_public(r)?;
+    let _users = crate::types::read_user_vector_public(r)?;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1316,25 +1526,31 @@ mod tests {
     /// Build a users.userFull container bytes and check get_me parsing.
     #[test]
     fn test_parse_user_container() {
-        // The parser scans 4-byte aligned for the chats VECTOR marker,
-        // so the chats vector must come right after the userFull ctor.
-        // The user itself lives in the users vector at the tail.
         let mut w = TLWriter::new();
         w.write_u32(types::USERS_USER_FULL);
-        w.write_u32(0xd69e83e0);
-        // userFull body is opaque to the parser — it scans 4-byte aligned
-        // for the chats VECTOR marker. We must place a chat vector whose
-        // ctor does not collide: use an empty one right after the ctor.
+        w.write_u32(types::USER_FULL);
+        // userFull#6cbe645 minimal body: flags, flags2, id, peerSettings,
+        // notify_settings, common_chats_count (all optionals clear).
+        w.write_i32(0); // flags
+        w.write_i32(0); // flags2
+        w.write_i64(4242); // id
+        w.write_u32(types::PEER_SETTINGS);
+        w.write_i32(0); // peerSettings flags
+        w.write_u32(types::PEER_NOTIFY_SETTINGS);
+        w.write_i32(0); // notify settings flags
+        w.write_i32(0); // common_chats_count
+        // chats: empty
         w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(0); // chats: empty
+        w.write_i32(0);
+        // users: one
         w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(1); // users: one
+        w.write_i32(1);
         w.write_u32(types::USER);
         w.write_i32((1 << 0) | (1 << 1));
-        w.write_i32(0);
+        w.write_i32(0); // flags2
         w.write_i64(4242);
-        w.write_i64(7777);
-        w.write_bytes(b"Test");
+        w.write_i64(7777); // access_hash
+        w.write_bytes(b"Test"); // first_name
 
         let user = Client::parse_user_container(&w.into_bytes()).unwrap();
         assert_eq!(user.id(), UserId(4242));
@@ -1364,23 +1580,29 @@ mod tests {
         let mut w = TLWriter::new();
         w.write_u32(types::MESSAGES_DIALOGS_SLICE);
         w.write_i32(1); // count
-        // messages:Vector<Message> — one empty message
-        w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(1);
-        w.write_u32(types::MESSAGE_EMPTY);
-        w.write_i64(10); // id
-        // dialogs:Vector<Dialog> — one
+        // dialogs:Vector<Dialog> — dialogs come FIRST
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1);
         w.write_i32(0); // flags
         w.write_u32(types::PEER_USER);
         w.write_i64(42); // peer.user_id
-        w.write_i64(10); // top_message
-        w.write_i32(1_700_000_000); // top_message_date
+        w.write_i32(10); // top_message
+        w.write_i32(10); // read_inbox_max_id
+        w.write_i32(10); // read_outbox_max_id
         w.write_i32(1); // unread_count
-        w.write_i64(10); // read_inbox_max_id
-        w.write_i64(10); // read_outbox_max_id
-        w.write_i32(0); // unread_count_i32 (unused dup field)
+        w.write_i32(0); // unread_mentions_count
+        w.write_i32(0); // unread_reactions_count
+        w.write_i32(0); // unread_poll_votes_count
+        w.write_u32(types::PEER_NOTIFY_SETTINGS); // notify_settings
+        w.write_i32(0); // settings flags (all conditionals clear)
+        // (dialog pts flags.0 is clear → no extra word)
+        // messages:Vector<Message> — one empty message
+        // (messageEmpty#90a6ca84 flags:int id:int)
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(1);
+        w.write_u32(types::MESSAGE_EMPTY);
+        w.write_i32(0); // flags
+        w.write_i32(10); // id
         // chats:Vector<Chat> — empty
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(0);
@@ -1444,14 +1666,17 @@ mod tests {
         w.write_i64(-1001234);
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1); // chats
-        w.write_u32(types::CHANNEL);
-        w.write_i32(1 << 0 | 1 << 6); // access_hash + username flags
+        w.write_u32(types::CHANNEL); // channel#d49f34c6
+        let flags = (1 << 6) | (1 << 13); // username + access_hash
+        w.write_i32(flags);
+        w.write_i32(0); // flags2
         w.write_i64(-1001234); // id
-        w.write_i64(5555); // access_hash
+        w.write_i64(5555); // access_hash (flags.13)
         w.write_bytes(b"testchannel"); // title
-        w.write_bytes(b"TestChannel"); // username
+        w.write_bytes(b"TestChannel"); // username (flags.6)
+        w.write_u32(types::CHAT_PHOTO_EMPTY); // photo
         w.write_i32(1_700_000_000); // date
-        w.write_i32(1); // version
+        // no optional rights/participants/usernames tail (flags clear)
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(0); // users
 

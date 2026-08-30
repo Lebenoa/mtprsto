@@ -27,20 +27,23 @@ impl Photo {
         let ctor = r.read_u32()?;
         match ctor {
             PHOTO => {
-                let _flags = r.read_i32()?;
+                // photo#fb197a65 flags:# has_stickers:flags.0?true id:long
+                //   access_hash:long file_reference:bytes date:int
+                //   sizes:Vector<PhotoSize> video_sizes:flags.1?Vector<VideoSize>
+                //   dc_id:int
+                let flags = r.read_i32()?;
                 let id = PhotoId(r.read_i64()?);
                 let access_hash = AccessHash(r.read_i64()?);
                 let file_reference = r.read_bytes()?;
-                let _dc_id = r.read_i32()?;
-                let _w = r.read_i32()?;
-                let _h = r.read_i32()?;
-                // Skip remaining fields for now
-                while r.remaining() > 0 {
-                    let _ = r.read_i32()?;
+                let date = r.read_i32()?;
+                let _sizes = crate::types::read_photo_sizes(r)?;
+                if flags & (1 << 1) != 0 {
+                    crate::types::skip_video_sizes(r)?;
                 }
+                let _dc_id = r.read_i32()?;
                 Ok(Photo::Photo {
                     id, access_hash, file_reference,
-                    dates: PhotoDateInfo::default(),
+                    dates: PhotoDateInfo { date },
                     sizes: Vec::new(),
                 })
             }
@@ -128,6 +131,11 @@ impl Document {
         let ctor = r.read_u32()?;
         match ctor {
             DOCUMENT => {
+                // document#8fd4c4d8 flags:# id:long access_hash:long
+                //   file_reference:bytes date:int mime_type:string size:long
+                //   thumbs:flags.0?Vector<PhotoSize>
+                //   video_thumbs:flags.1?Vector<VideoSize> dc_id:int
+                //   attributes:Vector<DocumentAttribute>
                 let flags = r.read_i32()?;
                 let id = DocumentId(r.read_i64()?);
                 let access_hash = AccessHash(r.read_i64()?);
@@ -154,30 +162,15 @@ impl Document {
                 } else {
                     None
                 };
-                // video_thumbs:flags.1?Vector<VideoSize> — VideoSize not
-                // modelled yet; skip via per-element length is impossible,
-                // so track presence only (tail marked below).
-                let has_video_thumbs = flags & (1 << 1) != 0;
-                if has_video_thumbs {
-                    // Consume the vector header + raw body is unsafe without
-                    // a VideoSize parser; count and size are knowable only
-                    // per element. Leave the body in place and note it.
-                    //
-                    // In practice documents inside messages are followed by
-                    // dc_id:int attributes:Vector<...> so we cannot skip;
-                    // dc_id/version/attributes are read below only when the
-                    // vector was absent.
+                // video_thumbs:flags.1?Vector<VideoSize>
+                if flags & (1 << 1) != 0 {
+                    crate::types::skip_video_sizes(r)?;
                 }
-                let dc_id = if has_video_thumbs { 0 } else { r.read_i32()? };
-                let version = if has_video_thumbs { 0 } else { r.read_i32()? };
-                let _attributes = if has_video_thumbs {
-                    Vec::new()
-                } else {
-                    crate::types::read_document_attributes(r)?
-                };
+                let dc_id = r.read_i32()?;
+                let _attributes = crate::types::read_document_attributes(r)?;
                 Ok(Document::Document {
                     id, access_hash, file_reference, date, mime_type, size,
-                    thumb, dc_id, version,
+                    thumb, dc_id, version: 0,
                 })
             }
             DOCUMENT_EMPTY => {
@@ -200,11 +193,44 @@ pub enum WebPage {
 }
 
 impl WebPage {
+    /// `webPage#e89c45b2 flags:# ... id:long url:string display_url:string
+    /// hash:int <conditionals through attributes:flags.12>` — skip all
+    /// optional fields to stay stream-aligned.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let _ctor = r.read_u32()?;
+        let ctor = r.read_u32()?;
+        if ctor != crate::types::WEB_PAGE {
+            return Err(Error::Serialization(format!(
+                "unknown WebPage constructor {ctor:#x}"
+            )));
+        }
+        let flags = r.read_i32()?;
         let id = r.read_i64()?;
-        while r.remaining() > 0 {
-            let _ = r.read_i32()?;
+        let _url = r.read_bytes()?;
+        let _display_url = r.read_bytes()?;
+        let _hash = r.read_i32()?;
+        if flags & (1 << 0) != 0 { let _type_ = r.read_bytes()?; }
+        if flags & (1 << 1) != 0 { let _site_name = r.read_bytes()?; }
+        if flags & (1 << 2) != 0 { let _title = r.read_bytes()?; }
+        if flags & (1 << 3) != 0 { let _description = r.read_bytes()?; }
+        if flags & (1 << 4) != 0 { Photo::read_from(r)?; }
+        if flags & (1 << 5) != 0 {
+            let _embed_url = r.read_bytes()?;
+            let _embed_type = r.read_bytes()?;
+        }
+        if flags & (1 << 6) != 0 { let _embed_width = r.read_i32()?; }
+        if flags & (1 << 6) != 0 { let _embed_height = r.read_i32()?; }
+        if flags & (1 << 7) != 0 { let _duration = r.read_i32()?; }
+        if flags & (1 << 8) != 0 { let _author = r.read_bytes()?; }
+        if flags & (1 << 9) != 0 { Document::read_from(r)?; }
+        if flags & (1 << 10) != 0 {
+            return Err(Error::Serialization(
+                "webPage cached_page (Page) not supported".into(),
+            ));
+        }
+        if flags & (1 << 12) != 0 {
+            return Err(Error::Serialization(
+                "webPage attributes (WebPageAttribute) not supported".into(),
+            ));
         }
         Ok(WebPage::Empty { id })
     }
@@ -218,14 +244,29 @@ pub struct GeoPoint {
 }
 
 impl GeoPoint {
+    /// `geoPoint#b2a2f663 flags:# long:double lat:double access_hash:long
+    /// accuracy_radius:flags.0?int` / `geoPointEmpty#1117dd5f` (ctor included).
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let _flags = r.read_i32()?;
-        let long_bits = r.read_u64()?;
-        let lat_bits = r.read_u64()?;
-        Ok(GeoPoint {
-            long: f64::from_bits(long_bits),
-            lat: f64::from_bits(lat_bits),
-        })
+        let ctor = r.read_u32()?;
+        match ctor {
+            crate::types::GEO_POINT => {
+                let flags = r.read_i32()?;
+                let long_bits = r.read_u64()?;
+                let lat_bits = r.read_u64()?;
+                let _access_hash = r.read_i64()?;
+                if flags & (1 << 0) != 0 {
+                    let _accuracy_radius = r.read_i32()?;
+                }
+                Ok(GeoPoint {
+                    long: f64::from_bits(long_bits),
+                    lat: f64::from_bits(lat_bits),
+                })
+            }
+            crate::types::GEO_POINT_EMPTY => Ok(GeoPoint { long: 0.0, lat: 0.0 }),
+            other => Err(Error::Serialization(format!(
+                "unknown GeoPoint constructor {other:#x}"
+            ))),
+        }
     }
 }
 

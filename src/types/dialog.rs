@@ -26,31 +26,56 @@ pub struct Dialog {
 }
 
 impl Dialog {
+    /// Parse `dialog#fc89f7f3 flags:# pinned:flags.2?true
+    /// unread_mark:flags.3?true view_forum_as_messages:flags.6?true
+    /// peer:Peer top_message:int read_inbox_max_id:int
+    /// read_outbox_max_id:int unread_count:int unread_mentions_count:int
+    /// unread_reactions_count:int unread_poll_votes_count:int
+    /// notify_settings:PeerNotifySettings pts:flags.0?int
+    /// draft:flags.1?DraftMessage folder_id:flags.4?int
+    /// ttl_period:flags.5?int`.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let flags = r.read_i32()?;
         let peer = Peer::read_from(r)?;
-        let top_message = MsgId(r.read_i64()?);
-        let top_message_date = r.read_i32()?;
+        let top_message = MsgId(r.read_i32()? as i64);
+        let read_inbox_max_id = MsgId(r.read_i32()? as i64);
+        let read_outbox_max_id = MsgId(r.read_i32()? as i64);
         let unread_count = r.read_i32()?;
-        let read_inbox_max_id = MsgId(r.read_i64()?);
-        let read_outbox_max_id = MsgId(r.read_i64()?);
-        let unread_count_i32 = r.read_i32()?;
+        let _unread_mentions = r.read_i32()?;
+        let _unread_reactions = r.read_i32()?;
+        let _unread_poll_votes = r.read_i32()?;
+        // notify_settings:PeerNotifySettings — always present.
+        crate::types::skip_peer_notify_settings_public(r)?;
         let pts = if flags & (1 << 0) != 0 {
             Some(r.read_i32()?)
         } else {
             None
         };
-        let draft = if flags & (1 << 1) != 0 {
-            Some(r.read_i32()?) // simplified
-        } else {
-            None
-        };
+        if flags & (1 << 1) != 0 {
+            return Err(Error::Serialization(
+                "dialog draft (DraftMessage) parsing not supported".into(),
+            ));
+        }
+        if flags & (1 << 4) != 0 {
+            let _folder_id = r.read_i32()?;
+        }
+        if flags & (1 << 5) != 0 {
+            let _ttl_period = r.read_i32()?;
+        }
         let pinned = flags & (1 << 2) != 0;
         let unread_mark = flags & (1 << 3) != 0;
         Ok(Dialog {
-            peer, top_message, top_message_date, unread_count,
-            read_inbox_max_id, read_outbox_max_id, unread_count_i32,
-            pts, draft, pinned, unread_mark,
+            peer,
+            top_message,
+            top_message_date: 0,
+            unread_count,
+            read_inbox_max_id,
+            read_outbox_max_id,
+            unread_count_i32: unread_count,
+            pts,
+            draft: None,
+            pinned,
+            unread_mark,
         })
     }
 }

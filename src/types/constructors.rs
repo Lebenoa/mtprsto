@@ -50,6 +50,16 @@ pub const USER_EMPTY: u32 = 0xd3bc4b7a;
 // emojiStatus#e7ff068a / emojiStatusEmpty#2de11aae
 pub const EMOJI_STATUS: u32 = 0xe7ff068a;
 pub const EMOJI_STATUS_EMPTY: u32 = 0x2de11aae;
+/// `recentStory#711d692d flags:# live:flags.0?true max_id:flags.1?int`
+pub const RECENT_STORY: u32 = 0x711d692d;
+/// `peerNotifySettings#99622c0c`
+pub const PEER_NOTIFY_SETTINGS: u32 = 0x99622c0c;
+/// `notificationSoundDefault#97e8bebe` / `None#6f0c344c` /
+/// `Local#830b9ae9` / `Ringtone#50640d3d`
+pub const NOTIFICATION_SOUND_DEFAULT: u32 = 0x97e8bebe;
+pub const NOTIFICATION_SOUND_NONE: u32 = 0x6f0c344c;
+pub const NOTIFICATION_SOUND_LOCAL: u32 = 0x830b9ae9;
+pub const NOTIFICATION_SOUND_RINGTONE: u32 = 0x50640d3d;
 pub const USER_STATUS_EMPTY: u32 = 0x9d05049;
 pub const USER_STATUS_ONLINE: u32 = 0xedb93949;
 pub const USER_STATUS_OFFLINE: u32 = 0x8c703f;
@@ -64,7 +74,22 @@ pub const CHAT_FORBIDDEN: u32 = 0x6592a1a7;
 pub const CHAT_FULL: u32 = 0x2633421b;
 
 // --- Channel (Layer 223) ---
-pub const CHANNEL: u32 = 0x1c32b11c;
+/// `channel#d49f34c6` — live layer 225 (old 0x1c32b11c stale).
+pub const CHANNEL: u32 = 0xd49f34c6;
+/// `updateChannel#635b4c09 channel_id:long`
+pub const UPDATE_CHANNEL: u32 = 0x635b4c09;
+/// `updateReadChannelInbox#922e6e10 flags:# folder_id:flags.0?int
+///   channel_id:long max_id:int still_unread_count:int pts:int`
+pub const UPDATE_READ_CHANNEL_INBOX: u32 = 0x922e6e10;
+/// `updateNewChannelMessage#62ba04d9 message:Message pts:int pts_count:int`
+pub const UPDATE_NEW_CHANNEL_MESSAGE: u32 = 0x62ba04d9;
+/// `updateEditChannelMessage#1b3f4df7 message:Message pts:int pts_count:int`
+pub const UPDATE_EDIT_CHANNEL_MESSAGE: u32 = 0x1b3f4df7;
+/// `updateDeleteChannelMessages#c32d5b12 channel_id:long messages:Vector<int>
+///   pts:int pts_count:int`
+pub const UPDATE_DELETE_CHANNEL_MESSAGES: u32 = 0xc32d5b12;
+/// `updateReadChannelOutbox#b75f99a9 channel_id:long max_id:int`
+pub const UPDATE_READ_CHANNEL_OUTBOX: u32 = 0xb75f99a9;
 pub const CHANNEL_FORBIDDEN: u32 = 0x17d493d5;
 
 // --- Photo/UserProfilePhoto/ChatPhoto (Layer 223) ---
@@ -88,10 +113,17 @@ pub const MESSAGE_REPLY_HEADER: u32 = 0x6917560b;
 // Live layer 225 re-issued the reply-header ctor (wire-verified; same
 // field layout). Both IDs are accepted when parsing.
 pub const MESSAGE_REPLY_HEADER_V225: u32 = 0x1b97dd66;
+/// `messageReplyStoryHeader#0e5af939 peer:Peer story_id:int`
+pub const MESSAGE_REPLY_STORY_HEADER: u32 = 0x0e5af939;
 
 // --- Message media (Layer 223) ---
 pub const MESSAGE_MEDIA_EMPTY: u32 = 0x3ded6320;
-pub const MESSAGE_MEDIA_PHOTO: u32 = 0x695150d7;
+/// `messageMediaPhoto#e216eb63` (live layer 225; old 0x695150d7 stale)
+pub const MESSAGE_MEDIA_PHOTO: u32 = 0xe216eb63;
+/// `geoPoint#b2a2f663 flags:# long:double lat:double access_hash:long
+///   accuracy_radius:flags.0?int` / `geoPointEmpty#1117dd5f`
+pub const GEO_POINT: u32 = 0xb2a2f663;
+pub const GEO_POINT_EMPTY: u32 = 0x1117dd5f;
 pub const MESSAGE_MEDIA_DOCUMENT: u32 = 0x52d8ccd9;
 pub const MESSAGE_MEDIA_WEB_PAGE: u32 = 0xddf10c3b;
 pub const MESSAGE_MEDIA_GEO: u32 = 0x56e0d474;
@@ -139,6 +171,18 @@ pub const PHOTO_SIZE: u32 = 0x75c78e60;
 pub const PHOTO_STRIPPED_SIZE: u32 = 0xe0b0bc2e;
 pub const PHOTO_SIZE_PROGRESSIVE: u32 = 0xfa3efb95;
 pub const PHOTO_PATH_SIZE: u32 = 0xd8214d41;
+/// `photoSizeEmpty#e17e23c type:string`
+pub const PHOTO_SIZE_EMPTY: u32 = 0xe17e23c;
+/// `videoSize#de339455 type:string location:string w:int h:int size:int`
+pub const VIDEO_SIZE: u32 = 0xde339455;
+/// `forumTopicDeleted#23f109b id:int`
+pub const FORUM_TOPIC_DELETED: u32 = 0x23f109b;
+/// `peerSettings#f47741f7 flags:# ...` (all-bool + optional scalars)
+pub const PEER_SETTINGS: u32 = 0xf47741f7;
+/// `userFull#6cbe645 flags:# ...` (live layer 225)
+pub const USER_FULL: u32 = 0x6cbe645;
+/// `webPage#e89c45b2 flags:# ...`
+pub const WEB_PAGE: u32 = 0xe89c45b2;
 
 // --- Document attributes (Layer 223) ---
 pub const DOCUMENT_ATTRIBUTE_IMAGE_SIZE: u32 = 0x6c37c15c;
@@ -168,6 +212,10 @@ pub const MESSAGE_ACTION_CHAT_EDIT_TITLE: u32 = 0xb5a1ce5a;
 pub const MESSAGE_ACTION_CHAT_ADD_USER: u32 = 0x15cefd00;
 pub const MESSAGE_ACTION_CHAT_DELETE_USER: u32 = 0xa43f30cc;
 pub const MESSAGE_ACTION_CHAT_JOINED_BY_LINK: u32 = 0x031224c3;
+/// `messageActionContactSignUp#f3f25f76`
+pub const MESSAGE_ACTION_CONTACT_SIGN_UP: u32 = 0xf3f25f76;
+/// `messageActionChatJoinedByRequest#ebbca3cb`
+pub const MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST: u32 = 0xebbca3cb;
 pub const MESSAGE_ACTION_CHANNEL_CREATE: u32 = 0x95d2ac92;
 pub const MESSAGE_ACTION_PIN_MESSAGE: u32 = 0x94bd38ed;
 pub const MESSAGE_ACTION_GAME_SCORE: u32 = 0x92a72876;

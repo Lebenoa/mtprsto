@@ -59,6 +59,18 @@ pub enum Update {
     ReadHistoryOutbox { peer: Peer, pts: i32, pts_count: i32 },
     ReadMessages { messages: Vec<MsgId> },
     ChannelTooLong { channel_id: ChannelId, pts: Option<i32> },
+    /// `updateChannel#635b4c09 channel_id:long` — channel state changed.
+    Channel { channel_id: ChannelId },
+    /// `updateReadChannelInbox#922e6e10` — incoming messages read.
+    ReadChannelInbox { channel_id: ChannelId, max_id: MsgId, still_unread: i32, pts: i32 },
+    /// `updateNewChannelMessage#62ba04d9` — same shape as NewMessage.
+    NewChannelMessage { message: Message, pts: i32, pts_count: i32 },
+    /// `updateEditChannelMessage#1b3f4df7` — same shape as EditMessage.
+    EditChannelMessage { message: Message, pts: i32, pts_count: i32 },
+    /// `updateDeleteChannelMessages#c32d5b12`
+    DeleteChannelMessages { channel_id: ChannelId, messages: Vec<MsgId>, pts: i32, pts_count: i32 },
+    /// `updateReadChannelOutbox#b75f99a9`
+    ReadChannelOutbox { channel_id: ChannelId, max_id: MsgId },
     Other { constructor: u32 },
 }
 
@@ -193,13 +205,27 @@ impl Update {
                 Ok(Update::ReadHistoryOutbox { peer, pts, pts_count })
             }
             UPDATE_READ_MESSAGES => {
-                // updateReadMessages#c66f9217 messages:Vector<int>
+                // updateReadMessagesContents#f8227181 flags:#
+                //   messages:Vector<int> pts:int pts_count:int date:flags.0?int
+                let flags = r.read_i32()?;
                 let n = r.read_vector_header()?;
                 let mut messages = Vec::with_capacity(n as usize);
                 for _ in 0..n {
                     messages.push(MsgId(r.read_i32()? as i64));
                 }
+                let _pts = r.read_i32()?;
+                let _pts_count = r.read_i32()?;
+                if flags & (1 << 0) != 0 {
+                    let _date = r.read_i32()?;
+                }
                 Ok(Update::ReadMessages { messages })
+            }
+            UPDATE_WEB_PAGE => {
+                // updateWebPage#7f891213 webpage:WebPage pts:int pts_count:int
+                let _webpage = WebPage::read_from(r)?;
+                let _pts = r.read_i32()?;
+                let _pts_count = r.read_i32()?;
+                Ok(Update::Other { constructor: UPDATE_WEB_PAGE })
             }
             UPDATE_CHANNEL_TOO_LONG => {
                 // updateChannelTooLong#108d941f flags:# channel_id:long pts:flags.0?int
@@ -211,6 +237,56 @@ impl Update {
                     None
                 };
                 Ok(Update::ChannelTooLong { channel_id, pts })
+            }
+            UPDATE_CHANNEL => {
+                // updateChannel#635b4c09 channel_id:long
+                Ok(Update::Channel { channel_id: ChannelId(r.read_i64()?) })
+            }
+            UPDATE_READ_CHANNEL_INBOX => {
+                // updateReadChannelInbox#922e6e10 flags:# folder_id:flags.0?int
+                //   channel_id:long max_id:int still_unread_count:int pts:int
+                let flags = r.read_i32()?;
+                if flags & (1 << 0) != 0 {
+                    let _folder_id = r.read_i32()?;
+                }
+                let channel_id = ChannelId(r.read_i64()?);
+                let max_id = MsgId(r.read_i32()? as i64);
+                let still_unread = r.read_i32()?;
+                let pts = r.read_i32()?;
+                Ok(Update::ReadChannelInbox { channel_id, max_id, still_unread, pts })
+            }
+            UPDATE_NEW_CHANNEL_MESSAGE => {
+                // updateNewChannelMessage#62ba04d9 message:Message pts:int pts_count:int
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::NewChannelMessage { message, pts, pts_count })
+            }
+            UPDATE_EDIT_CHANNEL_MESSAGE => {
+                // updateEditChannelMessage#1b3f4df7 message:Message pts:int pts_count:int
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::EditChannelMessage { message, pts, pts_count })
+            }
+            UPDATE_DELETE_CHANNEL_MESSAGES => {
+                // updateDeleteChannelMessages#c32d5b12 channel_id:long
+                //   messages:Vector<int> pts:int pts_count:int
+                let channel_id = ChannelId(r.read_i64()?);
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    messages.push(MsgId(r.read_i32()? as i64));
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::DeleteChannelMessages { channel_id, messages, pts, pts_count })
+            }
+            UPDATE_READ_CHANNEL_OUTBOX => {
+                // updateReadChannelOutbox#b75f99a9 channel_id:long max_id:int
+                let channel_id = ChannelId(r.read_i64()?);
+                let max_id = MsgId(r.read_i32()? as i64);
+                Ok(Update::ReadChannelOutbox { channel_id, max_id })
             }
             other => Ok(Update::Other { constructor: other }),
         }
@@ -352,10 +428,18 @@ impl ChannelDifference {
         let ctor = r.read_u32()?;
         match ctor {
             CHANNEL_DIFFERENCE_EMPTY => {
-                // channelDifferenceEmpty#3e11affb flags:# pts:int final:flags.0?true
+                // channelDifferenceEmpty#3e11affb flags:# pts:int
+                //   timeout:flags.1?int
                 let flags = r.read_i32()?;
+                let pts = r.read_i32()?;
+                let timeout = if flags & (1 << 1) != 0 {
+                    Some(r.read_i32()?)
+                } else {
+                    None
+                };
+                let _ = timeout; // surface via TooLong/Difference arms
                 Ok(ChannelDifference::Empty {
-                    pts: r.read_i32()?,
+                    pts,
                     final_: flags & (1 << 0) != 0,
                 })
             }
@@ -365,9 +449,30 @@ impl ChannelDifference {
                 Ok(ChannelDifference::Difference { pts, final_, timeout, new_messages, other_updates, chats, users })
             }
             CHANNEL_DIFFERENCE_TOO_LONG => {
-                let (timeout, new_messages, other_updates, chats, users, pts, final_) =
-                    Self::read_full(&mut r)?;
-                Ok(ChannelDifference::TooLong { pts, final_, timeout, new_messages, other_updates, chats, users })
+                // channelDifferenceTooLong#a4bcc6fe flags:# final:flags.0?true
+                //   timeout:flags.1?int dialog:Dialog messages:Vector<Message>
+                //   chats:Vector<Chat> users:Vector<User>
+                let flags = r.read_i32()?;
+                let final_ = flags & (1 << 0) != 0;
+                let timeout = if flags & (1 << 1) != 0 {
+                    Some(r.read_i32()?)
+                } else {
+                    None
+                };
+                let pts = read_dialog_skip(&mut r)?;
+                let new_messages = read_msg_vector(&mut r)?;
+                let other_updates = read_update_vector(&mut r)?;
+                let chats = read_chat_vector(&mut r)?;
+                let users = read_user_vector(&mut r)?;
+                Ok(ChannelDifference::TooLong {
+                    pts: pts.unwrap_or(0),
+                    final_,
+                    timeout,
+                    new_messages,
+                    other_updates,
+                    chats,
+                    users,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChannelDifference constructor {other:#x}"
@@ -375,8 +480,8 @@ impl ChannelDifference {
         }
     }
 
-    /// Shared tail for channelDifference / channelDifferenceTooLong:
-    /// flags pts final:flags.0 timeout:flags.1 messages chats users
+    /// Tail for channelDifference: flags pts final:flags.0 timeout:flags.1
+    /// messages chats users
     #[allow(clippy::type_complexity)]
     fn read_full(
         r: &mut TLReader,
@@ -396,6 +501,91 @@ impl ChannelDifference {
         Ok((timeout, new_messages, other_updates, chats, users, pts, final_))
     }
 }
+/// Skip a `dialog#fc89f7f3`, returning its pts (flags.0) when present.
+/// Drafts (flags.1) cannot be skipped without a full InputMedia parser —
+/// those fail loudly rather than desync.
+fn read_dialog_skip(r: &mut TLReader) -> Result<Option<i32>> {
+    let ctor = r.read_u32()?;
+    if ctor != DIALOG {
+        return Err(Error::Serialization(format!(
+            "expected dialog in channelDifferenceTooLong, got {ctor:#x}"
+        )));
+    }
+    let dflags = r.read_i32()?;
+    let _peer = Peer::read_from(r)?;
+    // top_message, read_inbox_max_id, read_outbox_max_id, unread_count,
+    // unread_mentions_count, unread_reactions_count, unread_poll_votes_count
+    for _ in 0..7 {
+        let _ = r.read_i32()?;
+    }
+    skip_peer_notify_settings(r)?;
+    let pts = if dflags & (1 << 0) != 0 {
+        Some(r.read_i32()?)
+    } else {
+        None
+    };
+    if dflags & (1 << 1) != 0 {
+        return Err(Error::Serialization(
+            "dialog draft (DraftMessage) parsing not supported".into(),
+        ));
+    }
+    if dflags & (1 << 4) != 0 {
+        let _folder_id = r.read_i32()?;
+    }
+    if dflags & (1 << 5) != 0 {
+        let _ttl_period = r.read_i32()?;
+    }
+    Ok(pts)
+}
+
+/// Skip `peerNotifySettings#99622c0c`: flags then Bool/int/NotificationSound
+/// conditionals for flags 0..10.
+fn skip_peer_notify_settings(r: &mut TLReader) -> Result<()> {
+    let ctor = r.read_u32()?;
+    if ctor != PEER_NOTIFY_SETTINGS {
+        return Err(Error::Serialization(format!(
+            "expected peerNotifySettings, got {ctor:#x}"
+        )));
+    }
+    let flags = r.read_i32()?;
+    // (bit, kind): Bool for 0,1,6,7; int for 2; sound for 3,4,5,8,9,10
+    for bit in 0..11 {
+        if flags & (1 << bit) == 0 {
+            continue;
+        }
+        match bit {
+            0 | 1 | 6 | 7 => {
+                // Bool — ctor-serialized
+                let _ = r.read_u32()?;
+            }
+            2 => {
+                let _ = r.read_i32()?;
+            }
+            _ => {
+                // NotificationSound union
+                let sctor = r.read_u32()?;
+                match sctor {
+                    NOTIFICATION_SOUND_DEFAULT | NOTIFICATION_SOUND_NONE => {}
+                    NOTIFICATION_SOUND_LOCAL | NOTIFICATION_SOUND_RINGTONE => {
+                        let _title = r.read_bytes()?;
+                        if sctor == NOTIFICATION_SOUND_LOCAL {
+                            let _data = r.read_bytes()?;
+                        } else {
+                            let _id = r.read_i64()?;
+                        }
+                    }
+                    other => {
+                        return Err(Error::Serialization(format!(
+                            "unknown NotificationSound constructor {other:#x}"
+                        )))
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Read a TL `Vector<Update>`, decoding each element by constructor.
 fn read_update_vector(r: &mut TLReader) -> Result<Vec<Update>> {
     let count = r.read_vector_header()?;
@@ -431,4 +621,18 @@ fn read_msg_vector(r: &mut TLReader) -> Result<Vec<Message>> {
         messages.push(Message::read_from(r)?);
     }
     Ok(messages)
+}
+
+/// Public re-exports for response parsers outside this module.
+pub fn read_chat_vector_public(r: &mut TLReader) -> Result<Vec<Chat>> {
+    read_chat_vector(r)
+}
+
+pub fn read_user_vector_public(r: &mut TLReader) -> Result<Vec<User>> {
+    read_user_vector(r)
+}
+
+/// Public re-export of the peerNotifySettings skipper (used by Dialog).
+pub fn skip_peer_notify_settings_public(r: &mut TLReader) -> Result<()> {
+    skip_peer_notify_settings(r)
 }

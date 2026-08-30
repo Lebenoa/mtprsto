@@ -459,6 +459,8 @@ pub enum PhotoSizeFull {
     Progressive { type_: String, w: i32, h: i32, sizes: Vec<i32> },
     /// `photoPathSize#d8214d41 type:string bytes:bytes`
     Path { type_: String, bytes: Vec<u8> },
+    /// `photoSizeEmpty#e17e23c type:string`
+    Empty { type_: String },
 }
 
 /// Read one `PhotoSize` (ctor included).
@@ -496,12 +498,44 @@ pub fn read_photo_size(r: &mut TLReader) -> Result<PhotoSizeFull> {
             type_: String::from_utf8(r.read_bytes()?)?,
             bytes: r.read_bytes()?,
         },
+        PHOTO_SIZE_EMPTY => PhotoSizeFull::Empty {
+            type_: String::from_utf8(r.read_bytes()?)?,
+        },
         other => {
             return Err(Error::Serialization(format!(
                 "unknown PhotoSize constructor {other:#x}"
             )))
         }
     })
+}
+
+/// Skip one `VideoSize` element (ctor included) to stay stream-aligned.
+/// `videoSize#de339455 type:string location:string w:int h:int size:int`
+/// parses cleanly; the markup variants are rare — fail loudly on those.
+pub fn skip_video_size(r: &mut TLReader) -> Result<()> {
+    let ctor = r.read_u32()?;
+    match ctor {
+        VIDEO_SIZE => {
+            let _type_ = r.read_bytes()?;
+            let _location = r.read_bytes()?;
+            let _w = r.read_i32()?;
+            let _h = r.read_i32()?;
+            let _size = r.read_i32()?;
+            Ok(())
+        }
+        other => Err(Error::Serialization(format!(
+            "unsupported VideoSize constructor {other:#x}"
+        ))),
+    }
+}
+
+/// Skip `Vector<VideoSize>` (video_thumbs flags.1).
+pub fn skip_video_sizes(r: &mut TLReader) -> Result<()> {
+    let n = r.read_vector_header()?;
+    for _ in 0..n {
+        skip_video_size(r)?;
+    }
+    Ok(())
 }
 
 /// Read a `Vector<PhotoSize>`.

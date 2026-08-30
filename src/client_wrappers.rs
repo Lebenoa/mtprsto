@@ -100,32 +100,61 @@ impl AffectedMessages {
 // ===========================================================================
 
 /// Pull the `messages` vector out of a `messages.Messages*` response.
+///
+/// Full shapes (layer 225): `messages.messages#1d73e7ea messages topics
+/// chats users`; `messagesSlice#5f206716 flags count next_rate?
+/// offset_id_offset? search_flood? then the same tail`;
+/// `channelMessages#c776ba4e flags pts count offset_id_offset? tail`.
 fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
     let mut r = TLReader::new(data);
     let ctor = r.read_u32()?;
     match ctor {
-        MESSAGES_MESSAGES => {
-            let count = r.read_vector_header()?;
-            let mut out = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                out.push(Message::read_from(&mut r)?);
-            }
-            Ok(out)
-        }
+        MESSAGES_MESSAGES => read_messages_body(&mut r),
         MESSAGES_MESSAGES_SLICE => {
-            // count:int comes first; messages vector second.
+            let flags = r.read_i32()?;
             let _slice_count = r.read_i32()?;
-            let count = r.read_vector_header()?;
-            let mut out = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                out.push(Message::read_from(&mut r)?);
+            if flags & (1 << 0) != 0 {
+                let _next_rate = r.read_i32()?;
             }
-            Ok(out)
+            if flags & (1 << 2) != 0 {
+                let _offset_id_offset = r.read_i32()?;
+            }
+            if flags & (1 << 3) != 0 {
+                return Err(Error::Protocol(
+                    "messagesSlice carries search_flood (SearchPostsFlood) — not supported"
+                        .into(),
+                ));
+            }
+            read_messages_body(&mut r)
         }
         _ => Err(Error::Protocol(format!(
             "expected messages.Messages*, got {ctor:#x}"
         ))),
     }
+}
+
+/// messages/topics vectors plus the chats/users tail of messages.Messages*.
+fn read_messages_body(r: &mut TLReader) -> Result<Vec<Message>> {
+    let count = r.read_vector_header()?;
+    let mut out = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        out.push(Message::read_from(r)?);
+    }
+    // topics:Vector<ForumTopic> — must be consumed before chats/users.
+    let topic_count = r.read_vector_header()?;
+    for _ in 0..topic_count {
+        let tctor = r.read_u32()?;
+        if tctor == types::FORUM_TOPIC_DELETED {
+            let _id = r.read_i32()?;
+        } else {
+            return Err(Error::Protocol(format!(
+                "unsupported ForumTopic constructor {tctor:#x} in messages container"
+            )));
+        }
+    }
+    let _chats = crate::types::read_chat_vector_public(r)?;
+    let _users = crate::types::read_user_vector_public(r)?;
+    Ok(out)
 }
 
 impl Client {
@@ -190,7 +219,22 @@ impl Client {
         let input_peer = self.resolve_peer(peer).await?;
         let payload = rpc::build_delete_history(&input_peer, max_id, just_clear, revoke);
         let result = self.invoke_raw(payload).await?;
-        AffectedMessages::parse(&result)
+        // messages.deleteHistory answers messages.affectedHistory (pts,
+        // pts_count, offset) — map it onto the shared shape.
+        let mut r = TLReader::new(&result);
+        let ctor = r.read_u32()?;
+        match ctor {
+            MESSAGES_AFFECTED_HISTORY => Ok(AffectedMessages {
+                pts: r.read_i32()?,
+                pts_count: r.read_i32()?,
+            }),
+            MESSAGES_AFFECTED_MESSAGES => {
+                Ok(AffectedMessages { pts: r.read_i32()?, pts_count: r.read_i32()? })
+            }
+            other => Err(Error::Protocol(format!(
+                "expected messages.affectedHistory, got {other:#x}"
+            ))),
+        }
     }
 
     /// Mark history with `peer` as read up to `max_id`.
@@ -529,6 +573,13 @@ impl Client {
 
     /// Extract the `chats` vector from an `Updates*` response.
     pub(crate) fn chats_from_updates(data: &[u8]) -> Result<Vec<Chat>> {
+        if std::env::var("MTPRSTO_DEBUG").is_ok() {
+            println!(
+                "DEBUG chats_from_updates body ({}b): {:02x?}",
+                data.len(),
+                &data[..data.len().min(160)]
+            );
+        }
         let updates = crate::types::Updates::parse(data)?;
         Ok(updates.chats())
     }

@@ -144,9 +144,18 @@ impl User {
                     Self::read_usernames(r)?;
                 }
                 if flags2 & (1 << 5) != 0 {
-                    return Err(Error::Serialization(
-                        "user stories_max_id (RecentStory) parsing not supported".into(),
-                    ));
+                    // recentStory#711d692d flags:# live:flags.0?true
+                    //   max_id:flags.1?int
+                    let sctor = r.read_u32()?;
+                    if sctor != RECENT_STORY {
+                        return Err(Error::Serialization(format!(
+                            "unknown RecentStory constructor {sctor:#x}"
+                        )));
+                    }
+                    let sflags = r.read_i32()?;
+                    if sflags & (1 << 1) != 0 {
+                        let _max_id = r.read_i32()?;
+                    }
                 }
                 if flags2 & (1 << 8) != 0 {
                     Self::read_peer_color(r)?;
@@ -211,9 +220,16 @@ impl User {
         Ok(())
     }
 
-    /// peerColor#b54b5acf flags:# color? background_emoji_id?
+    /// peerColor#b54b5acf flags:# color:flags.0?int
+    ///   background_emoji_id:flags.1?long
     fn read_peer_color(r: &mut TLReader) -> Result<()> {
-        let _flags = r.read_i32()?;
+        let flags = r.read_i32()?;
+        if flags & (1 << 0) != 0 {
+            let _color = r.read_i32()?;
+        }
+        if flags & (1 << 1) != 0 {
+            let _bg_emoji_id = r.read_i64()?;
+        }
         Ok(())
     }
 }
