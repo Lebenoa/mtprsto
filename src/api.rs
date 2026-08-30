@@ -65,6 +65,12 @@ impl TelegramClient {
     /// This is a synchronous, step-by-step flow (no network calls inside).
     /// The caller must handle the network I/O.
     pub async fn create_auth_key(&mut self) -> Result<()> {
+        // Auth keys are one-time per DC/device — a fresh DH handshake is
+        // only needed when this client has no key yet.
+        if self.session.is_some() {
+            tracing::debug!("auth key already present — skipping DH handshake");
+            return Ok(());
+        }
         let mut auth = AuthKeyCreation::new();
 
         // Step 1: Send req_pq_multi

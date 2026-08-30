@@ -255,88 +255,107 @@ impl Client {
     #[tracing::instrument(name = "mtprsto::connect", skip(self), err)]
     pub async fn connect(&mut self) -> Result<()> {
         let _session = crate::ergonomics::session_span(self.dc_id).entered();
-        // Try loading existing session
-        let session_data = {
+
+        // Load the persisted session. Auth keys are one-time per DC/device,
+        // so the per-DC key cache turns restarts (and DC switches) into
+        // connection + session setup instead of a DH handshake.
+        let session_data: Option<SessionData> = {
             let mut store = self.session_store.write().await;
-            if let Some(data) = SessionStorage::load(&mut *store)? {
-                tracing::info!(
-                    "loaded existing session from {} (dc={})",
-                    store.describe(),
-                    data.dc_id
-                );
-                self.dc_id = data.dc_id;
-                Some(data)
-            } else {
-                None
+            match SessionStorage::load(&mut *store)? {
+                Some(mut data) => {
+                    tracing::info!(
+                        "loaded existing session from {} (dc={})",
+                        store.describe(),
+                        data.dc_id
+                    );
+                    // Back-compat: files written before the key cache existed
+                    // carry only the active DC's key at top level.
+                    if data.keys.is_empty()
+                        && let Ok(key) = data.decode_auth_key()
+                    {
+                        data.cache_key(data.dc_id, &key, data.server_salt);
+                    }
+                    if !self.dc_explicit {
+                        self.dc_id = data.dc_id;
+                    }
+                    Some(data)
+                }
+                None => None,
             }
         };
 
-        let mtproto_session = if let Some(data) = session_data {
-            // Restore from persisted session
-            let auth_key = data.decode_auth_key()?;
-            MtProtoSession::new(auth_key, data.server_salt)
-        } else {
-            // No existing session — perform DH handshake
+        // Fast path: a cached key for the target DC skips DH entirely.
+        if let Some(data) = &session_data
+            && let Some(cached) = data.cached_key(self.dc_id)
+        {
+            let auth_key = data.decode_cached_key(&cached)?;
             tracing::info!(
-                "no existing session, performing DH handshake to DC {}",
+                "reusing cached auth key for DC {} — no DH handshake",
                 self.dc_id
             );
-            let mut tg_client = TelegramClient::new(
-                self.dc_id,
-                self.api_id,
-                self.api_hash.clone(),
-            );
-            tg_client.create_auth_key().await?;
+            self.start_pool(MtProtoSession::new(auth_key, cached.server_salt)).await?;
+            self.persist_current_salt().await?;
+            return Ok(());
+        }
 
-            // Auto-select the nearest DC (SPEC §1) unless the caller pinned
-            // one: ask help.getNearestDc on the bootstrap DC and, if it
-            // points elsewhere, re-handshake there before authorizing.
-            if !self.dc_explicit {
-                match tg_client.help_get_nearest_dc().await {
-                    Ok((_this, nearest)) if nearest != self.dc_id => {
-                        tracing::info!(
-                            "nearest DC is {nearest} (bootstrap was {}) — re-handshaking",
-                            self.dc_id
-                        );
-                        let mut migrated = TelegramClient::new(
-                            nearest,
-                            self.api_id,
-                            self.api_hash.clone(),
-                        );
-                        migrated.create_auth_key().await?;
-                        self.dc_id = nearest;
-                        tg_client = migrated;
-                    }
-                    Ok((this, _)) => {
-                        tracing::debug!("bootstrap DC {this} is the nearest");
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "getNearestDc failed ({e}) — staying on DC {}",
-                            self.dc_id
-                        );
-                    }
+        // DH handshake — first boot, or first visit to this DC.
+        tracing::info!("no cached auth key for DC {} — performing DH handshake", self.dc_id);
+        let mut tg_client =
+            TelegramClient::new(self.dc_id, self.api_id, self.api_hash.clone());
+        tg_client.create_auth_key().await?;
+
+        // Auto-select the nearest DC (SPEC §1) unless the caller pinned
+        // one: ask help.getNearestDc on the bootstrap DC and, if it points
+        // elsewhere, re-handshake there before authorizing.
+        if !self.dc_explicit {
+            match tg_client.help_get_nearest_dc().await {
+                Ok((_this, nearest)) if nearest != self.dc_id => {
+                    tracing::info!(
+                        "nearest DC is {nearest} (bootstrap was {}) — re-handshaking",
+                        self.dc_id
+                    );
+                    let mut migrated =
+                        TelegramClient::new(nearest, self.api_id, self.api_hash.clone());
+                    migrated.create_auth_key().await?;
+                    self.dc_id = nearest;
+                    tg_client = migrated;
+                }
+                Ok((this, _)) => {
+                    tracing::debug!("bootstrap DC {this} is the nearest");
+                }
+                Err(e) => {
+                    tracing::warn!("getNearestDc failed ({e}) — staying on DC {}", self.dc_id);
                 }
             }
+        }
 
-            // Save the new session
-            if let Some(session) = &tg_client.session {
-                let data = SessionData::from_auth_key(
-                    &session.auth_key,
-                    session.server_salt,
-                    self.dc_id,
-                );
-                let mut store = self.session_store.write().await;
-                SessionStorage::save(&mut *store, &data)?;
-                tracing::info!("session saved to {}", store.describe());
+        // Save the new session, carrying over the key cache (and the
+        // user/peer caches) from any previously loaded session file.
+        if let Some(session) = &tg_client.session {
+            let mut data = SessionData::from_auth_key(
+                &session.auth_key,
+                session.server_salt,
+                self.dc_id,
+            );
+            if let Some(old) = &session_data {
+                data.keys = old.keys.clone();
+                data.user_id = old.user_id;
+                data.peer_cache = old.peer_cache.clone();
             }
-            tg_client.session.ok_or(Error::NoAuthKey)?
-        };
+            data.cache_key(self.dc_id, &session.auth_key, session.server_salt);
+            let mut store = self.session_store.write().await;
+            SessionStorage::save(&mut *store, &data)?;
+            tracing::info!("session saved to {}", store.describe());
+        }
+        let mtproto_session = tg_client.session.ok_or(Error::NoAuthKey)?;
 
-        // Construct the connection pool with the real session
-        // Apply the anti-fingerprinting knob to the live session before
-        // any traffic flows through it.
-        let mut mtproto_session = mtproto_session;
+        self.start_pool(mtproto_session).await?;
+        self.persist_current_salt().await?;
+        Ok(())
+    }
+
+    /// Open the pool over a prepared session and start background tasks.
+    async fn start_pool(&mut self, mut mtproto_session: MtProtoSession) -> Result<()> {
         mtproto_session.set_random_padding(self.protocol_config.random_padding);
         mtproto_session.set_compress_threshold(self.protocol_config.compress_threshold);
         let mut pool = Arc::new(SenderPool::new(
@@ -356,15 +375,30 @@ impl Client {
         pool.spawn_ack_flusher();
         pool.spawn_keepalive();
         pool.spawn_salt_refresher();
+        Ok(())
+    }
 
-        // Persist the (possibly server-refreshed) salt so the next boot
-        // starts with a current value.
-        let current_salt = self.pool.as_ref().unwrap().session().await.server_salt;
+    /// Persist the (possibly server-refreshed) salt so the next boot
+    /// starts with a current value.
+    async fn persist_current_salt(&self) -> Result<()> {
+        let Some(pool) = self.pool.as_ref() else {
+            return Ok(());
+        };
+        let current_salt = pool.session().await.server_salt;
         let mut store = self.session_store.write().await;
         if let Some(data) = SessionStorage::load(&mut *store)? {
             let mut fresh = data.clone();
             fresh.server_salt = current_salt;
-            if fresh.server_salt != data.server_salt {
+            if let Some(cached) = fresh.keys.get_mut(&self.dc_id) {
+                cached.server_salt = current_salt;
+            }
+            if fresh.server_salt != data.server_salt
+                || fresh
+                    .keys
+                    .get(&self.dc_id)
+                    .map(|c| c.server_salt)
+                    != data.keys.get(&self.dc_id).map(|c| c.server_salt)
+            {
                 SessionStorage::save(&mut *store, &fresh)?;
                 tracing::info!("session salt refreshed to current server value");
             }

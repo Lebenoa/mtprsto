@@ -53,6 +53,21 @@ pub struct SessionData {
     /// Format version (for forward compat).
     #[serde(default = "default_version")]
     pub version: i32,
+    /// Auth-key cache per DC (auth keys are one-time per DC/device —
+    /// reusing a persisted key turns startup into connection + session
+    /// setup instead of a DH handshake). Keyed by DC id.
+    #[serde(default)]
+    pub keys: std::collections::HashMap<i32, CachedAuthKey>,
+}
+
+/// A persisted auth key for one DC.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CachedAuthKey {
+    /// 256-byte authorization key, base64-encoded.
+    pub auth_key: String,
+    /// Last known server salt for that DC (best-effort; the server
+    /// re-issues one if stale).
+    pub server_salt: u64,
 }
 
 fn default_version() -> i32 {
@@ -253,7 +268,7 @@ impl SessionData {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(auth_key);
         Self {
-            auth_key: encoded,
+            auth_key: encoded.clone(),
             server_salt,
             session_id: rand::random::<u64>(),
             server_time_offset: 0,
@@ -262,7 +277,36 @@ impl SessionData {
             api_layer: super::api::API_LAYER,
             peer_cache: std::collections::HashMap::new(),
             version: 1,
+            keys: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    dc_id,
+                    CachedAuthKey { auth_key: encoded.clone(), server_salt },
+                );
+                m
+            },
         }
+    }
+
+    /// Store a key for `dc_id` in the cache (and make it the active one
+    /// if it is the session's DC).
+    pub fn cache_key(&mut self, dc_id: i32, auth_key: &[u8], server_salt: u64) {
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(auth_key);
+        self.keys.insert(dc_id, CachedAuthKey { auth_key: encoded, server_salt });
+    }
+
+    /// Look up a cached key for `dc_id`.
+    pub fn cached_key(&self, dc_id: i32) -> Option<CachedAuthKey> {
+        self.keys.get(&dc_id).cloned()
+    }
+
+    /// Decode a cached key blob back to raw bytes.
+    pub fn decode_cached_key(&self, cached: &CachedAuthKey) -> Result<Vec<u8>> {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(&cached.auth_key)
+            .map_err(|e| Error::Serialization(format!("invalid cached auth_key base64: {e}")))
     }
 
     /// Decode the auth key back to raw bytes.
@@ -283,6 +327,33 @@ mod tests {
         let dir = std::env::temp_dir().join("mtprsto_test");
         fs::create_dir_all(&dir).ok();
         dir.join(format!("test_session_{}.json", rand::random::<u64>()))
+    }
+
+    #[test]
+    fn test_per_dc_key_cache_roundtrip() {
+        let mut data = SessionData::from_auth_key(&[1u8; 256], 100, 2);
+        assert!(data.cached_key(2).is_some(), "active DC key is cached");
+        assert!(data.cached_key(5).is_none());
+
+        data.cache_key(5, &[2u8; 256], 200);
+        let k5 = data.cached_key(5).unwrap();
+        assert_eq!(data.decode_cached_key(&k5).unwrap(), vec![2u8; 256]);
+
+        // Old-format file (no `keys` map) still loads and seeds the cache.
+        let legacy = serde_json::json!({
+            "auth_key": data.auth_key,
+            "server_salt": data.server_salt,
+            "session_id": data.session_id,
+            "server_time_offset": 0,
+            "dc_id": 2,
+            "user_id": 0,
+        });
+        let mut parsed: SessionData = serde_json::from_value(legacy).unwrap();
+        assert!(parsed.keys.is_empty());
+        // connect() seeds the cache for old files like this:
+        let key = parsed.decode_auth_key().unwrap();
+        parsed.cache_key(parsed.dc_id, &key, parsed.server_salt);
+        assert_eq!(parsed.decode_cached_key(&parsed.cached_key(2).unwrap()).unwrap(), key);
     }
 
     #[test]
