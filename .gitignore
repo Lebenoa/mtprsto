@@ -7,3 +7,4 @@ tl*.json
 .gotdref/
 tools/schema.tl
 __pycache__
+__pycache__/
