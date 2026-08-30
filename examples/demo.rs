@@ -211,7 +211,7 @@ async fn bot_auth(token: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Bot Authorization ===");
     println!("Connecting to Telegram DC2...");
 
-    let mut client = TelegramClient::new(2, Some(api_id), Some(api_hash));
+    let mut client = TelegramClient::new(2, Some(api_id), Some(api_hash.clone()));
 
     // Step 1: Create auth key (DH handshake)
     println!("Creating authorization key (Diffie-Hellman)...");
@@ -234,50 +234,86 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
     let api_hash = env::var("TELEGRAM_API_HASH").unwrap_or_default();
 
     println!("=== User Authorization ===");
-    println!("Connecting to Telegram DC2...");
 
-    let mut client = TelegramClient::new(2, Some(api_id), Some(api_hash));
-
-    // Step 1: Create auth key
-    println!("Creating authorization key (Diffie-Hellman)...");
+    // Step 0: Pick the right DC up front. Sending the code from the wrong
+    // DC makes the server deliver an SMS we can't pair with the hash on
+    // the phone's home DC — one code, sent once, from the right place.
+    println!("Connecting to Telegram DC2 to find the nearest DC...");
+    let mut client = TelegramClient::new(2, Some(api_id), Some(api_hash.clone()));
     client.create_auth_key().await?;
-    println!("✓ Authorization key created");
+    let (this_dc, nearest_dc) = client.help_get_nearest_dc().await?;
+    if nearest_dc != this_dc {
+        println!("Nearest DC is {nearest_dc} (we are on {this_dc}) — reconnecting...");
+        client = TelegramClient::new(nearest_dc, Some(api_id), Some(api_hash.clone()));
+        client.create_auth_key().await?;
+    } else {
+        println!("DC {this_dc} is the nearest — staying here.");
+    }
 
-    // Step 2: Send code
+    // Step 1: Send code. A PHONE_MIGRATE here means the phone's home DC
+    // differs even from the nearest DC — follow it (rare).
     println!("Sending verification code to {phone}...");
-    let sent = client.auth_send_code(phone).await?;
-    println!("✓ Code sent (type: {:?})", sent_code_name(sent.sent_code_type));
-
-    // Step 3: Read code from stdin
-    println!("Enter the verification code:");
-    let mut code = String::new();
-    std::io::stdin().read_line(&mut code)?;
-    let code = code.trim();
-
-    // Step 4: Sign in
-    println!("Signing in...");
-    match client.auth_sign_in(phone, &sent.phone_code_hash, code).await {
-        Ok(()) => {
-            println!("✓ Sign-in successful!");
-        }
-        Err(mtprsto::error::Error::Protocol(msg)) if msg.contains("Sign up required") => {
-            println!("New account detected. Please enter your first and last name:");
-            let mut first_name = String::new();
-            let mut last_name = String::new();
-            print!("First name: ");
-            std::io::stdin().read_line(&mut first_name)?;
-            print!("Last name: ");
-            std::io::stdin().read_line(&mut last_name)?;
-
-            client.auth_sign_up(
-                phone,
-                &sent.phone_code_hash,
-                first_name.trim(),
-                last_name.trim(),
-            ).await?;
-            println!("✓ Sign-up successful!");
+    let sent = match client.auth_send_code(phone).await {
+        Ok(sent) => sent,
+        Err(mtprsto::error::Error::Migration { dc_id }) => {
+            println!("phone's home DC is {dc_id} — migrating...");
+            client = TelegramClient::new(dc_id, Some(api_id), Some(api_hash.clone()));
+            client.create_auth_key().await?;
+            client.auth_send_code(phone).await?
         }
         Err(e) => return Err(e.into()),
+    };
+    println!("✓ Code sent (type: {:?})", sent_code_name(sent.sent_code_type));
+
+    // Step 3+4: Read the code and sign in. If the code session expires
+    // while the user is typing, the server answers auth.sentCode
+    // (CodeResent) — re-prompt with the fresh hash.
+    let mut phone_code_hash = sent.phone_code_hash;
+    loop {
+        let mut code = String::new();
+        println!("Enter the verification code:");
+        std::io::stdin().read_line(&mut code)?;
+        let code = code.trim();
+
+        println!("Signing in...");
+        match client.auth_sign_in(phone, &phone_code_hash, code).await {
+            Ok(()) => {
+                println!("✓ Sign-in successful!");
+                break;
+            }
+            Err(mtprsto::error::Error::FloodWait { seconds, .. }) => {
+                println!("Flood wait: {seconds}s — pausing, then re-prompting for the code.");
+                tokio::time::sleep(std::time::Duration::from_secs(seconds as u64 + 1)).await;
+            }
+            Err(mtprsto::error::Error::CodeResent { phone_code_hash: new_hash }) => {
+                println!("Code session expired — a NEW code was sent. Please enter it.");
+                phone_code_hash = new_hash;
+            }
+            Err(mtprsto::error::Error::InvalidCode { .. }) => {
+                println!("Code rejected — check the newest code and try again.");
+            }
+            Err(mtprsto::error::Error::Rpc { error_message, .. })
+                if error_message.contains("PHONE_CODE") =>
+            {
+                println!("Code rejected — check the newest code and try again.");
+            }
+            Err(mtprsto::error::Error::Protocol(msg)) if msg.contains("Sign up required") => {
+                println!("New account detected. Please enter your first and last name:");
+                let mut first_name = String::new();
+                let mut last_name = String::new();
+                print!("First name: ");
+                std::io::stdin().read_line(&mut first_name)?;
+                print!("Last name: ");
+                std::io::stdin().read_line(&mut last_name)?;
+
+                client
+                    .auth_sign_up(phone, &phone_code_hash, first_name.trim(), last_name.trim())
+                    .await?;
+                println!("✓ Sign-up successful!");
+                break;
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     println!("\nYou are now authenticated. You can make API calls.");
@@ -286,11 +322,17 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 fn sent_code_name(code_type: u32) -> &'static str {
     match code_type {
-        0x3dbb5986 => "SMS (App)",
-        0xc004bac7 => "SMS",
+        // auth.SentCodeType constructor IDs (see mtprsto::SENT_CODE_TYPE_*)
+        0x3dbb5986 => "App",
+        0xc000bba2 => "SMS",
         0x5353e5a7 => "Call",
-        0xab036752 => "Flash Call",
-        0x741cd2ee => "SMS or Call",
+        0xab03c6d9 => "Flash Call",
+        0x82006484 => "Missed Call",
+        0xf450f59b => "Email Code",
+        0xd9565c39 => "Fragment SMS",
+        0x9fd736 => "Firebase SMS",
+        0xa416ac81 => "SMS Word",
+        0xb37794af => "SMS Phrase",
         _ => "Unknown",
     }
 }

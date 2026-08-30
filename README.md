@@ -127,6 +127,17 @@ Run it:
 cargo run --example session_storage
 ```
 
+### Advanced examples
+
+| Example | What it shows |
+|---|---|
+| [`advanced_rpc.rs`](examples/advanced_rpc.rs) | raw `invoke_raw`, `invokeAfterMsg` ordering, `invokeWithoutUpdates`, `getFutureSalts`, transient-retry loops |
+| [`callback_buttons.rs`](examples/callback_buttons.rs) | reading inline keyboards off messages and pressing buttons via `getBotCallbackAnswer` (user session) |
+| [`channel_admin.rs`](examples/channel_admin.rs) | channel create / re-fetch / invite / `editAdmin` rights / participants / leave (user session) |
+| [`file_transfer.rs`](examples/file_transfer.rs) | parallel upload workers and parallel range downloads (`DownloadConfig`) |
+| [`updates_listener.rs`](examples/updates_listener.rs) | the update pump: pts/seq/qts gap recovery, `UpdateChannelTooLong` resync |
+| [`session_storage.rs`](examples/session_storage.rs) | custom `SessionStorage` backends (SQLite-style, in-memory) |
+
 ### Demo and smoke tests
 
 The repository ships an example that exercises the stack directly:
@@ -140,6 +151,26 @@ TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --
 
 # User authorization (interactive code entry)
 TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example demo -- --user-phone +15551234567
+```
+
+### Tuning protocol behavior
+
+Keepalive, ack batching, salt refresh, and anti-fingerprinting padding are
+configurable (defaults follow gotd/Telegram-Desktop practice — random
+padding is **on** by default so message lengths aren't fingerprintable):
+
+```rust
+use mtprsto::pool::ProtocolConfig;
+
+let mut protocol = ProtocolConfig::default();
+protocol.ping_interval = std::time::Duration::from_secs(60);
+protocol.random_padding = false; // only if you really need deterministic sizes
+
+let client = Client::builder()
+    .api_id(12345)
+    .api_hash("abcdef...")
+    .protocol_config(protocol)
+    .build()?;
 ```
 
 ## Architecture
