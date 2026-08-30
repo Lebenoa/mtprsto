@@ -381,7 +381,7 @@ impl Client {
     ) -> Result<Vec<Chat>> {
         let payload = rpc::build_create_channel(title, about, broadcast, megagroup);
         let result = self.invoke_raw(payload).await?;
-        Self::chats_from_updates(&result)
+        Self::chats_from_updates(&result, crate::types::CHANNELS_CREATE_CHANNEL)
     }
 
     /// Invite users to a channel/supergroup.
@@ -396,7 +396,7 @@ impl Client {
     ) -> Result<Vec<Chat>> {
         let payload = rpc::build_invite_to_channel(channel, users);
         let result = self.invoke_raw(payload).await?;
-        Self::chats_from_updates(&result)
+        Self::chats_from_updates(&result, crate::types::CHANNELS_INVITE_TO_CHANNEL)
     }
 
     /// Edit admin rights for a user in a channel.
@@ -424,7 +424,7 @@ impl Client {
     pub async fn get_channels(&self, channels: &[InputChannel]) -> Result<Vec<Chat>> {
         let payload = rpc::build_get_channels(channels);
         let result = self.invoke_raw(payload).await?;
-        Self::chats_from_updates(&result)
+        Self::chats_from_updates(&result, crate::types::CHANNELS_GET_CHANNELS)
     }
 
     /// List channel participants (recent or search filter).
@@ -562,7 +562,7 @@ impl Client {
     /// the hash-less legacy forms the server accepts in some flows.
     pub(crate) fn peer_to_input_peer(peer: &Peer) -> Option<InputPeer> {
         match peer {
-            Peer::User { user_id } => Some(InputPeer::UserFromId { user_id: *user_id }),
+            Peer::User { user_id } => Some(InputPeer::User { user_id: *user_id, access_hash: AccessHash(0) }),
             Peer::Chat { chat_id } => Some(InputPeer::Chat { chat_id: *chat_id }),
             Peer::Channel { channel_id } => {
                 Some(InputPeer::Channel { channel_id: *channel_id, access_hash: AccessHash(0) })
@@ -572,7 +572,7 @@ impl Client {
     }
 
     /// Extract the `chats` vector from an `Updates*` response.
-    pub(crate) fn chats_from_updates(data: &[u8]) -> Result<Vec<Chat>> {
+    pub(crate) fn chats_from_updates(data: &[u8], method_ctor: u32) -> Result<Vec<Chat>> {
         if std::env::var("MTPRSTO_DEBUG").is_ok() {
             println!(
                 "DEBUG chats_from_updates body ({}b): {:02x?}",
@@ -580,159 +580,88 @@ impl Client {
                 &data[..data.len().min(160)]
             );
         }
-        let updates = crate::types::Updates::parse(data)?;
-        Ok(updates.chats())
-    }
-}
-
-// ===========================================================================
-// Login tokens (SPEC §3, P0 #3) — QR-code login flows
-// ===========================================================================
-
-impl Client {
-    /// QR-code login, step 1: request a login token to render as
-    /// `tg://login?token=...`.
-    ///
-    /// # Errors
-    /// Transport or RPC failure.
-    #[tracing::instrument(name = "mtprsto::export_login_token", skip(self, except_ids), err)]
-    pub async fn export_login_token(
-        &mut self,
-        except_ids: &[i64],
-    ) -> Result<crate::api::AuthLoginToken> {
-        let mut w = crate::serialize::TLWriter::new();
-        w.write_u32(types::AUTH_EXPORT_LOGIN_TOKEN);
-        w.write_i32(self.api_id().unwrap_or(0));
-        w.write_bytes(self.api_hash().unwrap_or("").as_bytes());
-        w.write_i32(except_ids.len() as i32);
-        for id in except_ids {
-            w.write_i64(*id);
-        }
-        let result = self.invoke_raw(w.into_bytes()).await?;
-        crate::api::parse_login_token_response(&result)
-    }
-
-    /// QR-code login, caller side: import a token scanned from another
-    /// device and poll until approved.
-    ///
-    /// # Errors
-    /// Transport or RPC failure.
-    #[tracing::instrument(name = "mtprsto::import_login_token", skip(self, token), err)]
-    pub async fn import_login_token(
-        &mut self,
-        token: &[u8],
-    ) -> Result<crate::api::AuthLoginToken> {
-        let mut w = crate::serialize::TLWriter::new();
-        w.write_u32(types::AUTH_IMPORT_LOGIN_TOKEN);
-        w.write_bytes(token);
-        let result = self.invoke_raw(w.into_bytes()).await?;
-        crate::api::parse_login_token_response(&result)
-    }
-
-    /// QR-code login, other side: accept a token scanned from a QR code.
-    /// Returns the authorized user id.
-    ///
-    /// # Errors
-    /// Transport or RPC failure.
-    #[tracing::instrument(name = "mtprsto::accept_login_token", skip(self, token), err)]
-    pub async fn accept_login_token(&mut self, token: &[u8]) -> Result<UserId> {
-        let mut w = crate::serialize::TLWriter::new();
-        w.write_u32(types::AUTH_ACCEPT_LOGIN_TOKEN);
-        w.write_bytes(token);
-        let result = self.invoke_raw(w.into_bytes()).await?;
-        let mut r = TLReader::new(&result);
-        let ctor = r.read_u32()?;
-        if ctor != AUTH_AUTHORIZATION {
-            return Err(Error::Protocol(format!(
-                "expected auth.Authorization, got {ctor:#x}"
-            )));
-        }
-        // Skip flags + optionals, land on user.
-        let flags = r.read_i32()?;
-        if flags & (1 << 0) != 0 {
-            let _ = r.read_i32()?; // tmp_sessions
-        }
-        if flags & (1 << 1) != 0 {
-            let _ = r.read_i32()?; // otherwise_relogin_days
-        }
-        if flags & (1 << 2) != 0 {
-            let _ = r.read_bytes()?; // future_auth_token
-        }
-        let user = User::read_from(&mut r)?;
-        Ok(user.id())
-    }
-
-    /// `help.getConfig` — the canonical DC option list and config expiry
-    /// (SPEC §1: refresh the hard-coded DC table from this).
-    pub async fn get_config(&self) -> Result<ServerConfig> {
-        let result = self.invoke_raw(rpc::build_get_config()).await?;
-        let mut r = TLReader::new(&result);
-        let ctor = r.read_u32()?;
-        if ctor != types::CONFIG {
-            return Err(Error::Protocol(format!(
-                "expected config#cc1a241e, got {ctor:#x}"
-            )));
-        }
-        // flags, date, expires, test_mode(Bool ctor), this_dc
-        let _flags = r.read_i32()?;
-        let _date = r.read_i32()?;
-        let expires = r.read_i32()?;
-        let _test_mode = r.read_u32()?;
-        let this_dc = r.read_i32()?;
-        // dc_options:Vector<DcOption>
-        let _vec_ctor = r.read_u32()?;
-        let count = r.read_i32()?;
-        let mut dc_options = Vec::with_capacity(count.max(0) as usize);
-        for _ in 0..count {
-            let opt_ctor = r.read_u32()?;
-            if opt_ctor != types::DC_OPTION {
-                return Err(Error::Protocol(format!(
-                    "expected dcOption#18b7a10d, got {opt_ctor:#x}"
-                )));
-            }
-            let opt_flags = r.read_i32()?;
-            let dc_id = r.read_i32()?;
-            let ip = String::from_utf8(r.read_bytes()?)
-                .map_err(|_| Error::Protocol("invalid UTF-8 in dcOption ip".into()))?;
-            let port = r.read_i32()?;
-            if opt_flags & (1 << 10) != 0 {
-                let _secret = r.read_bytes()?;
-            }
-            dc_options.push(DcOption {
-                dc_id,
-                ip_address: ip,
-                port,
-                ipv6: opt_flags & (1 << 0) != 0,
-                cdn: opt_flags & (1 << 3) != 0,
-                static_: opt_flags & (1 << 4) != 0,
-            });
-        }
-        Ok(ServerConfig {
-            expires,
-            this_dc,
-            dc_options,
+        // The generated TL parsers (e.g. `MessagesInvitedUsers` ->
+        // `Updates` -> `Update` -> `Message` -> `MessageAction`) match
+        // over hundreds of constructors; in debug builds every arm's
+        // locals get distinct stack slots, so a single nested parse can
+        // need far more than the 8 MiB main-thread stack (observed
+        // STATUS_STACK_OVERFLOW in the channel_admin example). Parse on
+        // a dedicated thread with a generous stack — the same mitigation
+        // recursive-descent parsers (incl. rustc) use. Release builds
+        // collapse the frames, but the headroom is cheap either way.
+        const PARSE_STACK: usize = 64 * 1024 * 1024;
+        std::thread::scope(|scope| {
+            let handle = std::thread::Builder::new()
+                .stack_size(PARSE_STACK)
+                .spawn_scoped(scope, move || Self::parse_chats_response(data, method_ctor))
+                .map_err(|e| {
+                    Error::Other(format!("failed to spawn parse thread: {e}"))
+                })?;
+            handle.join().map_err(|p| {
+                Error::Other(format!("response parse panicked: {p:?}"))
+            })?
         })
     }
-}
 
-/// One `dcOption#18b7a10d` entry from `help.getConfig`.
-#[derive(Debug, Clone)]
-pub struct DcOption {
-    pub dc_id: i32,
-    pub ip_address: String,
-    pub port: i32,
-    pub ipv6: bool,
-    pub cdn: bool,
-    pub static_: bool,
-}
-
-/// Parsed `help.getConfig` response (subset — DC options and expiry).
-#[derive(Debug, Clone)]
-pub struct ServerConfig {
-    /// Seconds this config stays valid (refresh after it lapses, BS-6).
-    pub expires: i32,
-    /// The DC this client is currently talking to.
-    pub this_dc: i32,
-    /// Canonical DC option list.
-    pub dc_options: Vec<DcOption>,
+    /// Schema-driven chat-list extraction: routes on the RESPONSE ctor,
+    /// cross-checked against the generated method->response map
+    /// (`expected_response_ctors`) when the method is known to the
+    /// generator. Handles the three wire shapes chat-returning methods
+    /// produce: `messages.chats`, `messages.invitedUsers` (chats nested
+    /// in its Updates payload), and Updates containers.
+    pub(crate) fn parse_chats_response(data: &[u8], method_ctor: u32) -> Result<Vec<Chat>> {
+        let expected = crate::types::gen_fns::expected_response_ctors(method_ctor);
+        let mut r = crate::serialize::TLReader::new(data);
+        let ctor = r.read_u32()?;
+        // The schema understates reality for some methods: production
+        // answers channels.inviteToChannel (declared messages.InvitedUsers)
+        // with a bare Updates# container for megagroups/bots. Updates
+        // ctor ids are therefore always acceptable; the map only adds
+        // method-specific expectations.
+        const UPDATES_ID: u32 = 0x74ae4240;
+        const UPDATES_COMBINED_ID: u32 = 0x725b04c3;
+        const UPDATE_SHORT_ID: u32 = 0x78d4dec1;
+        const UPDATES_TOO_LONG_ID: u32 = 0xe317af7e;
+        let is_updates_shape = matches!(
+            ctor,
+            UPDATES_ID | UPDATES_COMBINED_ID | UPDATE_SHORT_ID | UPDATES_TOO_LONG_ID
+        );
+        if !expected.is_empty()
+            && !expected.contains(&ctor)
+            && !is_updates_shape
+        {
+            return Err(crate::error::Error::Serialization(format!(
+                "unexpected response ctor {ctor:#x} for method {method_ctor:#x}"
+            )));
+        }
+        match ctor {
+            crate::types::MESSAGES_CHATS => {
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(Chat::read_from(&mut r)?);
+                }
+                Ok(chats)
+            }
+            crate::types::MESSAGES_INVITED_USERS => {
+                // The router already consumed the wrapper ctor, so call
+                // read_from on the FULL buffer — the generated parser
+                // expects to read (and validate) the ctor itself.
+                let invited = crate::types::MessagesInvitedUsers::read_from(
+                    &mut crate::serialize::TLReader::new(data),
+                )?;
+                Ok(match invited.updates {
+                    crate::types::GenUpdates::Updates { ref chats, .. }
+                    | crate::types::GenUpdates::UpdatesCombined { ref chats, .. } => chats.clone(),
+                    _ => Vec::new(),
+                })
+            }
+            _ => {
+                // Updates containers and everything else: reuse the
+                // curated Updates parser (r position reset).
+                let updates = crate::types::Updates::parse(data)?;
+                Ok(updates.chats())
+            }
+        }
+    }
 }

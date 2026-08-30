@@ -64,7 +64,21 @@ mod type_tests {
             Peer::Channel { channel_id: ChannelId(3) },
         ] {
             let mut w = TLWriter::new();
-            peer.write_to(&mut w);
+            match peer {
+                Peer::User { user_id } => {
+                    w.write_u32(PEER_USER);
+                    w.write_i64(user_id.0);
+                }
+                Peer::Chat { chat_id } => {
+                    w.write_u32(PEER_CHAT);
+                    w.write_i64(chat_id.0);
+                }
+                Peer::Channel { channel_id } => {
+                    w.write_u32(PEER_CHANNEL);
+                    w.write_i64(channel_id.0);
+                }
+                Peer::None => {}
+            }
             let mut r = TLReader::new(w.as_bytes());
             let parsed = Peer::read_from(&mut r).unwrap();
             assert_eq!(&parsed, peer);
@@ -73,13 +87,20 @@ mod type_tests {
 
     #[test]
     fn test_keyboard_button_text_roundtrip() {
-        let btn = KeyboardButton::Text { text: "Click me".into() };
+        // keyboardButton#2f67a72f flags:# text:string (gen struct shape)
         let mut w = TLWriter::new();
-        btn.write_to(&mut w);
+        w.write_u32(crate::types::reply_markup_gen::KEYBOARD_BUTTON_ID);
+        w.write_i32(0); // flags (no style)
+        w.write_bytes(b"Click me");
         let mut r = TLReader::new(w.as_bytes());
-        assert_eq!(r.read_u32().unwrap(), KEYBOARD_BUTTON);
-        assert_eq!(r.read_i32().unwrap(), 0); // flags (no style)
-        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "Click me");
+        let btn = crate::types::reply_markup_gen::KeyboardButton::read_from(&mut r).unwrap();
+        match btn {
+            crate::types::reply_markup_gen::KeyboardButton::Text { text, style, .. } => {
+                assert_eq!(text, "Click me");
+                assert!(style.is_none());
+            }
+            other => panic!("expected Text button, got {other:?}"),
+        }
     }
 
     #[test]
@@ -113,15 +134,14 @@ mod type_tests {
         // A bot-auth response typically has flags=0x4000 (bot flag),
         // flags2=0, id=777.
         let mut w = TLWriter::new();
-        w.write_u32(USER); // 0x31774388
+        w.write_u32(USER_ID); // user#b1b8cc83 (current schema)
         w.write_i32(1 << 14); // flags: bot=true
-        w.write_i32(0); // flags2 (must be consumed here)
+        w.write_i32(0); // flags2
         w.write_i64(777); // id
-        // access_hash:flags.0 not set
-        w.write_i32(1); // bot_info_version:flags.14?int (required when bit14 set)
+        w.write_i32(1); // bot_info_version:flags.14?int
         let mut r = TLReader::new(w.as_bytes());
         let user = User::read_from(&mut r).unwrap();
-        assert_eq!(user.id().0, 777, "flags2 word must be consumed before id");
+        assert_eq!(user.id().0, 777);
         assert!(user.is_bot());
     }
 
@@ -412,10 +432,9 @@ fn test_chat_forbidden_roundtrip() {
 /// field order from hand-built wire bytes.
 #[test]
 fn test_tl_gen_user_roundtrip() {
-    use crate::types::tl_gen;
 
     let mut w = TLWriter::new();
-    w.write_u32(tl_gen::USER_ID); // user#b1b8cc83
+    w.write_u32(crate::types::user_gen::USER_ID); // user#b1b8cc83
     let flags = (1 << 0) | (1 << 1) | (1 << 4) | (1 << 14); // access_hash, first_name, phone, bot
     w.write_i32(flags);
     w.write_i32(0); // flags2
@@ -427,11 +446,11 @@ fn test_tl_gen_user_roundtrip() {
 
     let data = w.into_bytes();
     let mut r = TLReader::new(&data);
-    let user = tl_gen::User::read_from(&mut r).unwrap();
+    let user = crate::types::user_gen::User::read_from(&mut r).unwrap();
     match user {
-        tl_gen::User::User { id, access_hash, first_name, phone, bot, .. } => {
-            assert_eq!(id, 4242);
-            assert_eq!(access_hash, Some(7777));
+        crate::types::user_gen::User::User { id, access_hash, first_name, phone, bot, .. } => {
+            assert_eq!(id, UserId(4242));
+            assert_eq!(access_hash, Some(AccessHash(7777)));
             assert_eq!(first_name.as_deref(), Some("Yuka"));
             assert_eq!(phone.as_deref(), Some("+66988962019"));
             assert!(bot);
@@ -444,17 +463,268 @@ fn test_tl_gen_user_roundtrip() {
 /// hand-written ones (schema order + flags are the contract).
 #[test]
 fn test_tl_gen_builder_matches_handwritten() {
-    use crate::types::tl_gen;
 
-    let generated = tl_gen::build_messages_delete_messages(true, &[1, 2]);
+    let generated = crate::types::gen_fns::build_messages_delete_messages(true, &[1, 2]);
     let hand = crate::rpc::build_delete_messages(
         &[crate::types::MsgId(1), crate::types::MsgId(2)],
         true,
     );
     assert_eq!(generated, hand, "deleteMessages payloads diverge");
 
-    let generated = tl_gen::build_contacts_resolve_username("lebenoa", None);
+    let generated = crate::types::gen_fns::build_contacts_resolve_username("lebenoa", None);
     let hand = crate::rpc::build_resolve_username("lebenoa");
     assert_eq!(generated, hand, "resolveUsername payloads diverge");
 }
 }
+
+/// Every constructors.rs constant with a generated counterpart must
+/// match the layer-225 schema the gen modules were built from. This is
+/// the regression guard for the stale-constant class of bugs (e.g.
+/// CHANNEL 0xd49f34c6 was a master-era value while the wire speaks
+/// layer 225).
+#[test]
+fn test_constructor_constants_match_generated() {
+    let ours: Vec<(&str, u32)> = vec![
+        ("USER", crate::types::USER),
+        ("USER_EMPTY", crate::types::USER_EMPTY),
+        ("CHAT", crate::types::CHAT),
+        ("CHAT_EMPTY", crate::types::CHAT_EMPTY),
+        ("CHAT_FORBIDDEN", crate::types::CHAT_FORBIDDEN),
+        ("CHANNEL", crate::types::CHANNEL),
+        ("MESSAGE", crate::types::MESSAGE),
+        ("MESSAGE_EMPTY", crate::types::MESSAGE_EMPTY),
+        ("MESSAGE_SERVICE", crate::types::MESSAGE_SERVICE),
+        ("MESSAGE_MEDIA_PHOTO", crate::types::MESSAGE_MEDIA_PHOTO),
+        ("MESSAGE_MEDIA_DOCUMENT", crate::types::MESSAGE_MEDIA_DOCUMENT),
+        ("DIALOG", crate::types::DIALOG),
+        ("PEER_USER", crate::types::PEER_USER),
+        ("PEER_CHAT", crate::types::PEER_CHAT),
+        ("PEER_CHANNEL", crate::types::PEER_CHANNEL),
+        ("INPUT_PEER_USER", crate::types::INPUT_PEER_USER),
+        ("INPUT_PEER_CHAT", crate::types::INPUT_PEER_CHAT),
+        ("INPUT_PEER_CHANNEL", crate::types::INPUT_PEER_CHANNEL),
+        ("INPUT_PEER_SELF", crate::types::INPUT_PEER_SELF),
+        ("INPUT_USER", crate::types::INPUT_USER),
+        ("INPUT_USER_SELF", crate::types::INPUT_USER_SELF),
+        ("INPUT_CHANNEL", crate::types::INPUT_CHANNEL),
+        ("INPUT_FILE", crate::types::INPUT_FILE),
+        ("INPUT_FILE_BIG", crate::types::INPUT_FILE_BIG),
+        ("INPUT_DOCUMENT", crate::types::INPUT_DOCUMENT),
+        ("INPUT_DOCUMENT_EMPTY", crate::types::INPUT_DOCUMENT_EMPTY),
+        ("KEYBOARD_BUTTON", crate::types::KEYBOARD_BUTTON),
+        ("USER_STATUS_ONLINE", crate::types::USER_STATUS_ONLINE),
+        ("USER_STATUS_OFFLINE", crate::types::USER_STATUS_OFFLINE),
+        ("USER_PROFILE_PHOTO", crate::types::USER_PROFILE_PHOTO),
+        ("PEER_NOTIFY_SETTINGS", crate::types::PEER_NOTIFY_SETTINGS),
+        ("AUTH_AUTHORIZATION", crate::types::AUTH_AUTHORIZATION),
+        ("AUTH_SIGN_IN", crate::types::AUTH_SIGN_IN),
+    ];
+    for (name, val) in ours {
+        let gen_val = crate::types::gen_const(name);
+        assert_eq!(
+            Some(val),
+            gen_val,
+            "constructors::{name} diverges from the layer-225 schema"
+        );
+    }
+
+
+}
+
+    /// get_channels answers `messages.chats#64ff9fd5 chats:Vector<Chat>` —
+    /// a bare chat list, NOT an Updates container. Regression guard for the
+    /// `unknown Updates constructor 0x64ff9fd5` failure on the live wire.
+    #[test]
+    fn test_chats_from_updates_handles_messages_chats() {
+        let mut w = crate::serialize::TLWriter::new();
+        w.write_u32(crate::types::MESSAGES_CHATS); // 0x64ff9fd5
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(1); // one chat
+        // channel#1c32b11c (layer 225): flags + flags2, id, access_hash,
+        // title, username, date, version — minimal legal shape with
+        // username (bit6) and access_hash-bearing variant... access_hash is
+        // flags.0?Option<i64> in gen; set bit0 to carry it.
+        w.write_u32(crate::types::CHANNEL);
+        let flags = (1 << 13) | (1 << 6); // access_hash (flags.13) + username (flags.6)
+        w.write_i32(flags);
+        w.write_i32(0); // flags2
+        w.write_i64(-1001234); // id
+        w.write_i64(0x2b407731_88431337u64 as i64); // access_hash
+        w.write_bytes(b"mtprsto demo"); // title
+        w.write_bytes(b"lebenoa_test"); // username
+        w.write_u32(0x37c1011c); // chatPhotoEmpty (required ChatPhoto)
+        w.write_i32(1700000000); // date
+        w.write_i32(1); // version
+        let data = w.into_bytes();
+
+        use crate::types::Chat;
+        let chats = crate::client::Client::chats_from_updates(&data, crate::types::CHANNELS_GET_CHANNELS).unwrap();
+        assert_eq!(chats.len(), 1);
+        match &chats[0] {
+            Chat::Channel { id, title, username, .. } => {
+                assert_eq!(id.0, -1001234);
+                assert_eq!(title, "mtprsto demo");
+                assert_eq!(username.as_deref(), Some("lebenoa_test"));
+            }
+            other => panic!("expected Channel, got {other:?}"),
+        }
+    }
+/// Production sometimes answers channels.inviteToChannel (declared
+/// `messages.InvitedUsers`) with a bare `updates#74ae4240` container.
+/// The router must accept Updates-shaped ctors regardless of the map.
+#[test]
+fn test_chats_from_updates_accepts_updates_for_invite() {
+    let mut w = crate::serialize::TLWriter::new();
+    w.write_u32(0x74ae4240); // updates#74ae4240
+    w.write_u32(crate::serialize::VECTOR);
+    w.write_i32(0); // updates:Vector<Update> — empty
+    w.write_u32(crate::serialize::VECTOR);
+    w.write_i32(1); // users
+    w.write_u32(crate::types::USER_ID);
+    w.write_i32(0); // flags
+    w.write_i32(0); // flags2
+    w.write_i64(4242); // id
+    w.write_u32(crate::serialize::VECTOR);
+    w.write_i32(1); // chats
+    w.write_u32(crate::types::CHANNEL);
+    let flags = (1 << 13) | (1 << 6); // access_hash + username
+    w.write_i32(flags);
+    w.write_i32(0); // flags2
+    w.write_i64(-1001234); // id
+    w.write_i64(77); // access_hash
+    w.write_bytes(b"mtprsto demo");
+    w.write_bytes(b"lebenoa_test");
+    w.write_u32(0x37c1011c); // chatPhotoEmpty
+    w.write_i32(1700000000); // date
+    w.write_i32(1); // version
+    w.write_i32(1700000000); // date
+    w.write_i32(1); // seq
+    let data = w.into_bytes();
+
+    let chats = crate::client::Client::chats_from_updates(
+        &data,
+        crate::types::CHANNELS_INVITE_TO_CHANNEL,
+    )
+    .unwrap();
+    assert_eq!(chats.len(), 1);
+    match &chats[0] {
+        crate::types::Chat::Channel { id, username, .. } => {
+            assert_eq!(id.0, -1001234);
+            assert_eq!(username.as_deref(), Some("lebenoa_test"));
+        }
+        other => panic!("expected Channel, got {other:?}"),
+    }
+
+}
+
+#[cfg(test)]
+mod invited_users_tests {
+    use crate::serialize::{TLWriter, VECTOR};
+
+    /// Replays the live invite payload shape: wrapper ctor
+    /// messages.invitedUsers consumed by the router, then the parser
+    /// re-reads from the buffer start (nested updates#74ae4240).
+    /// Regression for the double ctor-consumption bug.
+    #[test]
+    fn test_chats_from_updates_invited_users_shape() {
+        let mut w = TLWriter::new();
+        w.write_u32(0x7f5defa6); // messages.invitedUsers
+        w.write_u32(0x74ae4240); // nested updates#74ae4240
+        w.write_u32(VECTOR);
+        w.write_i32(0); // updates:Vector<Update> - empty
+        w.write_u32(VECTOR);
+        w.write_i32(0); // users - empty
+        w.write_u32(VECTOR);
+        w.write_i32(0); // chats - empty (a full Channel body needs
+                        // every conditional field; routing is what we
+                        // regression-test here)
+        w.write_i32(1700000000); // date
+        w.write_i32(1); // seq
+        w.write_u32(VECTOR);
+        w.write_i32(0); // missing_invitees - empty
+        let data = w.into_bytes();
+
+        let chats = crate::client::Client::chats_from_updates(
+            &data,
+            crate::types::CHANNELS_INVITE_TO_CHANNEL,
+        )
+        .unwrap();
+        assert!(chats.is_empty());
+    }
+
+    /// Regression for the stack overflow running `channel_admin`:
+    /// a real (rich) `messages.invitedUsers` response — 3 updates
+    /// (updateMessageID, updateReadChannelInbox, updateNewChannelMessage
+    /// with a messageService/messageActionChatAddUser), two full `user#`
+    /// objects and a `channel#` — is parsed through the GENERATED
+    /// parsers, whose debug-build frames nest far deeper than the
+    /// default main stack. `chats_from_updates` must run the parse on a
+    /// big-stack thread and return the chats, not crash.
+    ///
+    /// Byte-for-byte a live layer-225 payload: invite of @vary4_bot into
+    /// a fresh megagroup ("mtprsto dbg").
+    #[test]
+    fn test_chats_from_updates_rich_invited_users_no_stack_overflow() {
+        const PAYLOAD: &[u8] = &[
+            0xa6, 0xef, 0x5d, 0x7f, 0x40, 0x42, 0xae, 0x74, 0x15, 0xc4, 0xb5, 0x1c,
+            0x03, 0x00, 0x00, 0x00, 0xd6, 0xbf, 0x90, 0x4e, 0x02, 0x00, 0x00, 0x00,
+            0x5f, 0x04, 0xf2, 0x2b, 0x50, 0xc9, 0x33, 0x00, 0x10, 0x6e, 0x2e, 0x92,
+            0x00, 0x00, 0x00, 0x00, 0x9e, 0xf9, 0x0f, 0x09, 0x01, 0x00, 0x00, 0x00,
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0xd9, 0x04, 0xba, 0x62, 0x0a, 0x0e, 0x80, 0x7a, 0x02, 0x03, 0x00, 0x00,
+            0x02, 0x00, 0x00, 0x00, 0x22, 0x17, 0x51, 0x59, 0x55, 0x12, 0x1e, 0x87,
+            0x01, 0x00, 0x00, 0x00, 0x1e, 0x37, 0xa5, 0xa2, 0x9e, 0xf9, 0x0f, 0x09,
+            0x01, 0x00, 0x00, 0x00, 0x3a, 0x49, 0x94, 0x6a, 0x00, 0xfd, 0xce, 0x15,
+            0x15, 0xc4, 0xb5, 0x1c, 0x01, 0x00, 0x00, 0x00, 0xa1, 0x56, 0x2c, 0x86,
+            0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x15, 0xc4, 0xb5, 0x1c, 0x02, 0x00, 0x00, 0x00, 0x88, 0x43, 0x77, 0x31,
+            0x7f, 0x04, 0x00, 0x02, 0x10, 0x00, 0x00, 0x00, 0x55, 0x12, 0x1e, 0x87,
+            0x01, 0x00, 0x00, 0x00, 0x3c, 0x39, 0xa1, 0xa1, 0x0e, 0xcc, 0x84, 0x5b,
+            0x04, 0x59, 0x75, 0x6b, 0x61, 0x00, 0x00, 0x00, 0x06, 0x4e, 0x61, 0x6e,
+            0x61, 0x6b, 0x6f, 0x00, 0x07, 0x6c, 0x65, 0x62, 0x65, 0x6e, 0x6f, 0x61,
+            0x0b, 0x36, 0x36, 0x39, 0x38, 0x38, 0x39, 0x36, 0x32, 0x30, 0x31, 0x39,
+            0x06, 0xf7, 0xd1, 0x82, 0x02, 0x00, 0x00, 0x00, 0x72, 0xb9, 0x31, 0x1b,
+            0xa3, 0x1d, 0x39, 0x54, 0x11, 0x01, 0x08, 0x08, 0xb4, 0x0a, 0xbe, 0x15,
+            0x4e, 0x00, 0x3c, 0x1a, 0x28, 0xa2, 0xa9, 0x32, 0x5a, 0x47, 0x00, 0x00,
+            0x05, 0x00, 0x00, 0x00, 0x49, 0x39, 0xb9, 0xed, 0x19, 0x4a, 0x94, 0x6a,
+            0x88, 0x43, 0x77, 0x31, 0x0b, 0x40, 0x00, 0x02, 0x12, 0x00, 0x00, 0x00,
+            0xa1, 0x56, 0x2c, 0x86, 0x01, 0x00, 0x00, 0x00, 0x39, 0xa9, 0x1c, 0x62,
+            0x56, 0x45, 0xde, 0x55, 0x08, 0x56, 0x61, 0x72, 0x79, 0x6d, 0x79, 0x20,
+            0x34, 0x00, 0x00, 0x00, 0x09, 0x76, 0x61, 0x72, 0x79, 0x34, 0x5f, 0x62,
+            0x6f, 0x74, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x15, 0xc4, 0xb5, 0x1c,
+            0x01, 0x00, 0x00, 0x00, 0x1c, 0xb1, 0x32, 0x1c, 0x01, 0x61, 0x04, 0x00,
+            0x08, 0x00, 0x00, 0x00, 0x9e, 0xf9, 0x0f, 0x09, 0x01, 0x00, 0x00, 0x00,
+            0x7d, 0x68, 0xf6, 0x01, 0x53, 0xcb, 0x2e, 0xa3, 0x0b, 0x6d, 0x74, 0x70,
+            0x72, 0x73, 0x74, 0x6f, 0x20, 0x64, 0x62, 0x67, 0x1c, 0x01, 0xc1, 0x37,
+            0x3a, 0x49, 0x94, 0x6a, 0xd5, 0x24, 0xb2, 0x5f, 0xbf, 0xfa, 0x07, 0x00,
+            0x18, 0x04, 0x12, 0x9f, 0x00, 0x84, 0x02, 0x04, 0xff, 0xff, 0xff, 0x7f,
+            0x39, 0x49, 0x94, 0x6a, 0x00, 0x00, 0x00, 0x00, 0x15, 0xc4, 0xb5, 0x1c,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+        // Sanity: the payload must actually be the invitedUsers shape.
+        assert_eq!(u32::from_le_bytes(PAYLOAD[0..4].try_into().unwrap()), 0x7f5defa6);
+
+        // Parse on a deliberately small (2 MiB) thread: the nested
+        // generated parsers need >8 MiB of stack in debug builds, so
+        // WITHOUT the big-stack thread in `chats_from_updates` this
+        // aborts with STATUS_STACK_OVERFLOW — the exact failure the
+        // channel_admin example hit on the 8 MiB tokio main thread.
+        let h = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                crate::client::Client::chats_from_updates(
+                    PAYLOAD,
+                    crate::types::CHANNELS_INVITE_TO_CHANNEL,
+                )
+                .expect("rich invitedUsers payload must parse without overflowing")
+            })
+            .unwrap();
+        let chats = h.join().unwrap();
+        assert_eq!(chats.len(), 1);
+    }
+}
+
+
+
+
+
