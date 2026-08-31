@@ -9,6 +9,7 @@
 //! https://my.telegram.org.
 
 use mtprsto::api::TelegramClient;
+use mtprsto::session::SessionStorage;
 use mtprsto::crypto;
 use mtprsto::mtproto::MtProtoSession;
 use num_bigint::BigUint;

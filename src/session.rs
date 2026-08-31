@@ -158,8 +158,25 @@ impl SessionStore {
         }
     }
 
+    /// Get the current session data, if loaded.
+    pub fn data(&self) -> Option<&SessionData> {
+        self.data.as_ref()
+    }
+
+    /// Check if a session file exists on disk.
+    pub fn exists(&self) -> bool {
+        self.path.exists()
+    }
+
+    /// Get the path to the session file.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl SessionStorage for SessionStore {
     /// Load session from disk. Returns `Ok(None)` if the file doesn't exist.
-    pub fn load(&mut self) -> Result<Option<SessionData>> {
+    fn load(&mut self) -> Result<Option<SessionData>> {
         if !self.path.exists() {
             return Ok(None);
         }
@@ -180,7 +197,7 @@ impl SessionStore {
     }
 
     /// Save session to disk.
-    pub fn save(&mut self, data: &SessionData) -> Result<()> {
+    fn save(&mut self, data: &SessionData) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = self.path.parent()
             && !parent.exists()
@@ -216,23 +233,8 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Get the current session data, if loaded.
-    pub fn data(&self) -> Option<&SessionData> {
-        self.data.as_ref()
-    }
-
-    /// Check if a session file exists on disk.
-    pub fn exists(&self) -> bool {
-        self.path.exists()
-    }
-
-    /// Get the path to the session file.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     /// Delete the session file from disk.
-    pub fn delete(&mut self) -> Result<()> {
+    fn delete(&mut self) -> Result<()> {
         if self.path.exists() {
             std::fs::remove_file(&self.path)
                 .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
@@ -241,20 +243,6 @@ impl SessionStore {
         }
         self.data = None;
         Ok(())
-    }
-}
-
-impl SessionStorage for SessionStore {
-    fn load(&mut self) -> Result<Option<SessionData>> {
-        SessionStore::load(self)
-    }
-
-    fn save(&mut self, data: &SessionData) -> Result<()> {
-        SessionStore::save(self, data)
-    }
-
-    fn delete(&mut self) -> Result<()> {
-        SessionStore::delete(self)
     }
 
     fn describe(&self) -> String {
