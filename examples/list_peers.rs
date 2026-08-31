@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash)
-        .session(&default_session_path())
+        .session(default_session_path())
         .build()?;
     client.connect().await?;
     println!("connected");
@@ -78,13 +78,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== CHATS/CHANNELS ===");
     for c in &dialogs.chats {
         match c {
-            mtprsto::types::Chat::Channel { id, title, username, access_hash, megagroup, .. } => {
+            mtprsto::types::Chat::Channel {
+                id,
+                title,
+                username,
+                access_hash,
+                megagroup,
+                ..
+            } => {
+                // Print the Bot-API-style -100 id — exactly the form
+                // `send_to_channel` (and resolve_peer) accepts.
+                let send_id = format!("-100{}", id.0);
+                let hash_ok = access_hash.is_some();
                 println!(
-                    "channel id={:<12} title={:<25?} username={:<20?} megagroup={} access_hash={:?}",
-                    id.0, title, username, megagroup, access_hash.map(|h| h.0)
+                    "channel send_id={:<16} title={:<25?} username={:<20?} megagroup={} hash_persisted={}",
+                    send_id,
+                    title,
+                    username,
+                    megagroup,
+                    hash_ok
                 );
             }
-            mtprsto::types::Chat::Chat { id, title, participants_count, .. } => {
+            mtprsto::types::Chat::Chat {
+                id,
+                title,
+                participants_count,
+                ..
+            } => {
                 println!(
                     "basic chat id={} title={:?} members={}",
                     id.0, title, participants_count
