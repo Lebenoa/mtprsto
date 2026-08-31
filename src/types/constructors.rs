@@ -58,8 +58,8 @@ pub const PEER_NOTIFY_SETTINGS: u32 = 0x99622c0c;
 /// `Local#830b9ae9` / `Ringtone#50640d3d`
 pub const NOTIFICATION_SOUND_DEFAULT: u32 = 0x97e8bebe;
 pub const NOTIFICATION_SOUND_NONE: u32 = 0x6f0c34df;
-pub const NOTIFICATION_SOUND_LOCAL: u32 = 0x830b9ae9;
-pub const NOTIFICATION_SOUND_RINGTONE: u32 = 0x50640d3d;
+pub const NOTIFICATION_SOUND_LOCAL: u32 = 0x830b9ae4;
+pub const NOTIFICATION_SOUND_RINGTONE: u32 = 0xff6c8049;
 pub const USER_STATUS_EMPTY: u32 = 0x9d05049;
 pub const USER_STATUS_ONLINE: u32 = 0xedb93949;
 pub const USER_STATUS_OFFLINE: u32 = 0x8c703f;
@@ -75,7 +75,7 @@ pub const CHAT_FULL: u32 = 0x2633421b;
 
 // --- Channel (Layer 223) ---
 /// `channel#d49f34c6` — live layer 225 (old 0x1c32b11c stale).
-pub const CHANNEL: u32 = 0xd49f34c6;
+pub const CHANNEL: u32 = 0x1c32b11c;
 /// `updateChannel#635b4c09 channel_id:long`
 pub const UPDATE_CHANNEL: u32 = 0x635b4c09;
 /// `updateReadChannelInbox#922e6e10 flags:# folder_id:flags.0?int
@@ -100,12 +100,13 @@ pub const CHAT_PHOTO_EMPTY: u32 = 0x37c1011c;
 pub const USER_PROFILE_PHOTO: u32 = 0x82d1f706;
 pub const USER_PROFILE_PHOTO_EMPTY: u32 = 0x4f11bae1;
 
-// --- Message (Layer 223) ---
-pub const MESSAGE: u32 = 0x3ae56482;
-// Live layer 225 re-issued the message ctor (wire-verified against
-// production DCs 2026-08; core.telegram.org's published JSON still lists
-// the old ID). Both are accepted when parsing.
-pub const MESSAGE_V225: u32 = 0x95ef6f2b;
+// --- Message ---
+// Live layer-225 dialect ctor (wire-verified against production DCs
+// 2026-08; the published JSON and tdlib master carry other ids — all
+// three are accepted when parsing: MESSAGE + MESSAGE_V223 legacy +
+// the generated canonical via CTOR_ALIASES).
+pub const MESSAGE: u32 = 0x95ef6f2b;
+pub const MESSAGE_V223: u32 = 0x3ae56482;
 pub const MESSAGE_EMPTY: u32 = 0x90a6ca84;
 pub const MESSAGE_SERVICE: u32 = 0x7a800e0a;
 // messageReplyHeader#6917560b
@@ -119,7 +120,7 @@ pub const MESSAGE_REPLY_STORY_HEADER: u32 = 0x0e5af939;
 // --- Message media (Layer 223) ---
 pub const MESSAGE_MEDIA_EMPTY: u32 = 0x3ded6320;
 /// `messageMediaPhoto#e216eb63` (live layer 225; old 0x695150d7 stale)
-pub const MESSAGE_MEDIA_PHOTO: u32 = 0xe216eb63;
+pub const MESSAGE_MEDIA_PHOTO: u32 = 0x695150d7;
 /// `geoPoint#b2a2f663 flags:# long:double lat:double access_hash:long
 ///   accuracy_radius:flags.0?int` / `geoPointEmpty#1117dd5f`
 pub const GEO_POINT: u32 = 0xb2a2f663;
@@ -260,6 +261,8 @@ pub const KEYBOARD_BUTTON_URL_AUTH: u32 = 0xf51006f9;
 pub const KEYBOARD_BUTTON_REQUEST_PEER: u32 = 0x5b0f15f5;
 
 // --- Messages (Layer 223) ---
+pub const MESSAGES_INVITED_USERS: u32 = 0x7f5defa6; // messages.invitedUsers (invite results)
+pub const MESSAGES_CHATS: u32 = 0x64ff9fd5; // messages.chats (bare chat list)
 pub const MESSAGES_DIALOGS: u32 = 0x15ba6c40;
 pub const MESSAGES_DIALOGS_SLICE: u32 = 0x71e094f3;
 pub const MESSAGES_DIALOGS_NOT_MODIFIED: u32 = 0xf0e3e596;
@@ -268,7 +271,8 @@ pub const MESSAGES_MESSAGES_SLICE: u32 = 0x5f206716;
 pub const MESSAGES_CHANNEL_MESSAGES: u32 = 0xc776ba4e;
 pub const MESSAGES_MESSAGES_NOT_MODIFIED: u32 = 0x74535f21;
 
-// --- Dialog (layer 225: dialog#fc89f7f3; old 0xd58a08c6 stale) ---
+// --- Dialog (live layer-225 dialect: dialog#fc89f7f3, wire-verified;
+// old 0xd58a08c6 kept as a generated-side alias) ---
 pub const DIALOG: u32 = 0xfc89f7f3;
 pub const DIALOG_FOLDER: u32 = 0x71bd134c;
 

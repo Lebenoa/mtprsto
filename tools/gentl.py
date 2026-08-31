@@ -165,6 +165,7 @@ def rust_read_expr(field, ctors, indent):
 types_by_name_global = {}
 generatable_global = {}
 writable_global = {}
+outer_type_global = None
 
 
 def compute_writable(ctors, types_by_name, generatable):
@@ -309,6 +310,41 @@ def gen_field_write(f, ind, vp="", borrow=False):
     return None
 
 
+def compat_fix_write(stmts, rust_types):
+    """Unwrap newtype fields in generated write_to statements."""
+    if not compat_global or stmts is None:
+        return stmts
+    wrapped = {f for f, t in rust_types.items()
+               if t in NEWTYPE_NAMES
+               or (t.startswith("Option<") and t[7:-1] in NEWTYPE_NAMES)}
+    if not wrapped:
+        return stmts
+    out = []
+    for st in stmts:
+        bare = st.rstrip("\r\n")
+        eol = st[len(bare):]
+        for f in wrapped:
+            ident = field_ident(f)
+            # self.field style
+            for pat, rep in (
+                (f"self.{ident});", f"self.{ident}.0);"),
+                (f"self.{ident}.as_bytes());", f"self.{ident}.0.as_bytes());"),
+            ):
+                bare = bare.replace(pat, rep)
+            # if-let Some(ident) = ... clone branch: bare local style
+            for wtr in ("write_i64", "write_i32"):
+                bare = bare.replace(
+                    f"w.{wtr}({ident});",
+                    f"w.{wtr}({ident}.0);",
+                )
+        out.append(bare + eol)
+    return out
+
+
+NEWTYPE_NAMES = {"UserId", "ChatId", "ChannelId", "AccessHash", "MsgId",
+                 "PhotoId", "DocumentId"}
+
+
 def gen_write_to(c, rust_types):
     """Body of write_to for a single-ctor type. None if any required
     (non-conditional) field is unwritable."""
@@ -351,6 +387,38 @@ def gen_write_to(c, rust_types):
                 return None
             stmts.extend(body)
     return stmts
+
+
+def gen_response_map(fn_ctors, types_by_name):
+    """Emit `expected_response_ctor(method_ctor)` — the schema-derived
+    method->response routing the runtime dispatch previously guessed by
+    hand. Returns the generated Rust lines (may be empty)."""
+    if not fn_ctors:
+        return []
+    # result type -> ctor ids of genuine type constructors only
+    # (parse_tl also files functions under their result type).
+    type_ctors = {}
+    for tname, group in types_by_name.items():
+        type_ctors[tname] = [c.id for c in group if not getattr(c, 'is_function', False)]
+
+    lines = [
+        "/// Schema-derived routing: which response constructor(s) each",
+        "/// method's result type can arrive as. Replaces the hand-glued",
+        "/// response expectations per wrapper.",
+        "pub fn expected_response_ctors(method_ctor: u32) -> &'static [u32] {",
+        "    match method_ctor {",
+    ]
+    for c in fn_ctors:
+        ids = type_ctors.get(c.type_name, [])
+        if not ids:
+            continue
+        arms = ", ".join(f"0x{i:08x}" for i in ids)
+        lines.append(f"        0x{c.id:08x} => &[{arms}],")
+    lines.append("        _ => &[],")
+    lines.append("    }")
+    lines.append("}")
+    lines.append("")
+    return lines
 
 
 def gen_function(c):
@@ -438,6 +506,58 @@ def gen_function(c):
     return lines
 
 
+def compute_needs_box(ctors, types_by_name, generatable):
+    """Set of (outer, inner) generated-type pairs where `inner` must be
+    Box<>ed inside `outer`'s Rust type.
+
+    A field of type U inside type T needs indirection iff U can reach T
+    again through generated-type edges (i.e. U lies on a cycle containing
+    T). Blanket-boxing every object field pays a heap alloc per field per
+    parse; only cycle members actually need the pointer.
+    """
+    edges = {}
+    for tname, group in types_by_name.items():
+        outs = set()
+        for c in group:
+            for f in c.fields:
+                if f.tl_type in BUILTINS or f.tl_type == "#":
+                    continue
+                if f.tl_type in types_by_name:
+                    outs.add(f.tl_type)
+        edges[tname] = outs
+
+    # Transitive closure per type (DFS from each; ~350 types, runs once).
+    reach = {t: set() for t in edges}
+    for t in edges:
+        work = list(edges[t])
+        seen = set()
+        while work:
+            u = work.pop()
+            if u in seen:
+                continue
+            seen.add(u)
+            work.extend(edges.get(u, ()))
+        reach[t] = seen
+
+    needs_box = set()
+    for t in types_by_name:
+        for u in edges[t]:
+            if u in BUILTINS or u == "#":
+                continue
+            # Box U inside T iff U can reach T again: the field would
+            # otherwise make T infinitely sized. Self-recursion (U == T)
+            # always needs the pointer; generatability is irrelevant here
+            # because recursive types are exactly the ones the
+            # can_generate memo marks False.
+            if u == t or t in reach[u]:
+                needs_box.add((t, u))
+    return needs_box
+
+
+needs_box_global = set()
+compat_global = False
+
+
 def gen_field_read(f, ctors, ind, types_by_name, generatable):
     """Return Rust statements reading field f from `r`. None = unsupported."""
     pad = " " * ind
@@ -493,10 +613,13 @@ def gen_field_read(f, ctors, ind, types_by_name, generatable):
             return None, None
         return [f"{pad}let {n} = r.{reader}()?;"], rust_t
     if t in types_by_name and t in generatable and generatable[t]:
-        # Box every nested object: keeps recursive unions (InputPeer,
-        # RichText, ...) finite-sized.
+        # Box only when the nested type sits on a cycle (see
+        # compute_needs_box); everything else inlines, saving a heap
+        # allocation per field per parse.
         rust_t = rust_type_name(t)
-        return [f"{pad}let {n} = Box::new({rust_t}::read_from(r)?);"], f"Box<{rust_t}>"
+        if (outer_type_global, t) in needs_box_global:
+            return [f"{pad}let {n} = Box::new({rust_t}::read_from(r)?);"], f"Box<{rust_t}>"
+        return [f"{pad}let {n} = {rust_t}::read_from(r)?;"], rust_t
     return None, None
 
 
@@ -545,11 +668,51 @@ def gen_ctor(ctor, ctors, types_by_name, generatable):
             body, rt = res
             rust_types[f.name] = rt
             stmts.extend(body)
+
+    if compat_global:
+        # Compat pass: wrap id fields in newtypes. Rewrite the `let` to
+        # construct the newtype and retype rust_types accordingly. The
+        # wrapper ctor id (variant type) comes from the caller profile.
+        for f in ctor.fields:
+            raw_t = rust_types.get(f.name)
+            needs_i32_cast = False
+            if raw_t is None:
+                continue
+            # Unwrap Option<> for the check; Option<i64> ids stay Option.
+            is_opt = raw_t.startswith("Option<")
+            base = raw_t[7:-1] if is_opt else raw_t
+            nt = compat_field_type(ctor.type_name, f.name, base)
+            needs_i32_cast = (
+                nt is None
+                and f.name == "id"
+                and base == "i32"
+                and ctor.predicate in MSGID_ID_CTOR
+            )
+            if nt is None and needs_i32_cast:
+                nt = "MsgId"
+            if nt is None:
+                continue
+            ident = field_ident(f.name)
+            n = f"{nt}({ident})"
+            if is_opt:
+                stmts_rewrite = []
+                for st in stmts:
+                    st = st.replace(f"Some({ident})", f"Some({nt}({ident}))")
+                    stmts_rewrite.append(st)
+                stmts = stmts_rewrite
+                rust_types[f.name] = f"Option<{nt}>"
+            else:
+                # Replace the bare let with a newtype-constructed let.
+                # i32 message ids widen to the i64 MsgId payload.
+                cast = " as i64" if needs_i32_cast else ""
+                stmts.append(f"    let {ident} = {nt}({ident}{cast});")
+                rust_types[f.name] = nt
     return stmts, rust_types
 
 
-def gen_output(ctors, requested, include_functions=False):
+def gen_output(ctors, requested, include_functions=False, domain=None):
     global types_by_name_global, generatable_global, writable_global
+    global needs_box_global, outer_type_global
     types_by_name = {}
     for c in ctors.values():
         types_by_name.setdefault(c.type_name, []).append(c)
@@ -587,6 +750,7 @@ def gen_output(ctors, requested, include_functions=False):
     types_by_name_global = types_by_name
     generatable_global = generatable
     writable_global = compute_writable(ctors, types_by_name, generatable)
+    needs_box_global = compute_needs_box(ctors, types_by_name, generatable)
 
     # Transitive closure: every nested non-builtin type must be generated.
     needed = []
@@ -607,16 +771,38 @@ def gen_output(ctors, requested, include_functions=False):
                     seen.add(dep.predicate)
                     queue.append(dep.predicate)
     requested = needed
+    foreign_types = {}
+    if domain:
+        def _owner_of(c):
+            return (CANONICAL_OWNERS.get(c.type_name)
+                    or type_owner_global.get(c.type_name, domain))
+        foreign_types = {
+            ctors[p].type_name: _owner_of(ctors[p])
+            for p in needed if _owner_of(ctors[p]) != domain
+        }
+        requested = [p for p in requested if _owner_of(ctors[p]) == domain]
 
     lines = []
     lines.append("//! GENERATED by tools/gentl.py from a Telegram API .tl schema.")
     lines.append("//! Field order and flags come straight from the schema — do not hand-edit.")
     lines.append("//! Unread/unused fields keep their reads so the stream stays aligned.")
     lines.append("#![allow(dead_code, unused_variables, unused_mut)]")
+    lines.append("#![allow(clippy::enum_variant_names)]")
+    lines.append("#![allow(unused_imports)]")
+    lines.append("#![allow(clippy::clone_on_copy)]")
+    lines.append("#![allow(clippy::needless_option_as_deref)]")
     lines.append("#![allow(clippy::large_enum_variant)]")
     lines.append("")
     lines.append("use crate::error::{Error, Result};")
     lines.append("use crate::serialize::TLReader;")
+    if compat_global:
+        lines.append("use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};")
+    if domain and foreign_types:
+        by_owner = {}
+        for tname, owner in foreign_types.items():
+            by_owner.setdefault(owner, []).append(rust_type_name(tname))
+        for owner, names in sorted(by_owner.items()):
+            lines.append(f"use super::{owner}_gen::{{{', '.join(sorted(names))}}};")
     lines.append("")
     # constants
     for pred in requested:
@@ -645,6 +831,7 @@ def gen_output(ctors, requested, include_functions=False):
         rust_t = rust_type_name(tname)
         if len(group) == 1:
             c = group[0]
+            outer_type_global = tname
             body = gen_ctor(c, ctors, types_by_name, generatable)
             if body is None:
                 lines.append(f"// TODO {c.predicate}: contains a type this generator does not know")
@@ -652,7 +839,7 @@ def gen_output(ctors, requested, include_functions=False):
                 continue
             stmts, rust_types = body
             lines.append(f"/// `{c.predicate}#{c.id:08x} = {tname}`")
-            lines.append("#[derive(Debug, Clone)]")
+            lines.append("#[derive(Debug, Clone, PartialEq)]")
             lines.append(f"pub struct {rust_t} {{")
             for f in c.fields:
                 rt = rust_types.get(f.name)
@@ -677,7 +864,7 @@ def gen_output(ctors, requested, include_functions=False):
             lines.append("        })")
             lines.append("    }")
             lines.append("")
-            write_body = gen_write_to(c, rust_types)
+            write_body = compat_fix_write(gen_write_to(c, rust_types), rust_types)
             if write_body is not None:
                 lines.append("    /// Serialize in schema field order (flags auto-computed).")
                 lines.append("    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {")
@@ -686,6 +873,7 @@ def gen_output(ctors, requested, include_functions=False):
             lines.append("}")
             lines.append("")
         else:
+            outer_type_global = tname
             supported = [c for c in group if gen_ctor(c, ctors, types_by_name, generatable) is not None]
             if not supported:
                 lines.append(f"// TODO union {tname}: no constructor is generatable "
@@ -693,16 +881,18 @@ def gen_output(ctors, requested, include_functions=False):
                 lines.append("")
                 continue
             lines.append(f"/// Union `{tname}` ({len(group)} constructors).")
-            lines.append("#[derive(Debug, Clone)]")
+            lines.append("#[derive(Debug, Clone, PartialEq)]")
             lines.append(f"pub enum {rust_t} {{")
             variants = []
             for c in group:
+                outer_type_global = tname
                 body = gen_ctor(c, ctors, types_by_name, generatable)
                 if body is None:
                     continue
                 stmts, rust_types = body
                 vn = pascal(c.predicate.replace(".", "_"))
                 variants.append((c, vn, stmts, rust_types))
+                vn = compat_variant_name(tname, vn)
                 if rust_types:
                     fields = ", ".join(
                         f"{field_ident(f.name)}: {rust_types[f.name]}"
@@ -713,23 +903,45 @@ def gen_output(ctors, requested, include_functions=False):
                 else:
                     lines.append(f"    /// `{c.predicate}#{c.id:08x}`")
                     lines.append(f"    {vn},")
+            if compat_global and tname in FALLTHROUGH_TYPES:
+                lines.append("    /// Constructor not recognized by this library version.")
+                lines.append("    Other { constructor: u32 },")
+            if compat_global and tname in EXTRA_VARIANTS:
+                vname, doc = EXTRA_VARIANTS[tname]
+                lines.append(f"    /// {doc}")
+                lines.append(f"    {vname},")
             lines.append("}")
             lines.append("")
             lines.append(f"impl {rust_t} {{")
             lines.append("    pub fn read_from(r: &mut TLReader) -> Result<Self> {")
             lines.append("        let ctor = r.read_u32()?;")
             lines.append("        match ctor {")
+            # Wire-verified ctor re-issues (CTOR_ALIASES): production DCs
+            # answer in the negotiated layer's dialect, where a ctor may
+            # carry a different id than the fetched schema. Each alias
+            # merges into its variant's match arm (same field reads).
+            aliases = CTOR_ALIASES.get(tname, {})
             for c, vn, stmts, rust_types in variants:
-                lines.append(f"            {snake(c.predicate.replace(".", "_")).upper()}_ID => {{")
+                head = f"            {snake(c.predicate.replace(".", "_")).upper()}_ID"
+                for alias_id, alias_pred in aliases.items():
+                    if alias_pred == c.predicate:
+                        head = (f"            {alias_id:#010x} | "
+                                f"{snake(c.predicate.replace(".", "_")).upper()}_ID")
+                        break
+                lines.append(head + " => {")
                 lines.extend(stmts)
                 args = ", ".join(
                     field_ident(f.name) for f in c.fields if f.name in rust_types
                 )
                 lines.append(f"                Ok({rust_t}::{vn} {{ {args} }})")
                 lines.append("            }")
-            lines.append("            other => Err(Error::Serialization(format!(")
-            lines.append(f'                "unknown {tname} constructor {{other:#x}}"')
-            lines.append("            ))),")
+            if compat_global and tname in FALLTHROUGH_TYPES:
+                lines.append("            other => Ok("
+                             f"{rust_t}::Other {{ constructor: other }}),")
+            else:
+                lines.append("            other => Err(Error::Serialization(format!(")
+                lines.append(f'                "unknown {tname} constructor {{other:#x}}"')
+                lines.append("            ))),")
             lines.append("        }")
             lines.append("    }")
             lines.append("}")
@@ -739,6 +951,9 @@ def gen_output(ctors, requested, include_functions=False):
         lines.append("// Functions (request builders)")
         lines.append("// ===========================================================================")
         lines.append("")
+        map_lines = gen_response_map(fn_ctors, types_by_name)
+        if map_lines:
+            lines.extend(map_lines)
         for c in fn_ctors:
             fl = gen_function(c)
             if fl is None:
@@ -746,7 +961,10 @@ def gen_output(ctors, requested, include_functions=False):
                 lines.append("")
                 continue
             lines.extend(fl)
-    return "\n".join(lines)
+    out = "\n".join(lines)
+    if compat_global:
+        out = apply_compat_to_output(out)
+    return out
 
 
 def diff_consts(ctors, path):
@@ -768,6 +986,300 @@ def diff_consts(ctors, path):
     return report
 
 
+
+# ===========================================================================
+# Compat profiles: emit curated-shaped types matching the hand-written API
+# (newtype ids, curated variant names) while the generated parsers remain
+# the single source of truth for the wire format.
+# ===========================================================================
+
+# id-field -> newtype wrap, applied per generated type when the field is
+# the type's identity column.
+NEWTYPE_FIELDS = {
+    "user_id": "UserId",
+    "chat_id": "ChatId",
+    "channel_id": "ChannelId",
+    "access_hash": "AccessHash",
+}
+
+# Generated type -> which newtype its plain `id: i64` field carries.
+ID_NEWTYPE_BY_TYPE = {
+    "User": "UserId", "UserEmpty": "UserId",
+    "Chat": "ChatId", "ChatEmpty": "ChatId", "ChatForbidden": "ChatId",
+    "Channel": "ChannelId", "ChannelForbidden": "ChannelId",
+    "Photo": "PhotoId", "PhotoEmpty": "PhotoId",
+    "Document": "DocumentId", "DocumentEmpty": "DocumentId",
+    "MessageEmpty": "MsgId",
+}
+
+# Variant renames: generated type -> {generated variant: curated name}.
+VARIANT_RENAMES = {
+    "User": {"UserEmpty": "Empty"},
+    "Chat": {"ChatEmpty": "Empty", "ChatForbidden": "Forbidden"},
+    "Peer": {"PeerUser": "User", "PeerChat": "Chat", "PeerChannel": "Channel"},
+    "InputPeer": {"InputPeerSelf": "Self_", "InputPeerUser": "User",
+                   "InputPeerChat": "Chat", "InputPeerChannel": "Channel",
+                   "InputPeerUserFromMessage": "UserFromMessage",
+                   "InputPeerChannelFromMessage": "ChannelFromMessage"},
+    "InputUser": {"InputUser": "User", "InputUserSelf": "Self_"},
+    "InputChannel": {"InputChannel": "Channel"},
+    "UserStatus": {"UserStatusEmpty": "Empty", "UserStatusOnline": "Online",
+                    "UserStatusOffline": "Offline",
+                    "UserStatusRecently": "Recently",
+                    "UserStatusLastWeek": "LastWeek",
+                    "UserStatusLastMonth": "LastMonth"},
+    "UserProfilePhoto": {"UserProfilePhoto": "Photo",
+                          "UserProfilePhotoEmpty": "Empty"},
+    "Photo": {"Photo": "Photo", "PhotoEmpty": "Empty"},
+    "Document": {"Document": "Document", "DocumentEmpty": "Empty"},
+    "Updates": {"Updates": "Updates", "UpdateShort": "UpdateShort",
+                 "UpdatesCombined": "UpdatesCombined",
+                 "UpdateShortSentMessage": "UpdateShortSentMessage"},
+    # Curated Update names: schema predicate minus the `update` prefix,
+    # Pascal-cased (updateNewMessage -> NewMessage). Expressed as a
+    # transform instead of a 200-entry table (see compat_variant_name).
+    "Update": {
+        "MessageId": "MessageID",
+    },   # remainder via strip_prefix
+    "MessageMedia": {
+        "MessageMediaEmpty": "None",
+        "MessageMediaPhoto": "Photo",
+        "MessageMediaGeo": "Geo",
+        "MessageMediaContact": "Contact",
+        "MessageMediaDocument": "Document",
+        "MessageMediaWebPage": "WebPage",
+        "MessageMediaGame": "Game",
+        "MessageMediaPoll": "Poll",
+        "MessageMediaDice": "Dice",
+        "MessageMediaVenue": "Venue",
+        "MessageMediaGeoLive": "GeoLive",
+        "MessageMediaUnsupported": "Unsupported",
+    },
+    "MessageAction": {
+        "MessageActionEmpty": "Empty",
+    },
+    "ReplyMarkup": {
+        "ReplyKeyboardHide": "None",
+        "ReplyKeyboardForceReply": "ForceReply",
+        "ReplyInlineMarkup": "InlineKeyboard",
+        "ReplyKeyboardMarkup": "ReplyKeyboard",
+    },
+    "KeyboardButton": {
+        "KeyboardButton": "Text",
+        "KeyboardButtonUrl": "Url",
+        "KeyboardButtonCallback": "Callback",
+    },
+    "InputFile": {
+        "InputFile": "Id",
+        "InputFileBig": "Big",
+    },
+    "InputDocument": {
+        "InputDocument": "Document",
+        "InputDocumentEmpty": "Empty",
+    },
+    "Message": {
+        "MessageEmpty": "Empty",
+        "MessageService": "Service",
+        "Message": "Message",
+    },
+}
+
+# Predicates whose variant name drops a type-prefix word and Pascal-cases
+# the remainder (updateNewMessage -> NewMessage).
+# Unions that get a synthetic `Other { constructor: u32 }` variant for
+# unknown-ctor fallthrough instead of erroring.
+FALLTHROUGH_TYPES = {"Update", "MessageAction", "MessageMedia"}
+
+# Canonical home for shared dependency types when emitting per-domain
+# modules. Types not listed here are owned by the domain whose seed
+# closure contains them; anything else falls to the emitting domain.
+CANONICAL_OWNERS = {
+    "Peer": "peer",
+    "InputPeer": "input", "InputUser": "input", "InputChannel": "input",
+    "InputFile": "input", "InputDocument": "input",
+    "InputPhoto": "input", "InputDocument": "input",
+    "User": "user", "UserStatus": "user", "UserProfilePhoto": "user",
+    "Chat": "chat", "ChatFull": "chat",
+    "ChatAdminRights": "chat", "ChatBannedRights": "chat",
+    "ChatParticipant": "chat", "ChatParticipants": "chat",
+    "Photo": "photo", "PhotoSize": "photo", "Document": "photo",
+    "WebDocument": "photo", "GeoPoint": "photo",
+    "Message": "message", "MessageEmpty": "message",
+    "MessageService": "message", "MessageMedia": "message",
+    "MessageEntity": "message", "MessageAction": "message",
+    "MessageReplyHeader": "message", "MessageFwdHeader": "message",
+    "MessageRange": "message", "ReplyMarkup": "reply_markup",
+    "KeyboardButton": "reply_markup",
+    "Updates": "updates", "Update": "updates",
+}
+
+type_owner_global = {}  # tname -> domain, computed by the driver
+
+# Unions that get a client-side sentinel unit variant (never produced by
+# read_from; hand-written helpers construct it). Maps type -> variant.
+EXTRA_VARIANTS = {"Peer": ("None", "Client-side sentinel — not a wire value.")}
+
+# Domain modules (mirroring the hand-written layout). Each entry lists
+# the seed RESULT TYPES; the generator pulls in every constructor of a
+# seeded type plus its transitive dependencies.
+DOMAIN_MODULES = {
+    "peer": ["Peer"],
+    "input": ["InputPeer", "InputUser", "InputChannel", "InputFile",
+               "InputDocument", "InputPhoto", "InputGeoPoint",
+               "InputContact", "InputStickerSet", "InputStickerSetItem",
+               "InputDialogPeer", "InputStorePaymentPurpose",
+               "InputWebFileLocation", "InputPhotoEmpty",
+               "InputGeoPointEmpty", "InputDialog"],
+    "user": ["User", "UserStatus", "UserProfilePhoto"],
+    "chat": ["Chat", "ChatFull", "ChatAdminRights", "ChatBannedRights",
+              "ChatParticipant", "ChatParticipants", "ExportedChatInvite"],
+    "photo": ["Photo", "PhotoSize", "Document", "WebDocument", "GeoPoint"],
+    "message": ["Message", "MessageEmpty", "MessageService",
+                 "MessageAction", "MessageMedia", "MessageEntity",
+                 "MessageReplyHeader", "MessageFwdHeader",
+                 "MessageRange", "DialogFilter",
+                 "messages.InvitedUsers", "MissingInvitee",
+                 "MessagesMessages", "MessagesMessagesSlice",
+                 "MessagesChannelMessages", "MessagesMessagesNotModified",
+                 "MessagesFoundMessages", "MessagesMessagesSlice"],
+    "dialog": ["Dialog", "DialogFolder", "TopPeer", "TopPeerCategory",
+                "TopPeerCategoryPeers", "MessagesDialogs",
+                "MessagesDialogsSlice", "MessagesMessages",
+                "MessagesMessagesSlice", "MessagesChannelMessages",
+                "UpdatesState", "UpdatesDifference",
+                "UpdatesDifferenceSlice", "UpdatesDifferenceEmpty"],
+    "reply_markup": ["ReplyMarkup", "KeyboardButton"],
+    "updates": ["Updates", "Update", "UpdatesState",
+                 "UpdatesDifference", "UpdatesDifferenceSlice",
+                 "UpdatesDifferenceEmpty", "UpdatesChannelDifference",
+                 "UpdatesChannelDifferenceEmpty",
+                 "UpdatesChannelDifferenceTooLong"],
+}
+
+STRIP_PREFIX = {
+    "Update": "update",
+    "MessageAction": "messageAction",
+    "MessageEntity": "messageEntity",
+}
+
+
+def pascal_stripped(prefix, predicate):
+    """Strip the Pascal-cased type prefix from an already-Pascal variant
+    name: 'UpdateMessageID' -update-> 'MessageID'. No-ops (returns the
+    input) when the prefix does not actually match."""
+    pp = pascal(prefix)
+    if predicate.startswith(pp) and len(predicate) > len(pp):
+        return predicate[len(pp):]
+    return predicate
+
+# Generated types whose `id` field wraps into MsgId inside variants of
+# these unions (update* ctors carry message ids as int).
+MSGID_ID_TYPES = {"UpdateMessageID"}
+# Predicates whose `id: int` field carries a message id.
+MSGID_ID_CTOR = {"updateMessageID"}
+
+
+def compat_variant_name(tname, generated_name):
+    renames = VARIANT_RENAMES.get(tname, {})
+    if generated_name in renames:
+        return renames[generated_name]
+    prefix = STRIP_PREFIX.get(tname)
+    if prefix:
+        return pascal_stripped(prefix, generated_name)
+    return generated_name
+
+
+def compat_field_type(tname, field_name, rust_t):
+    """Wrap a field's rust type per the newtype profile. Returns the new
+    rust type or None to keep as-is."""
+    nt = NEWTYPE_FIELDS.get(field_name)
+    if nt:
+        if rust_t == "i64":
+            return nt
+        if rust_t == "Option<i64>":
+            return f"Option<{nt}>"
+        return None
+    if field_name == "id" and rust_t == "i64":
+        nt = ID_NEWTYPE_BY_TYPE.get(tname)
+        if nt:
+            return nt
+    if field_name == "id" and rust_t == "i32" and tname in MSGID_ID_TYPES:
+        return "MsgId"
+    return None
+
+
+def apply_compat_to_output(text):
+    """Post-process generated Rust source: rewrite variant/field types per
+    the compat profile. Operates on the serialized output of gen_output."""
+    # 1. Field wraps inside enum variant definitions and struct fields.
+    #    Match `field: Type` occurrences in variant single-lines and
+    #    struct bodies. Precision comes from the explicit field list.
+    def wrap_fields_in_variant(m):
+        body = m.group(0)
+        # split variant name from fields
+        return body
+
+    # Strategy: process enum variant lines and struct field lines with a
+    # targeted regex per known field name, tracking the enclosing type.
+    out_lines = []
+    current_type = None   # generated type name (e.g. User)
+    in_enum = False
+    in_impl_read = False
+    for line in text.split("\n"):
+        m = re.match(r"pub (?:enum|struct) (\w+)", line)
+        if m:
+            current_type = m.group(1)
+            in_enum = line.startswith("pub enum")
+            out_lines.append(line)
+            continue
+        if line.startswith("impl "):
+            in_impl_read = True
+            out_lines.append(line)
+            continue
+        # Ok(Type::Variant { ... }) arms inside read_from bodies
+        om = re.match(r"\s+Ok\((\w+)::(\w+) \{(.*?)\}\)\s*$", line)
+        if om and current_type:
+            oty, ovar, args = om.groups()
+            new_var = compat_variant_name(oty, ovar)
+            line = re.sub(
+                r"Ok\(\w+::\w+ \{",
+                f"Ok({oty}::{new_var} {{",
+                line,
+            )
+            out_lines.append(line)
+            continue
+        # Variant lines: `    Name { fields },` inside enums
+        if in_enum and current_type:
+            vm = re.match(r"(\s+)(\w+) \{ (.*) \},\s*$", line)
+            if vm:
+                pad, vname, fields = vm.groups()
+                vname = compat_variant_name(current_type, vname)
+                new_fields = []
+                for f in fields.split(", "):
+                    if ":" in f:
+                        fname, ftype = f.split(": ", 1)
+                        nt = compat_field_type(current_type, fname, ftype)
+                        if nt:
+                            f = f"{fname}: {nt}"
+                        # Option<i64> id fields keep Option; constructor
+                        # exprs handled below in read_from rewrites.
+                    new_fields.append(f)
+                line = f"{pad}{vname} {{ {', '.join(new_fields)} }},"
+                out_lines.append(line)
+                continue
+        # Struct fields: `    pub name: Type,`
+        sm = re.match(r"(\s+)pub (\w+): (.+?),\s*$", line)
+        if sm and current_type and not in_impl_read:
+            pad, fname, ftype = sm.groups()
+            nt = compat_field_type(current_type, fname, ftype)
+            if nt:
+                line = f"{pad}pub {fname}: {nt},"
+            out_lines.append(line)
+            continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("schema", nargs="?", default=None,
@@ -784,6 +1296,11 @@ def main():
                     help="with --fetch: where to cache the downloaded .tl")
     ap.add_argument("--out", default=None)
     ap.add_argument("--diff", action="store_true")
+    ap.add_argument("--compat", action="store_true",
+                    help="apply compat profiles: newtype ids, curated "
+                         "variant names")
+    ap.add_argument("--domain", default=None,
+                    help="emit a domain module header comment")
     args = ap.parse_args()
 
     if args.fetch:
@@ -809,9 +1326,56 @@ def main():
         include_functions = True
     else:
         if not args.type:
-            ap.error("need --type or --all")
+            if not args.domain:
+                ap.error("need --type or --all")
         requested = args.type
         include_functions = args.functions
+    global compat_global
+    compat_global = args.compat
+    if args.domain:
+        if args.domain not in DOMAIN_MODULES:
+            ap.error(f"unknown domain {args.domain}; choices: "
+                     f"{', '.join(sorted(DOMAIN_MODULES))}")
+        types_by_name = {}
+        for c in ctors.values():
+            types_by_name.setdefault(c.type_name, []).append(c)
+        # Global ownership: every type in ANY domain's seed closure is
+        # owned by the first domain whose closure contains it, unless a
+        # canonical owner is pinned.
+        for dom, seed_types in DOMAIN_MODULES.items():
+            closure = set()
+            for tname in seed_types:
+                stack = [tname]
+                while stack:
+                    t = stack.pop()
+                    if t in closure:
+                        continue
+                    closure.add(t)
+                    for c in types_by_name.get(t, []):
+                        for f in c.fields:
+                            if f.tl_type in BUILTINS or f.tl_type == "#":
+                                continue
+                            if f.tl_type in types_by_name:
+                                stack.append(f.tl_type)
+            for t in closure:
+                type_owner_global.setdefault(t, dom)
+        seeds = []
+        for tname in DOMAIN_MODULES[args.domain]:
+            for c in types_by_name.get(tname, []):
+                if getattr(c, "is_function", False):
+                    continue
+                seeds.append(c.predicate)
+        if not seeds:
+            ap.error(f"domain {args.domain}: no matching types in schema")
+        out = gen_output(ctors, seeds, include_functions=False,
+                         domain=args.domain)
+        if args.out:
+            with open(args.out, "w", encoding="utf-8", newline="\n") as f:
+                f.write(out)
+            print(f"wrote {args.out}")
+        else:
+            print(out)
+        return
     out = gen_output(ctors, requested, include_functions)
     if args.out:
         with open(args.out, "w", encoding="utf-8", newline="\n") as f:
@@ -822,21 +1386,69 @@ def main():
 
 
 OFFICIAL_SOURCES = [
-    # TDLib's vendored schema — the most current machine copy.
+    # TDLib's vendored schema — the most current machine copy. NOTE: it
+    # tracks a layer revision of its own; production DCs answer in the
+    # dialect of the layer the CLIENT negotiates (invokeWithLayer), which
+    # can differ from this file for re-issued constructors. Wire-verified
+    # divergences belong in CTOR_ALIASES below.
     ("tdlib/td",
      "https://raw.githubusercontent.com/tdlib/td/master/td/generate/scheme/telegram_api.tl"),
     # Telegram Desktop's api.tl — source of truth for tdesktop.
     ("telegramdesktop/tdesktop",
      "https://raw.githubusercontent.com/telegramdesktop/tdesktop/dev/Telegram/SourceFiles/mtproto/scheme/api.tl"),
-    # The official published page (lags on ctor re-issues but is canonical).
-    ("core.telegram.org",
-     "https://core.telegram.org/schema/tl"),
 ]
+
+# The published-layer marker only appears on the HTML schema page (the
+# .tl downloads carry no layer footer, and the JSON has no layer field).
+LAYER_PAGE_URL = "https://core.telegram.org/schema"
+
+# Wire-verified constructor re-issues: production DCs answer in the
+# dialect of the negotiated layer (API_LAYER), where some constructors
+# are re-issued under different ids than the fetched schema carries.
+# type -> {alias_id: variant_predicate} — the generator emits an extra
+# match arm so both ids decode to the same variant. Seed entries are
+# wire-verified against production (2026-08):
+CTOR_ALIASES = {
+    "Message": {0x95EF6F2B: "message"},     # live layer-225 dialect
+    "MessageMedia": {
+        0x695150D7: "messageMediaPhoto",    # l225 dialect
+        0x4BD6E798: "messageMediaPoll",     # l225 dialect
+    },
+    "MessageReplyHeader": {0x6917560B: "messageReplyHeader"},
+    "Chat": {
+        0x1C32B11C: "channel",              # channel#1c32b11c (l225 era)
+        0xE4E0B29D: "channelFull",          # channelFull (l225 era)
+    },
+    "User": {0x31774388: "user"},           # user#31774388 (l225 era)
+    "Dialog": {0xD58A08C6: "dialog"},       # old published id (l225 era)
+    "ReplyMarkup": {0x48A30254: "replyInlineMarkup"},
+    "KeyboardButton": {0x7D170CFF: "keyboardButton"},
+}
+
+
+def fetch_published_layer():
+    """Scrape the published layer number from the HTML schema page.
+    Returns None when the page does not carry it."""
+    import re
+    import urllib.request
+    try:
+        req = urllib.request.Request(LAYER_PAGE_URL,
+                                     headers={"User-Agent": "mtprsto-gentl"})
+        html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
+        m = re.search(r"[Ll]ayer\s*(\d+)", html)
+        return int(m.group(1)) if m else None
+    except Exception as e:  # noqa: BLE001 — best-effort metadata
+        print(f"  layer scrape failed: {e}", file=sys.stderr)
+        return None
 
 
 def fetch_schema(dest):
     """Download the API schema from an official source, trying each in
-    order. Returns the path it was saved to."""
+    order. Also scrapes the published layer id (the .tl sources carry no
+    layer marker; only the HTML schema page does) and records both in a
+    sidecar meta file next to the schema."""
+    import json
+    import datetime
     import urllib.request
     for name, url in OFFICIAL_SOURCES:
         try:
@@ -850,7 +1462,20 @@ def fetch_schema(dest):
                 raise RuntimeError("response does not look like a .tl schema")
             with open(dest, "w", encoding="utf-8", newline="\n") as f:
                 f.write(text)
+            layer = fetch_published_layer()
+            meta = {
+                "source": name,
+                "url": url,
+                "fetched_utc": datetime.datetime.now(
+                    datetime.timezone.utc).isoformat(timespec="seconds"),
+                "published_layer": layer,
+                "bytes": len(data),
+            }
+            with open(dest + ".meta.json", "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+                f.write("\n")
             print(f"saved {len(text)} bytes to {dest}", file=sys.stderr)
+            print(f"published layer: {layer}", file=sys.stderr)
             return dest
         except Exception as e:  # noqa: BLE001 — try the next source
             print(f"  failed: {e}", file=sys.stderr)

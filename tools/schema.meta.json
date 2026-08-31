@@ -1,0 +1,8 @@
+{
+  "source": "tdlib/td",
+  "url": "https://raw.githubusercontent.com/tdlib/td/master/td/generate/scheme/telegram_api.tl",
+  "fetched_utc": "2026-08-30T21:20:00+00:00",
+  "published_layer": 223,
+  "bytes": 282267,
+  "note": "tdlib master tracks a layer revision ahead of the published 223; production DCs answer in the dialect of the layer the client negotiates (API_LAYER=225), wire-verified 2026-08. Divergent constructors are bridged by CTOR_ALIASES in tools/gentl.py."
+}

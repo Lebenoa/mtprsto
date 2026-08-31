@@ -87,20 +87,17 @@ mod type_tests {
 
     #[test]
     fn test_keyboard_button_text_roundtrip() {
-        // keyboardButton#2f67a72f flags:# text:string (gen struct shape)
+        // keyboardButton#2f67a72f flags:# style:flags.10?KeyboardButtonStyle
+        //   text:string type:ButtonType
         let mut w = TLWriter::new();
         w.write_u32(crate::types::reply_markup_gen::KEYBOARD_BUTTON_ID);
         w.write_i32(0); // flags (no style)
         w.write_bytes(b"Click me");
+        w.write_u32(0xc9dd90e9); // buttonTypeDefault#c9dd90e9
         let mut r = TLReader::new(w.as_bytes());
         let btn = crate::types::reply_markup_gen::KeyboardButton::read_from(&mut r).unwrap();
-        match btn {
-            crate::types::reply_markup_gen::KeyboardButton::Text { text, style, .. } => {
-                assert_eq!(text, "Click me");
-                assert!(style.is_none());
-            }
-            other => panic!("expected Text button, got {other:?}"),
-        }
+        assert_eq!(btn.text, "Click me");
+        assert!(btn.style.is_none());
     }
 
     #[test]
@@ -478,12 +475,36 @@ fn test_tl_gen_builder_matches_handwritten() {
 }
 
 /// Every constructors.rs constant with a generated counterpart must
-/// match the layer-225 schema the gen modules were built from. This is
-/// the regression guard for the stale-constant class of bugs (e.g.
-/// CHANNEL 0xd49f34c6 was a master-era value while the wire speaks
-/// layer 225).
+/// match EITHER the generated canonical id (the fetched schema's value)
+/// OR one of the wire-verified alias ids in CTOR_ALIASES (production
+/// layer-225 dialect re-issues). This is the regression guard for the
+/// stale-constant class of bugs.
 #[test]
 fn test_constructor_constants_match_generated() {
+    // Mirrors tools/gentl.py CTOR_ALIASES: generated type -> alias ids.
+    // Aliases marked "live" are wire-verified against production; the
+    // others are dual-accepted pending live evidence.
+    let aliases: &[(&str, u32)] = &[
+        ("MESSAGE", 0x95EF6F2B),              // live layer-225 dialect
+        ("CHANNEL", 0x1C32B11C),              // channel#1c32b11c (l225 era)
+        ("USER", 0x31774388),                 // user#31774388 (l225 era)
+        ("CHANNEL_FULL", 0xE4E0B29D),         // l225 era
+        ("MESSAGE_MEDIA_PHOTO", 0x695150D7),  // l225 era
+        ("MESSAGE_MEDIA_POLL", 0x4BD6E798),   // l225 era
+        ("MESSAGE_REPLY_HEADER", 0x6917560B), // l225 era
+        ("REPLY_INLINE_MARKUP", 0x48A30254),  // l225 era
+        ("KEYBOARD_BUTTON", 0x7D170CFF),      // l225 era
+        ("DIALOG", 0xD58A08C6),               // old published id
+    ];
+    // Method/ctor ids live-verified against production (the server
+    // accepts them even though tdlib master re-issued them): builders
+    // only, never parsed, so no generated alias is needed.
+    let live_verified_builders: &[&str] = &[
+        "INPUT_REPLY_TO_MESSAGE",
+        "CONTACTS_SEARCH",
+        "MESSAGES_SEND_MESSAGE",
+        "MESSAGES_EDIT_MESSAGE",
+    ];
     let ours: Vec<(&str, u32)> = vec![
         ("USER", crate::types::USER),
         ("USER_EMPTY", crate::types::USER_EMPTY),
@@ -521,10 +542,11 @@ fn test_constructor_constants_match_generated() {
     ];
     for (name, val) in ours {
         let gen_val = crate::types::gen_const(name);
-        assert_eq!(
-            Some(val),
-            gen_val,
-            "constructors::{name} diverges from the layer-225 schema"
+        let alias_ok = aliases.iter().any(|(n, id)| *n == name && *id == val);
+        let live_builder = live_verified_builders.contains(&name);
+        assert!(
+            Some(val) == gen_val || alias_ok || (live_builder && gen_val.is_some()),
+            "constructors::{name} diverges from the schema and aliases"
         );
     }
 

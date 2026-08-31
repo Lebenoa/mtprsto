@@ -1122,20 +1122,41 @@ impl Client {
             return Ok(peer.clone());
         }
 
-        let result = self.invoke_with_method(CONTACTS_RESOLVE_USERNAME, |w| {
-            // contacts.resolveUsername#725afbbc flags:# username:string
-            //   referer:flags.0?string
-            w.write_i32(0); // flags (no referer)
-            w.write_bytes(uname.as_bytes());
-            Ok(())
-        }).await?;
+        // The server intermittently wraps the resolveUsername answer in
+        // an Updates/updateShort container instead of the plain
+        // resolvedPeer/found shape; a retry gets the normal response.
+        for attempt in 0..3u32 {
+            let result = self.invoke_with_method(CONTACTS_RESOLVE_USERNAME, |w| {
+                // contacts.resolveUsername#725afbbc flags:# username:string
+                //   referer:flags.0?string
+                w.write_i32(0); // flags (no referer)
+                w.write_bytes(uname.as_bytes());
+                Ok(())
+            }).await;
 
-        if std::env::var("MTPRSTO_DEBUG").is_ok() {
-            println!("DEBUG resolved ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+            let result = match result {
+                Ok(r) => r,
+                Err(e) => return Err(e),
+            };
+
+            if std::env::var("MTPRSTO_DEBUG").is_ok() {
+                println!("DEBUG resolved ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+            }
+            match Self::parse_resolved_peer(&result, &key, &mut self.peer_cache) {
+                Ok(peer) => {
+                    self.persist_peer_hash(&peer).await;
+                    return Ok(peer);
+                }
+                Err(Error::Protocol(msg))
+                    if msg.contains("wrapped in updates container") && attempt < 2 =>
+                {
+                    tracing::warn!("resolveUsername answer wrapped (attempt {})", attempt + 1);
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                }
+                Err(e) => return Err(e),
+            }
         }
-        let peer = Self::parse_resolved_peer(&result, &key, &mut self.peer_cache)?;
-        self.persist_peer_hash(&peer).await;
-        Ok(peer)
+        unreachable!("retry loop returns on every path")
     }
 
     /// Persist a resolved peer's access hash into the session store
@@ -1168,8 +1189,10 @@ impl Client {
         let ctor = r.read_u32()?;
 
         // Bots (and unauthenticated flows) get contacts.resolvedPeer;
-        // authenticated user flows get contacts.found. Both end with
-        // chats + users vectors carrying the access hashes.
+        // authenticated user flows get contacts.found. The server also
+        // sometimes wraps the whole answer in a bare updates# container
+        // (observed on the live wire) — those carry the same
+        // chats+users vectors to mine for access hashes.
         let results = if ctor == CONTACTS_RESOLVED_PEER {
             // resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat> users:Vector<User>
             let peer = types::Peer::read_from(&mut r)?;
@@ -1187,6 +1210,17 @@ impl Client {
                 results.push(types::Peer::read_from(&mut r)?);
             }
             results
+        } else if ctor == types::UPDATES {
+            // updates#74ae4240: updates:Vector<Update> users:Vector<User>
+            //   chats:Vector<Chat> date:int seq:int — no direct peer;
+            // fall through to username matching over the vectors.
+            Vec::new()
+        } else if ctor == types::UPDATE_SHORT {
+            // updateShort#78d4dec1 { update:Update date:int } — carries
+            // no user vectors at all; transient (retry resolves it).
+            return Err(Error::Protocol(
+                "resolveUsername answer wrapped in updates container — retry".into(),
+            ));
         } else {
             return Err(Error::Protocol(format!(
                 "unexpected resolveUsername response constructor {ctor:#x}"

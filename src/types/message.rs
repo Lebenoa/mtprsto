@@ -93,7 +93,7 @@ impl Message {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE | MESSAGE_V225 => {
+            MESSAGE | MESSAGE_V223 => {
                 // message#3ae56482 / live layer 225 #95ef6f2b: flags + flags2,
                 // id:int,
                 // message:string is REQUIRED, conditionals interleaved.
