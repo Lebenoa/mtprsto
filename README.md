@@ -78,7 +78,7 @@ captured-payload regression tests before switching dialects.
 
 ```toml
 [dependencies]
-mtprsto = { path = "path/to/mtprsto" }  # not yet on crates.io
+mtprsto = { git = "https://github.com/Lebenoa/mtprsto", branch = "master" }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -114,12 +114,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Custom session storage
 
-Any backend implementing `SessionStorage` can replace the JSON file:
+Any backend implementing `SessionStorage` can replace the JSON file. The
+trait has four methods — `load`, `save`, `delete`, `describe` — and the
+client drives them on every connect, auth-key change, and salt refresh:
 
 ```rust
 use mtprsto::client::Client;
-use mtprsto::session::{SessionData, SessionStorage, SessionStore};
-use mtprsto::error::Result;
+use mtprsto::session::{SessionData, SessionStorage};
 use std::path::PathBuf;
 
 /// Example: store sessions inside a single SQLite database.
@@ -127,29 +128,33 @@ use std::path::PathBuf;
 struct SqliteStore { db_path: PathBuf }
 
 impl SessionStorage for SqliteStore {
-    fn load(&mut self) -> Result<Option<SessionData>> { /* SELECT ... */ Ok(None) }
-    fn save(&mut self, data: &SessionData) -> Result<()> { /* INSERT OR REPLACE */ Ok(()) }
-    fn delete(&mut self) -> Result<()> { /* DELETE */ Ok(()) }
+    fn load(&mut self) -> mtprsto::Result<Option<SessionData>> { /* SELECT */ Ok(None) }
+    fn save(&mut self, data: &SessionData) -> mtprsto::Result<()> { /* UPSERT */ Ok(()) }
+    fn delete(&mut self) -> mtprsto::Result<()> { /* DELETE */ Ok(()) }
+    fn describe(&self) -> String { "sqlite session".into() }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::builder()
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = Client::builder()
         .api_id(12345)
         .api_hash("your_api_hash")
         .session_storage(Box::new(SqliteStore { db_path: "sessions.db".into() }))
         .build()?;
+    client.connect().await?;
     Ok(())
 }
 ```
 
-Full runnable example — including an in-memory store and the
+A fully **working** example — an in-memory store shared by two clients,
+proving the auth key round-trips without a second handshake — plus the
 `spawn_blocking`/`block_on` pattern for async database drivers:
 [`examples/session_storage.rs`](examples/session_storage.rs).
 
-Run it:
+Run it (needs credentials to connect; offline it just checks construction):
 
 ```sh
-cargo run --example session_storage
+TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example session_storage
 ```
 
 ### Advanced examples
