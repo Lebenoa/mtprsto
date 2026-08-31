@@ -49,7 +49,7 @@ pub use reply_types::*;
 
 // Curated names owned by the private impl modules — the gen modules do
 // not define these.
-pub use photo::FileLocation;
+pub use photo::{FileLocation, stripped_thumb_jpeg};
 pub use message_gen::{
     DraftMessage, FactCheck, MessageFwdHeader, MessageReactions, MessageReplies,
     MessagesInvitedUsers, SuggestedPost,

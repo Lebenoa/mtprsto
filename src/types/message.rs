@@ -85,6 +85,14 @@ impl Message {
         }
     }
 
+    /// The document behind the message, when it carries one.
+    pub fn document(&self) -> Option<Document> {
+        match self.media() {
+            Some(MessageMedia::Document { document, .. }) => Some(document.clone()),
+            _ => None,
+        }
+    }
+
     pub fn parse_from_bytes(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         Self::read_from(&mut r)

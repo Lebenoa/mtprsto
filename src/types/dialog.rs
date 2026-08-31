@@ -114,6 +114,51 @@ pub struct Dialogs {
     pub chats: Vec<Chat>,
 }
 
+impl Dialogs {
+    /// Decode a `messages.dialogs#15ba6c40` / `messages.dialogsSlice#71e094f3`
+    /// answer (constructor included): dialogs first, then messages, chats,
+    /// users; the slice variant carries a leading `count:int`.
+    /// `messages.dialogsNotModified#f0e3e596` decodes to an empty list.
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut r = TLReader::new(data);
+        let ctor = r.read_u32()?;
+        match ctor {
+            MESSAGES_DIALOGS | MESSAGES_DIALOGS_SLICE => {
+                if ctor == MESSAGES_DIALOGS_SLICE {
+                    let _count = r.read_i32()?;
+                }
+                let n = r.read_vector_header()?;
+                let mut dialogs = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    dialogs.push(Dialog::read_from(&mut r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    messages.push(Message::read_from(&mut r)?);
+                }
+                let chats = crate::types::read_chat_vector_public(&mut r)?;
+                let users = crate::types::read_user_vector_public(&mut r)?;
+                Ok(Self {
+                    dialogs,
+                    messages,
+                    users,
+                    chats,
+                })
+            }
+            MESSAGES_DIALOGS_NOT_MODIFIED => Ok(Self {
+                dialogs: Vec::new(),
+                messages: Vec::new(),
+                users: Vec::new(),
+                chats: Vec::new(),
+            }),
+            other => Err(Error::Serialization(format!(
+                "unexpected getDialogs response {other:#x}"
+            ))),
+        }
+    }
+}
+
 /// Response to updates.getState.
 #[derive(Debug, Clone)]
 pub struct State {

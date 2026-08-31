@@ -64,18 +64,31 @@ pub fn build_send_message(
 /// Schema (layer 223): `messages.getDialogs#a0f4cb4f flags:# exclude_pinned:flags.0?true
 /// folder_id:flags.1?int offset_date:int offset_id:int offset_peer:InputPeer
 /// limit:int hash:long = messages.Dialogs;`
+///
+/// `folder_id` selects a single archive folder (storage channels typically
+/// live in folder 1); `None` lists the default folder.
 pub fn build_get_dialogs(
+    folder_id: Option<i32>,
     offset_date: i32,
     offset_id: i32,
+    offset_peer: &InputPeer,
     limit: i32,
 ) -> Vec<u8> {
+    let mut flags: i32 = 0;
+    if folder_id.is_some() {
+        flags |= 1 << 1; // folder_id:flags.1
+    }
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_GET_DIALOGS);
-    w.write_i32(0); // flags
+    w.write_i32(flags);
+    // folder_id:flags.1?int — conditional fields serialize before the
+    // mandatory ones, in declaration order.
+    if let Some(folder) = folder_id {
+        w.write_i32(folder);
+    }
     w.write_i32(offset_date);
     w.write_i32(offset_id);
-    // InputPeerEmpty for offset_peer
-    w.write_u32(INPUT_PEER_EMPTY);
+    offset_peer.write_to(&mut w);
     w.write_i32(limit);
     w.write_i64(0); // hash:long (no hash check)
     w.into_bytes()
@@ -107,6 +120,39 @@ pub fn build_get_history(
 pub fn build_get_messages(msg_ids: &[MsgId]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_GET_MESSAGES);
+    // Vector<int> of message IDs
+    w.write_u32(TL_VECTOR);
+    w.write_i32(msg_ids.len() as i32);
+    for id in msg_ids {
+        w.write_i32(id.0 as i32);
+    }
+    w.into_bytes()
+}
+
+/// Build `channels.getMessages` payload (legacy ctor `#e5906e3f` with
+/// `Vector<int>` ids — see [`crate::types::CHANNELS_GET_MESSAGES`]).
+///
+/// Plain `messages.getMessages` answers `CHANNEL_INVALID` for channel
+/// peers, so fetching messages by id must route on the peer type.
+pub fn build_channels_get_messages(channel: &InputChannel, msg_ids: &[MsgId]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(CHANNELS_GET_MESSAGES);
+    channel.write_to(&mut w);
+    // Vector<int> of message IDs
+    w.write_u32(TL_VECTOR);
+    w.write_i32(msg_ids.len() as i32);
+    for id in msg_ids {
+        w.write_i32(id.0 as i32);
+    }
+    w.into_bytes()
+}
+
+/// Build `channels.deleteMessages` payload (legacy ctor `#84c1f4e6`,
+/// no flags word — see [`crate::types::CHANNELS_DELETE_MESSAGES`]).
+pub fn build_channels_delete_messages(channel: &InputChannel, msg_ids: &[MsgId]) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(CHANNELS_DELETE_MESSAGES);
+    channel.write_to(&mut w);
     // Vector<int> of message IDs
     w.write_u32(TL_VECTOR);
     w.write_i32(msg_ids.len() as i32);
@@ -970,15 +1016,69 @@ mod tests {
 
     #[test]
     fn test_build_get_dialogs() {
-        let payload = build_get_dialogs(0, 0, 10);
+        let payload = build_get_dialogs(None, 0, 0, &InputPeer::InputPeerEmpty, 10);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_GET_DIALOGS);
-        assert_eq!(r.read_i32().unwrap(), 0); // flags
+        assert_eq!(r.read_i32().unwrap(), 0); // flags — no folder_id
         assert_eq!(r.read_i32().unwrap(), 0); // offset_date
         assert_eq!(r.read_i32().unwrap(), 0); // offset_id
         assert_eq!(r.read_u32().unwrap(), INPUT_PEER_EMPTY); // offset_peer
         assert_eq!(r.read_i32().unwrap(), 10); // limit
         assert_eq!(r.read_i64().unwrap(), 0); // hash
+    }
+
+    #[test]
+    fn test_build_get_dialogs_folder() {
+        // folder_id:flags.1 must be set and serialized after the flags
+        // word, ahead of offset_date.
+        let payload = build_get_dialogs(Some(1), 7, 5, &InputPeer::InputPeerEmpty, 10);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_GET_DIALOGS);
+        assert_eq!(r.read_i32().unwrap(), 1 << 1); // flags — folder_id
+        assert_eq!(r.read_i32().unwrap(), 1); // folder_id
+        assert_eq!(r.read_i32().unwrap(), 7); // offset_date
+        assert_eq!(r.read_i32().unwrap(), 5); // offset_id
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_EMPTY); // offset_peer
+        assert_eq!(r.read_i32().unwrap(), 10); // limit
+    }
+
+    #[test]
+    fn test_build_channels_get_messages() {
+        let channel = InputChannel::Channel {
+            channel_id: ChannelId(12),
+            access_hash: AccessHash(34),
+        };
+        let ids = vec![MsgId(1), MsgId(2)];
+        let payload = build_channels_get_messages(&channel, &ids);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), CHANNELS_GET_MESSAGES);
+        // inputChannel#f35aec28 channel_id:long access_hash:long
+        assert_eq!(r.read_u32().unwrap(), INPUT_CHANNEL);
+        assert_eq!(r.read_i64().unwrap(), 12);
+        assert_eq!(r.read_i64().unwrap(), 34);
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 2);
+        assert_eq!(r.read_i32().unwrap(), 1);
+        assert_eq!(r.read_i32().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_build_channels_delete_messages() {
+        let channel = InputChannel::Channel {
+            channel_id: ChannelId(56),
+            access_hash: AccessHash(78),
+        };
+        let ids = vec![MsgId(9)];
+        let payload = build_channels_delete_messages(&channel, &ids);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), CHANNELS_DELETE_MESSAGES);
+        // legacy ctor: no flags word — InputChannel follows directly
+        assert_eq!(r.read_u32().unwrap(), INPUT_CHANNEL);
+        assert_eq!(r.read_i64().unwrap(), 56);
+        assert_eq!(r.read_i64().unwrap(), 78);
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 1);
+        assert_eq!(r.read_i32().unwrap(), 9);
     }
 
     #[test]

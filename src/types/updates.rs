@@ -147,6 +147,33 @@ impl Updates {
             _ => None,
         }
     }
+
+    /// Pulls the sent message (id + document) out of a send answer. A
+    /// short `updateShortSentMessage` carries the id but no media; the
+    /// caller then fetches the message once to read its thumbnail.
+    pub fn message_and_document(&self) -> (Option<MsgId>, Option<Document>) {
+        let empty: Vec<Update> = Vec::new();
+        let items: &[Update] = match self {
+            Updates::Updates { updates, .. } | Updates::UpdatesCombined { updates, .. } => updates,
+            Updates::UpdateShort { update, .. } => std::slice::from_ref(update),
+            Updates::UpdateShortSentMessage { .. } => &empty,
+        };
+        let mut id = self.message_id();
+        let mut doc = None;
+        for update in items {
+            if let Update::NewMessage { message, .. }
+                | Update::NewChannelMessage { message, .. } = update
+                && let Message::Message(full) = message
+                && let Some(MessageMedia::Document { document, .. }) = full.media.as_ref()
+            {
+                doc = Some(document.clone());
+                if id.is_none() {
+                    id = Some(full.id);
+                }
+            }
+        }
+        (id, doc)
+    }
 }
 
 impl Update {

@@ -104,7 +104,9 @@ impl AffectedMessages {
 /// Full shapes (layer 225): `messages.messages#1d73e7ea messages topics
 /// chats users`; `messagesSlice#5f206716 flags count next_rate?
 /// offset_id_offset? search_flood? then the same tail`;
-/// `channelMessages#c776ba4e flags pts count offset_id_offset? tail`.
+/// `channelMessages#c776ba4e flags pts count offset_id_offset? tail`
+/// (the `channels.getMessages` answer); `messagesNotModified#74535f21`
+/// carries nothing (empty result).
 fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
     let mut r = TLReader::new(data);
     let ctor = r.read_u32()?;
@@ -127,6 +129,18 @@ fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
             }
             read_messages_body(&mut r)
         }
+        MESSAGES_CHANNEL_MESSAGES => {
+            // channelMessages#c776ba4e flags:# inexact:flags.1?true pts:int
+            //   count:int offset_id_offset:flags.2?int messages topics chats users
+            let flags = r.read_i32()?;
+            let _pts = r.read_i32()?;
+            let _count = r.read_i32()?;
+            if flags & (1 << 2) != 0 {
+                let _offset_id_offset = r.read_i32()?;
+            }
+            read_messages_body(&mut r)
+        }
+        MESSAGES_MESSAGES_NOT_MODIFIED => Ok(Vec::new()),
         _ => Err(Error::Protocol(format!(
             "expected messages.Messages*, got {ctor:#x}"
         ))),
@@ -161,6 +175,62 @@ impl Client {
     // =======================================================================
     // Messages
     // =======================================================================
+
+    /// Fetch messages by id from `peer`.
+    ///
+    /// Channel peers go through `channels.getMessages` (the plain
+    /// `messages.getMessages` answers `CHANNEL_INVALID` there); every
+    /// other peer uses the plain method. Deleted/unknown ids come back
+    /// as `Message::Empty` entries rather than errors.
+    ///
+    /// The object form of the `&str` wrappers: for callers that already
+    /// hold an [`InputPeer`] (e.g. from their own peer cache).
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure; an unresolvable channel access hash
+    /// surfaces as `CHANNEL_INVALID`/`CHANNEL_PRIVATE`.
+    #[tracing::instrument(name = "mtprsto::get_messages", skip(self, msg_ids), err)]
+    pub async fn get_messages(
+        &self,
+        peer: &InputPeer,
+        msg_ids: &[MsgId],
+    ) -> Result<Vec<Message>> {
+        let payload = match peer {
+            InputPeer::Channel { channel_id, access_hash } => {
+                rpc::build_channels_get_messages(
+                    &InputChannel::Channel { channel_id: *channel_id, access_hash: *access_hash },
+                    msg_ids,
+                )
+            }
+            _ => rpc::build_get_messages(msg_ids),
+        };
+        let result = self.invoke_raw(payload).await?;
+        messages_from_container(&result)
+    }
+
+    /// The newest `limit` messages of `peer`, newest first.
+    ///
+    /// `messages.getHistory` accepts user chats and channels alike;
+    /// this is a plain one-shot page, unlike the [`crate::client::Client::messages`]
+    /// iterator (which pages oldest-first).
+    ///
+    /// The object form of the `&str` wrappers: for callers that already
+    /// hold an [`InputPeer`] (e.g. from their own peer cache).
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure.
+    #[tracing::instrument(name = "mtprsto::get_recent_messages", skip(self), err)]
+    pub async fn get_recent_messages(
+        &self,
+        peer: &InputPeer,
+        limit: i32,
+    ) -> Result<Vec<Message>> {
+        let payload = rpc::build_get_history(peer, 0, 0, 0, limit, 0, 0);
+        let result = self.invoke_raw(payload).await?;
+        messages_from_container(&result)
+    }
 
     /// Send an album (2–10 media items) to a peer.
     ///

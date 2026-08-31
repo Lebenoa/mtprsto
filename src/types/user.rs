@@ -34,6 +34,22 @@ impl User {
         }
     }
 
+    /// Display name: first and last name joined by a space, either half
+    /// optional (grammers' `full_name` semantics).
+    pub fn full_name(&self) -> String {
+        let first = self.first_name().unwrap_or("");
+        let last = match self {
+            User::User { last_name, .. } => last_name.as_deref().unwrap_or(""),
+            User::Empty { .. } => "",
+        };
+        match (first, last) {
+            ("", "") => String::new(),
+            (first, "") => first.to_string(),
+            ("", last) => last.to_string(),
+            (first, last) => format!("{first} {last}"),
+        }
+    }
+
     pub fn phone(&self) -> Option<&str> {
         match self {
             User::User { phone, .. } => phone.as_deref(),

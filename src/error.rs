@@ -134,6 +134,31 @@ impl Error {
         )
     }
 
+    /// True when an RPC failure means the session's auth key is dead
+    /// (stale/partial login, revoked or expired session, deactivated
+    /// account): the only way forward is a fresh sign-in. Also scans
+    /// the [`Display`](fmt::Display) text, because auth markers can
+    /// surface through layers that no longer carry the typed variants
+    /// (connection setup, wrapped messages).
+    ///
+    /// Unlike [`Error::is_auth_error`], this does NOT cover interactive
+    /// login failures (`InvalidPassword`, `SignUpRequired`) — those are
+    /// part of signing in, not a dead session.
+    pub fn is_session_dead(&self) -> bool {
+        matches!(
+            self,
+            Error::AuthKeyInvalid { .. } | Error::AuthKeyUnregistered { .. }
+        ) || is_auth_error_message(&self.to_string())
+    }
+
+    /// True when the error is a file-reference failure that a refetch
+    /// of the owning message fixes (`FILE_REFERENCE_EXPIRED` /
+    /// `FILE_REFERENCE_INVALID`, typed or string-carried).
+    pub fn is_file_reference(&self) -> bool {
+        matches!(self, Error::FileReferenceExpired { .. })
+            || is_file_reference_message(&self.to_string())
+    }
+
     /// Returns the DC ID associated with the error, if any.
     pub fn dc_id(&self) -> Option<i32> {
         match self {
@@ -280,6 +305,30 @@ pub fn classify_rpc_error(error_code: i32, error_message: &str) -> Error {
     }
 }
 
+/// RPC error markers that mean the session's auth key is dead.
+const AUTH_ERROR_MARKERS: [&str; 5] = [
+    "AUTH_KEY_UNREGISTERED",
+    "AUTH_KEY_INVALID",
+    "SESSION_EXPIRED",
+    "SESSION_REVOKED",
+    "USER_DEACTIVATED",
+];
+
+/// File-reference error markers that a refetch of the owning message fixes.
+const FILE_REFERENCE_MARKERS: [&str; 2] =
+    ["FILE_REFERENCE_EXPIRED", "FILE_REFERENCE_INVALID"];
+
+/// String-level twin of [`Error::is_session_dead`] for errors that
+/// already left the typed world (plain text from wrapped layers).
+pub fn is_auth_error_message(msg: &str) -> bool {
+    AUTH_ERROR_MARKERS.iter().any(|m| msg.contains(m))
+}
+
+/// String check for file-reference errors surfaced as plain messages.
+pub fn is_file_reference_message(msg: &str) -> bool {
+    FILE_REFERENCE_MARKERS.iter().any(|m| msg.contains(m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +403,46 @@ mod tests {
         let s = err.to_string();
         assert!(s.contains("PEER_ID_INVALID"));
         assert!(s.contains("400"));
+    }
+
+    #[test]
+    fn test_is_session_dead() {
+        // typed variants
+        assert!(Error::AuthKeyInvalid { dc_id: 1, key_short: "ab".into() }.is_session_dead());
+        assert!(
+            Error::AuthKeyUnregistered { dc_id: 1, key_short: "ab".into() }.is_session_dead()
+        );
+        // string-carried markers on an untyped RPC error
+        let err = Error::Rpc {
+            error_code: 401,
+            error_message: "SESSION_REVOKED".into(),
+        };
+        assert!(err.is_session_dead());
+        // interactive-login failures are NOT a dead session
+        assert!(!Error::SignUpRequired.is_session_dead());
+        assert!(!Error::NoAuthKey.is_session_dead());
+    }
+
+    #[test]
+    fn test_is_file_reference() {
+        assert!(matches!(
+            classify_rpc_error(400, "FILE_REFERENCE_EXPIRED"),
+            Error::FileReferenceExpired { .. }
+        ));
+        let err = Error::Rpc {
+            error_code: 400,
+            error_message: "FILE_REFERENCE_INVALID".into(),
+        };
+        assert!(err.is_file_reference());
+        assert!(!err.is_session_dead());
+    }
+
+    #[test]
+    fn test_marker_free_functions() {
+        assert!(is_auth_error_message("wrapped: AUTH_KEY_UNREGISTERED at dc2"));
+        assert!(is_auth_error_message("USER_DEACTIVATED"));
+        assert!(!is_auth_error_message("FLOOD_WAIT_30"));
+        assert!(is_file_reference_message("FILE_REFERENCE_INVALID"));
+        assert!(!is_file_reference_message("CHANNEL_INVALID"));
     }
 }

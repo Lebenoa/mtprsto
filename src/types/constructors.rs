@@ -387,6 +387,17 @@ pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
 /// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
 pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
 pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa95;
+/// Legacy-layer `channels.getMessages#e5906e3f channel:InputChannel
+/// id:Vector<int>` (Vector<int>, not the modern Vector<InputMessage>
+/// of `#ad8c9a23`). The server still serves the legacy constructor, and
+/// plain `messages.getMessages` refuses channel peers (`CHANNEL_INVALID`),
+/// so channel messages must go through this method.
+pub const CHANNELS_GET_MESSAGES: u32 = 0xe5906e3f;
+/// Legacy-layer `channels.deleteMessages#84c1f4e6 channel:InputChannel
+/// id:Vector<int>` — predates the `flags:#` word the modern ctor carries,
+/// so no flags are serialized. `messages.deleteMessages` is refused on
+/// channel peers.
+pub const CHANNELS_DELETE_MESSAGES: u32 = 0x84c1f4e6;
 /// `channels.channelParticipants#9ab0feaf count:int participants:...`
 pub const CHANNELS_CHANNEL_PARTICIPANTS: u32 = 0x9ab0feaf;
 /// `channelParticipantsRecent#de3f3c79`

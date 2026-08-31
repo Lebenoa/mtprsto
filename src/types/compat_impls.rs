@@ -11,8 +11,8 @@ use super::ids::{ChannelId, ChatId, UserId};
 use crate::serialize::TLWriter;
 use crate::types::constructors::{
     INPUT_CHANNEL, INPUT_DOCUMENT, INPUT_DOCUMENT_EMPTY, INPUT_FILE,
-    INPUT_FILE_BIG, INPUT_PEER_CHANNEL, INPUT_PEER_CHAT, INPUT_PEER_SELF,
-    INPUT_PEER_USER, INPUT_USER, INPUT_USER_SELF,
+    INPUT_FILE_BIG, INPUT_PEER_CHANNEL, INPUT_PEER_CHAT, INPUT_PEER_EMPTY,
+    INPUT_PEER_SELF, INPUT_PEER_USER, INPUT_USER, INPUT_USER_SELF,
 };
 
 impl InputPeer {
@@ -35,6 +35,9 @@ impl InputPeer {
             }
             InputPeer::Self_ => {
                 w.write_u32(INPUT_PEER_SELF);
+            }
+            InputPeer::InputPeerEmpty => {
+                w.write_u32(INPUT_PEER_EMPTY);
             }
             _ => {}
         }
