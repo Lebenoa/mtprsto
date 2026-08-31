@@ -244,7 +244,3 @@ is reused across runs. Pass `.session("path.json")` or a custom
 cargo test                          # unit + doc tests
 cargo run --example demo -- --demo  # offline protocol self-check
 ```
-
-## License
-
-Private project — all rights reserved. (Adjust before publishing.)
