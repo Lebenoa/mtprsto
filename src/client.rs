@@ -252,10 +252,12 @@ impl Client {
 
     /// Connect to Telegram (create auth key via DH handshake if no session exists)
     /// and open a SenderPool.
+    // NOTE: the span context comes from the `#[tracing::instrument]` below —
+    // do NOT `.entered()` a manual span here: an `EnteredSpan` is !Send and
+    // holding it across the awaits inside this function poisons every
+    // caller's future (spawned axum/tokio tasks fail the Send check).
     #[tracing::instrument(name = "mtprsto::connect", skip(self), err)]
     pub async fn connect(&mut self) -> Result<()> {
-        let _session = crate::ergonomics::session_span(self.dc_id).entered();
-
         // Load the persisted session. Auth keys are one-time per DC/device,
         // so the per-DC key cache turns restarts (and DC switches) into
         // connection + session setup instead of a DH handshake.
@@ -1109,7 +1111,7 @@ impl Client {
     /// - Numeric user/chat/channel ID (positive = user, negative = chat/group)
     /// - Username string (resolves via contacts.resolveUsername, caching the
     ///   access hash for the process lifetime)
-    pub(crate) async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
+    pub async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
         if let Ok(id) = peer.parse::<i64>() {
             if id > 0 {
                 Ok(InputPeer::User { user_id: UserId(id), access_hash: AccessHash(0) })

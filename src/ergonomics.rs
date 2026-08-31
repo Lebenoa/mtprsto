@@ -375,8 +375,10 @@ impl<'a> MessagesIter<'a> {
 
 /// Create the library's root tracing span, named after the session.
 ///
-/// Called by `Client::connect`; keep it entered (or rely on async-local
-/// propagation) to correlate all RPC spans beneath it.
+/// Callers that want session correlation should attach this span with
+/// `.instrument(...)` — do NOT hold `span.enter()`'s `EnteredSpan` across
+/// an `.await`: it is `!Send` and poisons every spawned future that
+/// captures it.
 pub fn session_span(dc_id: i32) -> tracing::Span {
     tracing::info_span!("mtprsto::session", dc = dc_id)
 }
