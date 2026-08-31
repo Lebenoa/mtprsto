@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_id: i32 = std::env::var("TELEGRAM_API_ID")?.parse()?;
     let api_hash = std::env::var("TELEGRAM_API_HASH")?;
 
-    let mut client = Client::builder()
+    let client = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash)
         .session("bot.session")

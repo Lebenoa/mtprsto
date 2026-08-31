@@ -10,7 +10,7 @@
 //! use mtprsto::client::Client;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut client = Client::builder()
+//! let client = Client::builder()
 //!     .api_id(12345)
 //!     .api_hash("your_api_hash")
 //!     .session("session.json")

@@ -99,7 +99,7 @@ impl TlResult for types::Difference {
 ///
 /// ```no_run
 /// # use mtprsto::{client::Client, types::MsgId, Result};
-/// # async fn demo(mut client: Client) -> Result<()> {
+/// # async fn demo(client: Client) -> Result<()> {
 /// let id = client
 ///     .message("du_ton", "hi")
 ///     .await // resolves the peer, then chain fluent setters
@@ -116,7 +116,7 @@ impl TlResult for types::Difference {
 /// [`MessageBuilder::send`](Self::send) returns transport/RPC errors.
 #[must_use = "a MessageBuilder does nothing until `.send()` is awaited"]
 pub struct MessageBuilder<'a> {
-    client: &'a mut crate::client::Client,
+    client: &'a crate::client::Client,
     peer: InputPeer,
     text: String,
     reply_to: Option<i64>,
@@ -129,7 +129,7 @@ pub struct MessageBuilder<'a> {
 }
 
 impl<'a> MessageBuilder<'a> {
-    pub(crate) fn new(client: &'a mut crate::client::Client, peer: InputPeer, text: String) -> Self {
+    pub(crate) fn new(client: &'a crate::client::Client, peer: InputPeer, text: String) -> Self {
         Self {
             client,
             peer,
@@ -227,7 +227,7 @@ impl<'a> MessageBuilder<'a> {
 /// Fluent builder produced by [`crate::client::Client::send_file`].
 #[must_use = "a SendFileBuilder does nothing until `.send()` is awaited"]
 pub struct SendFileBuilder<'a> {
-    client: &'a mut crate::client::Client,
+    client: &'a crate::client::Client,
     peer: InputPeer,
     path: std::path::PathBuf,
     caption: String,
@@ -236,7 +236,7 @@ pub struct SendFileBuilder<'a> {
 
 impl<'a> SendFileBuilder<'a> {
     pub(crate) fn new(
-        client: &'a mut crate::client::Client,
+        client: &'a crate::client::Client,
         peer: InputPeer,
         path: std::path::PathBuf,
     ) -> Self {
@@ -321,13 +321,13 @@ impl<'a> SendFileBuilder<'a> {
 /// Backed by `messages.getHistory` pages; `.take(n).collect()` stops as
 /// soon as `n` messages are in hand.
 pub struct MessagesIter<'a> {
-    client: &'a mut crate::client::Client,
+    client: &'a crate::client::Client,
     peer: InputPeer,
     limit_per_page: i32,
 }
 
 impl<'a> MessagesIter<'a> {
-    pub(crate) fn new(client: &'a mut crate::client::Client, peer: InputPeer) -> Self {
+    pub(crate) fn new(client: &'a crate::client::Client, peer: InputPeer) -> Self {
         Self { client, peer, limit_per_page: 100 }
     }
 

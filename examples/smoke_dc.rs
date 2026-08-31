@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = std::fs::remove_file(&session);
 
     println!("connecting to DC 2 with full Obfuscated2 + DH handshake...");
-    let mut client = Client::builder()
+    let client = Client::builder()
         .session(&session)
         .pool_config(PoolConfig { min_connections: 1, ..PoolConfig::default() })
         .build()?;

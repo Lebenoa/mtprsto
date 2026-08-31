@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Tune parallel download: fetch files ≥ 4 MiB as 6 concurrent ranges
     // across the pool's aux connections.
-    let mut client = Client::builder()
+    let client = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash)
         .session("bot.session")

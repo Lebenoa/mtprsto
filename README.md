@@ -94,7 +94,7 @@ use mtprsto::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = Client::builder()
+    let client = Client::builder()
         .api_id(12345)                     // from my.telegram.org
         .api_hash("your_api_hash")
         .session("bot.session")            // JSON file; auth key survives restarts
@@ -136,7 +136,7 @@ impl SessionStorage for SqliteStore {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = Client::builder()
+    let client = Client::builder()
         .api_id(12345)
         .api_hash("your_api_hash")
         .session_storage(Box::new(SqliteStore { db_path: "sessions.db".into() }))

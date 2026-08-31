@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("client A: connecting through the custom backend (full DH handshake)...");
-    let mut client_a = Client::builder()
+    let client_a = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash.clone())
         .session_storage(Box::new(shared.shared()))
@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // session ARE the demo. (Log in via the usual flows to go further.)
 
     println!("client B: same store, fresh client...");
-    let mut client_b = Client::builder()
+    let client_b = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash)
         .session_storage(Box::new(shared.shared()))

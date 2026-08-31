@@ -9,7 +9,7 @@
 //! use mtprsto::client::Client;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut client = Client::builder()
+//! let client = Client::builder()
 //!     .api_id(12345)
 //!     .api_hash("your_api_hash")
 //!     .session("session.json")
@@ -33,6 +33,7 @@ use crate::rpc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use tokio::sync::RwLock;
 
 /// Configuration builder for `Client`.
@@ -148,16 +149,17 @@ impl ClientConfig {
         Ok(Client {
             api_id: self.api_id,
             api_hash: self.api_hash,
-            dc_id: self.dc_id.unwrap_or(2),
+            dc_id: AtomicI32::new(self.dc_id.unwrap_or(2)),
             dc_explicit: self.dc_id.is_some(),
             session_store: Arc::new(RwLock::new(session_store)),
-            connected: false,
+            connected: AtomicBool::new(false),
+            connect_lock: tokio::sync::Mutex::new(()),
             pool_config: self.pool,
             protocol_config: self.protocol,
             download_config: self.download,
-            pool: None,
-            update_task: None,
-            peer_cache: HashMap::new(),
+            pool: std::sync::RwLock::new(None),
+            update_task: std::sync::Mutex::new(None),
+            peer_cache: std::sync::RwLock::new(HashMap::new()),
         })
     }
 }
@@ -169,24 +171,35 @@ impl Default for ClientConfig {
 }
 
 /// High-level MTProto client.
+///
+/// Shared by reference: every method takes `&self`, so callers can clone
+/// an `Arc<Client>` and fan out. Connection lifecycle is interior — the
+/// pool handle clones out from behind a short lock, `connect` and
+/// `authorize_bot` serialize on an async mutex (pool construction and DC
+/// migration must not race), and the in-memory peer cache is a lock
+/// around a plain map that is never held across an await.
 pub struct Client {
     api_id: Option<i32>,
     api_hash: Option<String>,
-    dc_id: i32,
+    dc_id: AtomicI32,
     /// Whether the caller pinned the DC (disables nearest-DC selection).
     dc_explicit: bool,
     session_store: Arc<RwLock<Box<dyn SessionStorage>>>,
-    connected: bool,
+    connected: AtomicBool,
+    /// Serializes `connect`/`authorize_bot`: both rebuild the pool and
+    /// may migrate the DC.
+    connect_lock: tokio::sync::Mutex<()>,
     pool_config: PoolConfig,
     protocol_config: ProtocolConfig,
     /// Download knobs (parallel threshold/count, SPEC BS-5).
     download_config: crate::file::DownloadConfig,
-    pool: Option<Arc<SenderPool>>,
+    pool: std::sync::RwLock<Option<Arc<SenderPool>>>,
     /// Handle to the background update pump started by [`Client::updates`].
-    update_task: Option<tokio::sync::mpsc::UnboundedSender<crate::types::Updates>>,
-    /// username. Entries live for the process lifetime; a stale hash
-    /// surfaces as a `PEER_ID_INVALID` RPC error.
-    peer_cache: HashMap<String, InputPeer>,
+    update_task:
+        std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<crate::types::Updates>>>,
+    /// Username → peer. Entries live for the process lifetime; a stale
+    /// hash surfaces as a `PEER_ID_INVALID` RPC error.
+    peer_cache: std::sync::RwLock<HashMap<String, InputPeer>>,
 }
 
 impl Client {
@@ -207,12 +220,12 @@ impl Client {
 
     /// Get the DC ID.
     pub fn dc_id(&self) -> i32 {
-        self.dc_id
+        self.dc_id.load(Ordering::Relaxed)
     }
 
     /// Check if the client is connected (auth key established).
     pub fn is_connected(&self) -> bool {
-        self.connected
+        self.connected.load(Ordering::Relaxed)
     }
 
     /// Get the download configuration in use (SPEC BS-5).
@@ -238,7 +251,7 @@ impl Client {
         location: &crate::types::FileLocation,
         size: Option<u64>,
     ) -> Result<Vec<u8>> {
-        let pool = self.pool.as_ref().ok_or(Error::Other(
+        let pool = self.pool_handle().ok_or(Error::Other(
             "download requires a connected client — call connect() first".into(),
         ))?;
         match size {
@@ -252,12 +265,31 @@ impl Client {
 
     /// Connect to Telegram (create auth key via DH handshake if no session exists)
     /// and open a SenderPool.
+    ///
+    /// Idempotent and safe to call from any task holding `&self`: a second
+    /// caller arriving mid-handshake waits on the connect lock and then
+    /// finds the pool already up.
     // NOTE: the span context comes from the `#[tracing::instrument]` below —
     // do NOT `.entered()` a manual span here: an `EnteredSpan` is !Send and
     // holding it across the awaits inside this function poisons every
     // caller's future (spawned axum/tokio tasks fail the Send check).
     #[tracing::instrument(name = "mtprsto::connect", skip(self), err)]
-    pub async fn connect(&mut self) -> Result<()> {
+    pub async fn connect(&self) -> Result<()> {
+        let _connect = self.connect_lock.lock().await;
+        self.connect_inner().await
+    }
+
+    /// Connect body. Callers must hold [`Client::connect_lock`] — pool
+    /// construction and the DC decision must not race `authorize_bot`'s
+    /// migration.
+    async fn connect_inner(&self) -> Result<()> {
+        // A concurrent connect got here first: keep the live pool.
+        if self.is_connected() {
+            return Ok(());
+        }
+        // Local snapshot: this task owns the DC decision while it holds
+        // the connect lock; the atomic mirrors it for lock-free readers.
+        let mut dc_id = self.dc_id.load(Ordering::Relaxed);
         // Load the persisted session. Auth keys are one-time per DC/device,
         // so the per-DC key cache turns restarts (and DC switches) into
         // connection + session setup instead of a DH handshake.
@@ -278,7 +310,8 @@ impl Client {
                         data.cache_key(data.dc_id, &key, data.server_salt);
                     }
                     if !self.dc_explicit {
-                        self.dc_id = data.dc_id;
+                        self.dc_id.store(data.dc_id, Ordering::Relaxed);
+                        dc_id = data.dc_id;
                     }
                     Some(data)
                 }
@@ -288,22 +321,21 @@ impl Client {
 
         // Fast path: a cached key for the target DC skips DH entirely.
         if let Some(data) = &session_data
-            && let Some(cached) = data.cached_key(self.dc_id)
+            && let Some(cached) = data.cached_key(dc_id)
         {
             let auth_key = data.decode_cached_key(&cached)?;
             tracing::info!(
-                "reusing cached auth key for DC {} — no DH handshake",
-                self.dc_id
+                "reusing cached auth key for DC {dc_id} — no DH handshake",
             );
-            self.start_pool(MtProtoSession::new(auth_key, cached.server_salt)).await?;
+            self.start_pool(MtProtoSession::new(auth_key, cached.server_salt))
+                .await?;
             self.persist_current_salt().await?;
             return Ok(());
         }
 
         // DH handshake — first boot, or first visit to this DC.
-        tracing::info!("no cached auth key for DC {} — performing DH handshake", self.dc_id);
-        let mut tg_client =
-            TelegramClient::new(self.dc_id, self.api_id, self.api_hash.clone());
+        tracing::info!("no cached auth key for DC {dc_id} — performing DH handshake");
+        let mut tg_client = TelegramClient::new(dc_id, self.api_id, self.api_hash.clone());
         tg_client.create_auth_key().await?;
 
         // Auto-select the nearest DC (SPEC §1) unless the caller pinned
@@ -311,22 +343,22 @@ impl Client {
         // elsewhere, re-handshake there before authorizing.
         if !self.dc_explicit {
             match tg_client.help_get_nearest_dc().await {
-                Ok((_this, nearest)) if nearest != self.dc_id => {
+                Ok((_this, nearest)) if nearest != dc_id => {
                     tracing::info!(
-                        "nearest DC is {nearest} (bootstrap was {}) — re-handshaking",
-                        self.dc_id
+                        "nearest DC is {nearest} (bootstrap was {dc_id}) — re-handshaking"
                     );
                     let mut migrated =
                         TelegramClient::new(nearest, self.api_id, self.api_hash.clone());
                     migrated.create_auth_key().await?;
-                    self.dc_id = nearest;
+                    self.dc_id.store(nearest, Ordering::Relaxed);
+                    dc_id = nearest;
                     tg_client = migrated;
                 }
                 Ok((this, _)) => {
                     tracing::debug!("bootstrap DC {this} is the nearest");
                 }
                 Err(e) => {
-                    tracing::warn!("getNearestDc failed ({e}) — staying on DC {}", self.dc_id);
+                    tracing::warn!("getNearestDc failed ({e}) — staying on DC {dc_id}");
                 }
             }
         }
@@ -337,14 +369,14 @@ impl Client {
             let mut data = SessionData::from_auth_key(
                 &session.auth_key,
                 session.server_salt,
-                self.dc_id,
+                dc_id,
             );
             if let Some(old) = &session_data {
                 data.keys = old.keys.clone();
                 data.user_id = old.user_id;
                 data.peer_cache = old.peer_cache.clone();
             }
-            data.cache_key(self.dc_id, &session.auth_key, session.server_salt);
+            data.cache_key(dc_id, &session.auth_key, session.server_salt);
             let mut store = self.session_store.write().await;
             SessionStorage::save(&mut *store, &data)?;
             tracing::info!("session saved to {}", store.describe());
@@ -357,23 +389,25 @@ impl Client {
     }
 
     /// Open the pool over a prepared session and start background tasks.
-    async fn start_pool(&mut self, mut mtproto_session: MtProtoSession) -> Result<()> {
+    async fn start_pool(&self, mut mtproto_session: MtProtoSession) -> Result<()> {
         mtproto_session.set_random_padding(self.protocol_config.random_padding);
         mtproto_session.set_compress_threshold(self.protocol_config.compress_threshold);
         let mut pool = Arc::new(SenderPool::new(
-            self.dc_id,
+            self.dc_id.load(Ordering::Relaxed),
             self.api_id.unwrap_or(0),
             mtproto_session,
             self.pool_config.clone(),
             self.protocol_config.clone(),
         ));
         Arc::get_mut(&mut pool).expect("pool freshly created").connect().await?;
-        self.pool = Some(pool);
-        self.connected = true;
+        *self
+            .pool
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&pool));
+        self.connected.store(true, Ordering::Relaxed);
 
         // Background maintenance (SPEC §5.4 / BS-1 / §9): batched acks,
         // ping/pong keepalive, periodic salt refresh.
-        let pool = self.pool.as_ref().unwrap();
         pool.spawn_ack_flusher();
         pool.spawn_keepalive();
         pool.spawn_salt_refresher();
@@ -383,23 +417,24 @@ impl Client {
     /// Persist the (possibly server-refreshed) salt so the next boot
     /// starts with a current value.
     async fn persist_current_salt(&self) -> Result<()> {
-        let Some(pool) = self.pool.as_ref() else {
+        let Some(pool) = self.pool_handle() else {
             return Ok(());
         };
+        let dc_id = self.dc_id.load(Ordering::Relaxed);
         let current_salt = pool.session().await.server_salt;
         let mut store = self.session_store.write().await;
         if let Some(data) = SessionStorage::load(&mut *store)? {
             let mut fresh = data.clone();
             fresh.server_salt = current_salt;
-            if let Some(cached) = fresh.keys.get_mut(&self.dc_id) {
+            if let Some(cached) = fresh.keys.get_mut(&dc_id) {
                 cached.server_salt = current_salt;
             }
             if fresh.server_salt != data.server_salt
                 || fresh
                     .keys
-                    .get(&self.dc_id)
+                    .get(&dc_id)
                     .map(|c| c.server_salt)
-                    != data.keys.get(&self.dc_id).map(|c| c.server_salt)
+                    != data.keys.get(&dc_id).map(|c| c.server_salt)
             {
                 SessionStorage::save(&mut *store, &fresh)?;
                 tracing::info!("session salt refreshed to current server value");
@@ -410,12 +445,16 @@ impl Client {
 
     /// Authorize as a bot using a bot token.
     #[tracing::instrument(name = "mtprsto::authorize_bot", skip(self, bot_token), err)]
-    pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<()> {
+    pub async fn authorize_bot(&self, bot_token: &str) -> Result<()> {
+        // Migration below rewires dc_id/pool — the lifecycle connect()
+        // guards with the same lock, so share it; the body goes through
+        // connect_inner to avoid re-taking the non-reentrant mutex.
+        let _connect = self.connect_lock.lock().await;
         // A bot's home DC may differ from the one we dialed (USER_MIGRATE_X):
         // on migration, drop the session and re-handshake on the target DC.
         for _ in 0..3u32 {
-            if !self.connected {
-                self.connect().await?;
+            if !self.is_connected() {
+                self.connect_inner().await?;
             }
 
             let mut store = self.session_store.write().await;
@@ -429,7 +468,7 @@ impl Client {
 
             let auth_key = data.decode_auth_key()?;
             let mut tg_client = TelegramClient::with_session(
-                self.dc_id,
+                self.dc_id.load(Ordering::Relaxed),
                 auth_key,
                 data.server_salt,
                 self.api_id,
@@ -452,11 +491,14 @@ impl Client {
                 Err(Error::Migration { dc_id }) => {
                     tracing::info!(
                         "bot home DC is {dc_id} (was {}) — migrating",
-                        self.dc_id
+                        self.dc_id.load(Ordering::Relaxed)
                     );
-                    self.dc_id = dc_id;
-                    self.connected = false;
-                    self.pool = None;
+                    self.dc_id.store(dc_id, Ordering::Relaxed);
+                    self.connected.store(false, Ordering::Relaxed);
+                    *self
+                        .pool
+                        .write()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
                     let mut store = self.session_store.write().await;
                     SessionStorage::delete(&mut *store)?;
                 }
@@ -470,7 +512,7 @@ impl Client {
     ///
     /// `peer` can be a user ID, chat ID, channel ID, or username string.
     #[tracing::instrument(name = "mtprsto::send", skip(self, text), fields(peer = peer), err)]
-    pub async fn send(&mut self, peer: &str, text: &str) -> Result<MsgId> {
+    pub async fn send(&self, peer: &str, text: &str) -> Result<MsgId> {
         let input_peer = self.resolve_peer(peer).await?;
         self.send_to_peer(&input_peer, text).await
     }
@@ -478,7 +520,7 @@ impl Client {
     /// Send a text message to an already-resolved [`InputPeer`] — the
     /// object form of [`Client::send`] for callers that carry their own
     /// `InputPeer::Channel` (e.g. from a `-100…` id + access hash).
-    pub async fn send_to_peer(&mut self, input_peer: &InputPeer, text: &str) -> Result<MsgId> {
+    pub async fn send_to_peer(&self, input_peer: &InputPeer, text: &str) -> Result<MsgId> {
         let result = self.invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
             // messages.sendMessage#545cd15a flags:# ... peer:InputPeer
             // reply_to:flags.0?InputReplyTo message:string random_id:long ...
@@ -900,18 +942,22 @@ impl Client {
     /// Returns `None` if the pump is already running or the client is not
     /// connected.
     pub fn updates(
-        &mut self,
+        &self,
         poll_interval_secs: u64,
     ) -> Option<tokio::sync::mpsc::UnboundedReceiver<types::Update>> {
         use crate::updates::UpdateDispatcher;
-        if self.update_task.is_some() {
+        let mut update_task = self
+            .update_task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if update_task.is_some() {
             return None; // pump already running
         }
-        let pool = self.pool.as_ref()?;
+        let pool = self.pool_handle()?;
         let (dispatcher, rx) = UpdateDispatcher::with_channel();
         let (feed_tx, _keep_open) = tokio::sync::mpsc::unbounded_channel::<types::Updates>();
-        self.update_task = Some(feed_tx);
-        let pool = std::sync::Arc::clone(pool);
+        *update_task = Some(feed_tx);
+        let pool = std::sync::Arc::clone(&pool);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(
                 std::time::Duration::from_secs(poll_interval_secs.max(1)),
@@ -1076,7 +1122,7 @@ impl Client {
     /// Delegates to `SenderPool::send_rpc` which handles encryption,
     /// transport framing, decryption, and acks.
     pub async fn invoke_raw(&self, method_bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let pool = self.pool.as_ref().ok_or(Error::Other(
+        let pool = self.pool_handle().ok_or(Error::Other(
             "invoke_raw requires a connected pool — call connect() first".into(),
         ))?;
         pool.send_rpc(&method_bytes).await
@@ -1093,15 +1139,20 @@ impl Client {
         self.invoke_raw(w.into_bytes()).await
     }
 
-    /// Internal accessor for the connected pool (ergonomics module).
+    /// Snapshot of the connected pool (ergonomics module).
     pub fn pool(&self) -> Arc<SenderPool> {
+        // Unreachable via public API: builders check `connected`.
+        self.pool_handle()
+            .unwrap_or_else(|| panic!("pool accessed before connect()"))
+    }
+
+    /// Lock-free pool snapshot: callers hold their own `Arc` clone, so
+    /// the read guard never spans an await.
+    fn pool_handle(&self) -> Option<Arc<SenderPool>> {
         self.pool
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| {
-                // Unreachable via public API: builders check `connected`.
-                panic!("pool accessed before connect()")
-            })
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
 
@@ -1111,7 +1162,7 @@ impl Client {
     /// - Numeric user/chat/channel ID (positive = user, negative = chat/group)
     /// - Username string (resolves via contacts.resolveUsername, caching the
     ///   access hash for the process lifetime)
-    pub async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
+    pub async fn resolve_peer(&self, peer: &str) -> Result<InputPeer> {
         if let Ok(id) = peer.parse::<i64>() {
             if id > 0 {
                 Ok(InputPeer::User { user_id: UserId(id), access_hash: AccessHash(0) })
@@ -1186,14 +1237,20 @@ impl Client {
     /// the access hash needed for subsequent RPCs; results are cached in
     /// [`Client::peer_cache`] keyed by the lowercased username.
     #[tracing::instrument(name = "mtprsto::resolve_username", skip(self, username), err)]
-    pub async fn resolve_username(&mut self, username: &str) -> Result<InputPeer> {
+    pub async fn resolve_username(&self, username: &str) -> Result<InputPeer> {
         let uname = username.trim_start_matches('@');
         if uname.is_empty() {
             return Err(Error::Other("empty username".into()));
         }
         let key = uname.to_ascii_lowercase();
-        if let Some(peer) = self.peer_cache.get(&key) {
-            return Ok(peer.clone());
+        let cached = self
+            .peer_cache
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&key)
+            .cloned();
+        if let Some(peer) = cached {
+            return Ok(peer);
         }
 
         // The server intermittently wraps the resolveUsername answer in
@@ -1216,7 +1273,16 @@ impl Client {
             if std::env::var("MTPRSTO_DEBUG").is_ok() {
                 println!("DEBUG resolved ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
             }
-            match Self::parse_resolved_peer(&result, &key, &mut self.peer_cache) {
+            // Parse under the lock; drop it before the await below — the
+            // guard is a blocking std lock and must never span it.
+            let parsed = {
+                let mut cache = self
+                    .peer_cache
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                Self::parse_resolved_peer(&result, &key, &mut cache)
+            };
+            match parsed {
                 Ok(peer) => {
                     self.persist_peer_hash(&peer).await;
                     return Ok(peer);
@@ -1406,8 +1472,8 @@ impl Client {
     /// Off by default; calling this twice replaces nothing (idempotent per
     /// client instance is the caller's job).
     #[tracing::instrument(name = "mtprsto::adaptive_scaler", skip(self))]
-    pub fn spawn_adaptive_scaler(&mut self, interval_secs: u64) {
-        let Some(pool) = self.pool.as_ref().cloned() else {
+    pub fn spawn_adaptive_scaler(&self, interval_secs: u64) {
+        let Some(pool) = self.pool_handle() else {
             return;
         };
         let min = self.pool_config.min_connections;
@@ -1452,7 +1518,7 @@ impl Client {
     /// `peer` accepts the same forms as [`Client::send`] (numeric id or
     /// `@username`).
     pub async fn message(
-        &mut self,
+        &self,
         peer: &str,
         text: impl Into<String>,
     ) -> crate::ergonomics::MessageBuilder<'_> {
@@ -1465,7 +1531,7 @@ impl Client {
     ///
     /// Uploads the file (chunked) and sends it as a document message.
     pub async fn send_file(
-        &mut self,
+        &self,
         peer: &str,
         path: impl Into<std::path::PathBuf>,
     ) -> crate::ergonomics::SendFileBuilder<'_> {
@@ -1476,7 +1542,7 @@ impl Client {
     /// Start a history iterator over a peer's recent messages:
     /// `client.messages(peer).take(10).collect().await?`.
     pub async fn messages(
-        &mut self,
+        &self,
         peer: &str,
     ) -> crate::ergonomics::MessagesIter<'_> {
         let peer = self.resolve_peer(peer).await.expect("peer resolution");
@@ -1612,7 +1678,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_peer_numeric() {
-        let mut client = Client::builder().build().unwrap();
+        let client = Client::builder().build().unwrap();
         let peer = client.resolve_peer("12345").await.unwrap();
         match peer {
             InputPeer::User { user_id, .. } => assert_eq!(user_id.0, 12345),
@@ -1622,7 +1688,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_peer_negative() {
-        let mut client = Client::builder().build().unwrap();
+        let client = Client::builder().build().unwrap();
         let peer = client.resolve_peer("-999").await.unwrap();
         match peer {
             InputPeer::Chat { chat_id } => assert_eq!(chat_id.0, 999),

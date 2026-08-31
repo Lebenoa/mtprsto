@@ -239,7 +239,7 @@ impl Client {
     /// Transport or RPC failure; peer must already be resolvable.
     #[tracing::instrument(name = "mtprsto::send_multi_media", skip(self, items), err)]
     pub async fn send_multi_media(
-        &mut self,
+        &self,
         peer: &str,
         items: Vec<(rpc::InputMedia, String)>,
     ) -> Result<MsgId> {
@@ -260,7 +260,7 @@ impl Client {
     /// Transport or RPC failure (e.g. `MESSAGE_ID_INVALID`).
     #[tracing::instrument(name = "mtprsto::edit_message", skip(self), err)]
     pub async fn edit_message(
-        &mut self,
+        &self,
         peer: &str,
         msg_id: i32,
         text: &str,
@@ -280,7 +280,7 @@ impl Client {
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::delete_history", skip(self), err)]
     pub async fn delete_history(
-        &mut self,
+        &self,
         peer: &str,
         max_id: i32,
         just_clear: bool,
@@ -313,7 +313,7 @@ impl Client {
     ///
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::read_history", skip(self), err)]
-    pub async fn read_history(&mut self, peer: &str, max_id: i32) -> Result<AffectedMessages> {
+    pub async fn read_history(&self, peer: &str, max_id: i32) -> Result<AffectedMessages> {
         let input_peer = self.resolve_peer(peer).await?;
         let payload = rpc::build_read_history(&input_peer, max_id);
         let result = self.invoke_raw(payload).await?;
@@ -326,7 +326,7 @@ impl Client {
     ///
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::search", skip(self), err)]
-    pub async fn search(&mut self, peer: &str, query: &str, limit: i32) -> Result<Vec<Message>> {
+    pub async fn search(&self, peer: &str, query: &str, limit: i32) -> Result<Vec<Message>> {
         let input_peer = self.resolve_peer(peer).await?;
         let payload = rpc::build_search(&input_peer, query, limit);
         let result = self.invoke_raw(payload).await?;
@@ -342,7 +342,7 @@ impl Client {
     /// Transport or RPC failure (`BOT_RESPONSE_TIMEOUT` etc.).
     #[tracing::instrument(name = "mtprsto::get_bot_callback_answer", skip(self, data), err)]
     pub async fn get_bot_callback_answer(
-        &mut self,
+        &self,
         peer: &str,
         msg_id: MsgId,
         data: &[u8],
@@ -362,7 +362,7 @@ impl Client {
     /// # Errors
     /// Transport or RPC failure (`PHONE_NUMBER_INVALID` etc.).
     #[tracing::instrument(name = "mtprsto::resolve_phone", skip(self), err)]
-    pub async fn resolve_phone(&mut self, phone: &str) -> Result<InputPeer> {
+    pub async fn resolve_phone(&self, phone: &str) -> Result<InputPeer> {
         let payload = rpc::build_resolve_phone(phone);
         let result = self.invoke_raw(payload).await?;
         // contacts.resolvedPeer#7f077ad9 peer:Peer chats:... users:...
@@ -383,7 +383,7 @@ impl Client {
     /// # Errors
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::search_contacts", skip(self), err)]
-    pub async fn search_contacts(&mut self, q: &str, limit: i32) -> Result<Vec<User>> {
+    pub async fn search_contacts(&self, q: &str, limit: i32) -> Result<Vec<User>> {
         let payload = rpc::build_contacts_search(q, limit);
         let result = self.invoke_raw(payload).await?;
         // contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer>
@@ -443,7 +443,7 @@ impl Client {
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::create_channel", skip(self), err)]
     pub async fn create_channel(
-        &mut self,
+        &self,
         title: &str,
         about: &str,
         broadcast: bool,
@@ -563,7 +563,7 @@ impl Client {
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::update_profile_photo", skip(self, id), err)]
     pub async fn update_profile_photo(
-        &mut self,
+        &self,
         fallback: bool,
         id: &rpc::InputPhoto,
     ) -> Result<Vec<u8>> {
@@ -577,7 +577,7 @@ impl Client {
     /// Filesystem, transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::upload_profile_photo", skip(self, path), err)]
     pub async fn upload_profile_photo(
-        &mut self,
+        &self,
         path: impl Into<std::path::PathBuf>,
     ) -> Result<Vec<u8>> {
         let path = path.into();

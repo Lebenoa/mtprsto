@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
-    let mut client = Client::builder()
+    let client = Client::builder()
         .api_id(api_id)
         .api_hash(api_hash)
         .session(&session_path)
