@@ -451,6 +451,11 @@ impl SenderPool {
             Error::Transport("pool has no connections".into())
         })?;
         'outer: for attempt in 0..4u32 {
+            // Every network read is bounded: a blackholed/dead connection
+            // (or a server that just stops answering a dialect) must not
+            // block the caller — or the runtime — forever.
+            const READ_TIMEOUT: std::time::Duration =
+                std::time::Duration::from_secs(30);
 
             let (msg_id, mut response) = match async {
                 let (msg_id, encrypted) = {
@@ -460,8 +465,16 @@ impl SenderPool {
                     (msg_id, session.encrypt_message(&full_payload, msg_id, seq_no))
                 };
                 let mut codec = conn.codec.lock().await;
-                codec.send_frame(&encrypted).await?;
-                let response = codec.recv_frame().await?;
+                tokio::time::timeout(READ_TIMEOUT, codec.send_frame(&encrypted))
+                    .await
+                    .map_err(|_| {
+                        Error::Transport("send_frame read timed out".into())
+                    })??;
+                let response = tokio::time::timeout(READ_TIMEOUT, codec.recv_frame())
+                    .await
+                    .map_err(|_| {
+                        Error::Transport("read timed out".into())
+                    })??;
                 Ok::<_, Error>((msg_id, response))
             }
             .await
@@ -471,6 +484,13 @@ impl SenderPool {
                     tracing::warn!("I/O error on connection {idx} to DC {}: {e}", self.dc_id);
                     self.reconnect_connection(conn).await?;
                     continue; // same encrypted bytes re-sent; server dedupes
+                }
+                Err(Error::Transport(msg))
+                    if msg.contains("read timed out") =>
+                {
+                    tracing::warn!("read timed out on connection {idx} to DC {}: {msg}", self.dc_id);
+                    self.reconnect_connection(conn).await?;
+                    continue; // re-send on a fresh connection
                 }
                 Err(e) => return Err(e),
             };
@@ -547,10 +567,17 @@ impl SenderPool {
                 }
                 frames += 1;
                 // Our answer is still in flight — read the next frame on
-                // the SAME connection without re-sending.
+                // the SAME connection without re-sending (bounded).
                 response = {
                     let mut codec = conn.codec.lock().await;
-                    codec.recv_frame().await?
+                    match tokio::time::timeout(READ_TIMEOUT, codec.recv_frame()).await {
+                        Ok(r) => r?,
+                        Err(_) => {
+                            return Err(Error::Protocol(format!(
+                                "no rpc_result for msg {msg_id} after {frames} frame(s) — read timed out"
+                            )));
+                        }
+                    }
                 };
             }
         }
