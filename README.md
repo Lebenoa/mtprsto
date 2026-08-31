@@ -50,6 +50,24 @@ Protocol-complete for the ii-drive migration surface (see
 detected but not fetched), IPv6 DC table, and throughput benchmarks vs
 grammers.
 
+## Branches & API layers
+
+The MTProto layer is negotiated per connection (`invokeWithLayer`), and each
+branch pins one wire dialect:
+
+| Branch | `API_LAYER` | Wire dialect | Notes |
+|---|---|---|---|
+| `master` | 225 | production default | generated 229 parsers + `CTOR_ALIASES` bridging the 225 ctor re-issues; live-verified |
+| `dev-layer` | 229 | tdlib master / tdesktop dev | canonical ctor ids = wire ids (no aliases); live-verified |
+| `docs-layer` | 223 | published schema (core.telegram.org) | 223 ids aliased; curated parsers match the 223 shapes; live-verified |
+
+All three share one generated parser set (`tools/schema.tl`, the 229 schema);
+`CTOR_ALIASES` in `tools/gentl.py` bakes the per-branch dialect differences in
+at generation time. The published docs currently lag production (they document
+layer 223) — `tools/schema.meta.json` records the last fetch and its layer.
+Regenerate after a fetch with `gentl --all` / `--domain <name>`, then run the
+captured-payload regression tests before switching dialects.
+
 ## Installation
 
 ```toml
