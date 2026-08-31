@@ -470,6 +470,13 @@ impl Client {
     #[tracing::instrument(name = "mtprsto::send", skip(self, text), fields(peer = peer), err)]
     pub async fn send(&mut self, peer: &str, text: &str) -> Result<MsgId> {
         let input_peer = self.resolve_peer(peer).await?;
+        self.send_to_peer(&input_peer, text).await
+    }
+
+    /// Send a text message to an already-resolved [`InputPeer`] — the
+    /// object form of [`Client::send`] for callers that carry their own
+    /// `InputPeer::Channel` (e.g. from a `-100…` id + access hash).
+    pub async fn send_to_peer(&mut self, input_peer: &InputPeer, text: &str) -> Result<MsgId> {
         let result = self.invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
             // messages.sendMessage#545cd15a flags:# ... peer:InputPeer
             // reply_to:flags.0?InputReplyTo message:string random_id:long ...
@@ -799,6 +806,10 @@ impl Client {
     }
 
     /// Get a list of dialogs (conversations).
+    ///
+    /// Also persists every channel access hash the answer carries into
+    /// the session peer cache — that cache is what makes `-100…` id
+    /// resolution (`resolve_peer`) work without a username.
     #[tracing::instrument(name = "mtprsto::get_dialogs", skip(self), err)]
     pub async fn get_dialogs(&self) -> Result<Dialogs> {
         let mut w = TLWriter::new();
@@ -811,7 +822,20 @@ impl Client {
         w.write_i64(0); // hash:long
 
         let result = self.invoke_raw(w.into_bytes()).await?;
-        Self::parse_dialogs(&result)
+        let dialogs = Self::parse_dialogs(&result)?;
+        for chat in &dialogs.chats {
+            // NOTE: generated Chat::Channel carries `id: ChatId` (codegen
+            // quirk) — the numeric value is the channel id either way.
+            if let types::Chat::Channel { id: types::ChatId(cid), access_hash: Some(hash), .. } = chat
+            {
+                self.persist_peer_hash(&InputPeer::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: *hash,
+                })
+                .await;
+            }
+        }
+        Ok(dialogs)
     }
 
     /// Parse `updates.state`.
@@ -1092,13 +1116,61 @@ impl Client {
             } else if id == i64::MIN {
                 Err(Error::Other("invalid chat id".into()))
             } else if format!("{id}").starts_with("-100") {
-                // -100… prefixed ids are channels/supergroups, which need an
-                // access_hash this client can't guess — reject explicitly
-                // instead of silently routing them as basic chats.
-                Err(Error::Other(format!(
-                    "channel id {peer} requires access-hash resolution — not yet supported; \
-                     use a plain chat id (negative, without the -100 prefix)"
-                )))
+                // -100… prefixed ids are channels/supergroups (Bot-API
+                // style). They need an access hash: consult the session's
+                // persisted id→hash cache, then bootstrap a fresh hash via
+                // channels.getChannels (works for any channel the account
+                // is a member/admin/creator of).
+                let channel_id = -id - 1_000_000_000_000i64;
+                if channel_id <= 0 {
+                    return Err(Error::Other(format!("bad -100 channel id {peer}")));
+                }
+
+                // 1. persisted hash from an earlier resolution
+                {
+                    let mut store = self.session_store.write().await;
+                    if let Ok(Some(data)) = SessionStorage::load(&mut *store)
+                        && let Some(hash) = data.peer_cache.get(&channel_id)
+                    {
+                        tracing::debug!(channel_id, "using persisted channel access hash");
+                        return Ok(InputPeer::Channel {
+                            channel_id: ChannelId(channel_id),
+                            access_hash: AccessHash(*hash),
+                        });
+                    }
+                }
+
+                // 2. bootstrap: channels.getChannels accepts a zero hash
+                //    for channels the account can see.
+                let stub = InputChannel::Channel {
+                    channel_id: ChannelId(channel_id),
+                    access_hash: AccessHash(0),
+                };
+                let result = self.invoke_raw(rpc::build_get_channels(&[stub])).await?;
+                let chats = Self::chats_from_updates(&result, crate::types::CHANNELS_GET_CHANNELS)?;
+                if std::env::var("MTPRSTO_DEBUG").is_ok() {
+                    println!("DEBUG getChannels bootstrap returned {} chats", chats.len());
+                    for c in &chats {
+                        if let Chat::Channel { id, access_hash, .. } = c {
+                            println!("  debug: chat id={} access_hash={:?}", id.0, access_hash.map(|h| h.0));
+                        }
+                    }
+                }
+                let chat = chats.iter().find_map(|c| match c {
+                    Chat::Channel { id, access_hash, .. } if id.0 == channel_id =>
+                        Some((id.0, access_hash.map(|h| h.0).unwrap_or(0))),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    Error::Other(format!("channel {channel_id} not found — is this account a member?"))
+                })?;
+                let peer = InputPeer::Channel {
+                    channel_id: ChannelId(chat.0),
+                    access_hash: AccessHash(chat.1),
+                };
+                // Cache for future -100 lookups.
+                self.persist_peer_hash(&peer).await;
+                Ok(peer)
             } else {
                 Ok(InputPeer::Chat { chat_id: ChatId(-id) })
             }
@@ -1162,7 +1234,7 @@ impl Client {
     /// Persist a resolved peer's access hash into the session store
     /// (SPEC §11.4 interlock 1+6+9: survives restarts so channel admin
     /// ops don't need a `channels.getChannels` round trip per boot).
-    async fn persist_peer_hash(&self, peer: &InputPeer) {
+    pub(crate) async fn persist_peer_hash(&self, peer: &InputPeer) {
         let (id, hash) = match peer {
             InputPeer::User { user_id, access_hash } => (user_id.0, access_hash.0),
             InputPeer::Channel { channel_id, access_hash } => (channel_id.0, access_hash.0),

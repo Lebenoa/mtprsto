@@ -381,7 +381,19 @@ impl Client {
     ) -> Result<Vec<Chat>> {
         let payload = rpc::build_create_channel(title, about, broadcast, megagroup);
         let result = self.invoke_raw(payload).await?;
-        Self::chats_from_updates(&result, crate::types::CHANNELS_CREATE_CHANNEL)
+        let chats = Self::chats_from_updates(&result, crate::types::CHANNELS_CREATE_CHANNEL)?;
+        // Persist the fresh channel's access hash: it is what later
+        // `-100…` id resolution (resolve_peer) resolves against.
+        for chat in &chats {
+            if let Chat::Channel { id: ChatId(cid), access_hash: Some(hash), .. } = chat {
+                self.persist_peer_hash(&InputPeer::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: *hash,
+                })
+                .await;
+            }
+        }
+        Ok(chats)
     }
 
     /// Invite users to a channel/supergroup.
