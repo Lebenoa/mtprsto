@@ -443,6 +443,13 @@ pub enum InputMedia {
     },
     /// `inputMediaGeoPoint#f9c44144` wrapping `inputGeoPoint#48222faf`.
     GeoPoint { lat: f64, long: f64 },
+    /// `inputMediaUploadedDocument#37c9330` — an uploaded file sent as a
+    /// document with a single filename attribute.
+    UploadedDocument {
+        file: crate::types::InputFile,
+        mime_type: String,
+        file_name: String,
+    },
 }
 
 impl InputMedia {
@@ -464,6 +471,20 @@ impl InputMedia {
                 // TL `double` is 8-byte IEEE 754 big-endian on the wire.
                 w.write_double(*lat);
                 w.write_double(*long);
+            }
+            InputMedia::UploadedDocument { file, mime_type, file_name } => {
+                // inputMediaUploadedDocument#37c9330 flags:#
+                //   file:InputFile thumb:flags.2? mime_type:string
+                //   attributes:Vector<DocumentAttribute> …
+                w.write_u32(INPUT_MEDIA_UPLOADED_DOCUMENT);
+                w.write_i32(0); // flags (no thumb/ttl/nosound/force_file)
+                file.write_to(w);
+                w.write_bytes(mime_type.as_bytes());
+                // attributes:Vector<DocumentAttribute> — one filename attr
+                w.write_u32(VECTOR);
+                w.write_i32(1);
+                w.write_u32(DOCUMENT_ATTRIBUTE_FILENAME);
+                w.write_bytes(file_name.as_bytes());
             }
         }
     }

@@ -463,6 +463,8 @@ pub const INPUT_PHOTO: u32 = 0x3bb3b94a;
 pub const INPUT_PHOTO_EMPTY: u32 = 0x1cd7bf0d;
 /// `inputMediaEmpty#9664f57f`
 pub const INPUT_MEDIA_EMPTY: u32 = 0x9664f57f;
+/// `inputMediaUploadedDocument#37c9330` (layer 223)
+pub const INPUT_MEDIA_UPLOADED_DOCUMENT: u32 = 0x37c9330;
 /// `inputMediaContact#f8ab7dfb phone_number:string first_name:string
 ///  last_name:string vcard:string`
 pub const INPUT_MEDIA_CONTACT: u32 = 0xf8ab7dfb;

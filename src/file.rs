@@ -179,10 +179,13 @@ pub enum GetFile {
 /// Parse an `upload.getFile` response: `upload.file` or `fileCdnRedirect`.
 pub fn parse_get_file(data: &[u8]) -> Result<GetFile> {
     use crate::serialize::{TLReader, UPLOAD_FILE, UPLOAD_FILE_CDN_REDIRECT};
+    // upload.file was re-issued between layers: 0x096a18d5 (published
+    // layer 223) vs 0x96a18f23 (layer 225+). Both decode identically.
+    const UPLOAD_FILE_L223: u32 = 0x096a18d5;
     let mut r = TLReader::new(data);
     let ctor = r.read_u32()?;
     match ctor {
-        UPLOAD_FILE => {
+        UPLOAD_FILE | UPLOAD_FILE_L223 => {
             // type:storage.fileType (bare ctor, 4 bytes), mtime:int, bytes
             let _type_ctor = r.read_u32()?;
             let mtime = r.read_i32()?;
