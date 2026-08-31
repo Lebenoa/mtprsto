@@ -17,7 +17,13 @@ errors, and a pluggable session layer.
 - **SenderPool** — multi-connection pool (1 main + aux, adaptive scaling),
   batched acks (≥16 pending or 10 s), ping/pong keepalive with silent-
   disconnect reconnect, transparent bad-server-salt retry, periodic salt
-  refresh, and `bad_msg_notification` / `rpc_answer_*` classification.
+  refresh, `bad_msg_notification` / `rpc_answer_*` classification, and
+  **bounded network reads** (30 s timeout → reconnect + re-send) so a
+  blackholed connection can never wedge the client.
+- **Bot-API-style `-100` channel ids** — `send`, `send_file`, `delete_history`,
+  and the whole peer-resolution surface accept `-100…` strings; the access
+  hash is resolved from the persisted session cache or a `channels.getChannels`
+  bootstrap and cached automatically.
 - **WebSocket fallback** (optional `ws` feature) — `TransportPolicy::Auto`
   switches new connections to `wss://` after 2 TCP failures on a DC within
   5 minutes, and returns to TCP once it works again. Default is TCP-only;
@@ -98,7 +104,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.connect().await?;
     client.authorize_bot("123456:ABC-DEF_your_bot_token").await?;
 
-    // Peer can be a user ID, chat ID, channel ID, or @username.
+    // Peer can be a user ID, chat ID, @username, or a Bot-API-style
+    // -100… channel id (access hash resolved/persisted automatically).
     let msg = client.send("durov", "Hello from mtprsto!").await?;
     println!("sent message id {msg:?}");
     Ok(())
@@ -152,6 +159,8 @@ cargo run --example session_storage
 | [`advanced_rpc.rs`](examples/advanced_rpc.rs) | raw `invoke_raw`, `invokeAfterMsg` ordering, `invokeWithoutUpdates`, `getFutureSalts`, transient-retry loops |
 | [`callback_buttons.rs`](examples/callback_buttons.rs) | reading inline keyboards off messages and pressing buttons via `getBotCallbackAnswer` (user session, auto-loads the demo login) |
 | [`channel_admin.rs`](examples/channel_admin.rs) | channel create / re-fetch / invite / `editAdmin` rights / participants / leave (user session, auto-loads the demo login) |
+| [`list_peers.rs`](examples/list_peers.rs) | listing dialogs: users and channels printed with ready-to-use `-100` send ids (user session) |
+| [`send_to_channel.rs`](examples/send_to_channel.rs) | sending text/files to a channel addressed by its Bot-API `-100` id, with hash auto-resolution and a confirm gate (user session) |
 | [`file_transfer.rs`](examples/file_transfer.rs) | parallel upload workers and parallel range downloads (`DownloadConfig`) |
 | [`updates_listener.rs`](examples/updates_listener.rs) | the update pump: pts/seq/qts gap recovery, `UpdateChannelTooLong` resync |
 | [`session_storage.rs`](examples/session_storage.rs) | custom `SessionStorage` backends (SQLite-style, in-memory) |
@@ -212,8 +221,9 @@ let client = Client::builder()
 
 | Module | Purpose |
 |---|---|
-| [`client`](src/client.rs) | High-level `Client`: connect, bot login, `send`, `get_me`, `get_dialogs`, `delete_messages`, raw invoke |
-| [`pool`](src/pool.rs) | `SenderPool`: pooled connections, RPC correlation, batched acks, keepalive |
+| [`client`](src/client.rs) | High-level `Client`: connect, bot login, `send`, `send_to_peer`, `get_me`, `get_dialogs`, `delete_messages`, raw invoke |
+| [`client_wrappers`](src/client_wrappers.rs) | Typed RPC wrappers: channel admin, profile photos, multi-media, callback answers, history cleanup |
+| [`pool`](src/pool.rs) | `SenderPool`: pooled connections, RPC correlation, batched acks, keepalive, bounded reads |
 | [`mtproto`](src/mtproto.rs) | MTProto 2.0 session: message IDs, salts, seq numbers, encryption |
 | [`crypto`](src/crypto.rs) | AES-256-IGE, RSA, Diffie–Hellman, SRP (2FA), SHA-1/SHA-256, MD5 |
 | [`transport`](src/transport.rs) | TCP transport with abridged/intermediate framing |
@@ -221,7 +231,7 @@ let client = Client::builder()
 | [`session`](src/session.rs) | `SessionData` + `SessionStorage` trait + JSON store |
 | [`api`](src/api.rs) | Auth-key creation and authorization flows |
 | [`file`](src/file.rs) | Chunked upload/download, `DownloadConfig`, `upload.file` parsing |
-| [`types`](src/types/) | Hand-written TL types (constructors, enums) |
+| [`types`](src/types/) | TL types: generated unions + builders (`tools/gentl.py` from `tools/schema.tl`) plus curated models and dialect alias arms |
 | [`updates`](src/updates.rs) | Update dispatching (`UpdateDispatcher`) |
 | [`ergonomics`](src/ergonomics.rs) | Message/send-file builders, history iterator |
 | [`resilience`](src/resilience.rs) | Flood limiter, file-ref cache, DC rotator |
@@ -242,14 +252,20 @@ DC ID, and user ID. Format:
   "server_time_offset": 0,
   "dc_id": 2,
   "user_id": 12345678,
-  "api_layer": 223,
-  "peer_cache": { "12345678": -1001234567890 },
+  "api_layer": 225,
+  "peer_cache": { "1234567890": 987654321098765432 },
   "version": 1
 }
 ```
 
+`api_layer` records the dialect the session was created under (branch-dependent
+— see [Branches & API layers](#branches--api-layers)).
+
 `peer_cache` stores resolved peer access hashes (channel/user id → hash) so
-admin ops don't pay a `channels.getChannels` round trip after restart.
+admin ops don't pay a `channels.getChannels` round trip after restart — and
+it's what makes Bot-API-style `-100…` id strings resolvable: `resolve_peer`
+looks the hash up here, falling back to a `channels.getChannels` bootstrap
+when missing.
 
 Saves are atomic (`*.tmp<PID>` + fsync + rename). By default the client
 persists to `~/.mtprsto/session.json` when no path is given, so the auth key
