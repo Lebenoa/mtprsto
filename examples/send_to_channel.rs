@@ -5,14 +5,10 @@
 //! session's persisted id→hash cache, then via a `channels.getChannels`
 //! bootstrap (works for any channel the account is a member/admin of).
 //!
-//! Before anything is sent the example prints the target and asks
-//! **"Can I send to this channel?"** — proceed only after answering `y`.
-//! Pass `--yes` to skip the prompt (scripted runs).
-//!
 //! Usage:
 //! ```sh
 //! TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... \
-//!   cargo run --example send_to_channel -- [--yes] -1001234567890 "hello channel" [FILE]
+//!   cargo run --example send_to_channel -- -1001234567890 "hello channel" [FILE]
 //! ```
 //!
 //! **User-session flow.** Create an authorized session first with the
@@ -24,14 +20,10 @@ use mtprsto::Client;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    let yes = args.first().map(String::as_str) == Some("--yes");
-    if yes {
-        args.remove(0);
-    }
-    let channel_id = args.first().expect("usage: send_to_channel [--yes] <CHANNEL_ID> [TEXT] [FILE]").clone();
-    let text = args.get(1).cloned().unwrap_or_else(|| "hello from mtprsto".into());
-    let file = args.get(2).cloned();
+    let mut args = std::env::args().skip(1);
+    let channel_id = args.next().expect("usage: send_to_channel <CHANNEL_ID> [TEXT] [FILE]");
+    let text = args.next().unwrap_or_else(|| "hello from mtprsto".into());
+    let file = args.next();
 
     if !channel_id.starts_with("-100") {
         return Err(format!("expected a -100… channel id, got {channel_id}").into());
@@ -56,25 +48,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     client.connect().await?;
     println!("connected");
-
-    // SAFETY GATE: confirm the target before anything is sent.
-    println!("target channel : {channel_id}");
-    println!("text           : {text:?}");
-    if let Some(f) = &file {
-        println!("file           : {f:?}");
-    }
-    if !yes {
-        print!("Can I send to this channel? [y/N] ");
-        use std::io::Write;
-        std::io::stdout().flush()?;
-        let mut ans = String::new();
-        std::io::stdin().read_line(&mut ans)?;
-        let ans = ans.trim().to_ascii_lowercase();
-        if ans != "y" && ans != "yes" {
-            println!("aborted — nothing sent");
-            return Ok(());
-        }
-    }
 
     // The -100 id resolves through the session hash cache or a
     // channels.getChannels bootstrap inside resolve_peer.
