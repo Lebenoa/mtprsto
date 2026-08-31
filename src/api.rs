@@ -11,8 +11,13 @@ use crate::types;
 use crate::transport;
 use tokio::io::AsyncWriteExt;
 
-/// API layer version (Layer 223).
-pub const API_LAYER: i32 = 225;
+/// API layer version. docs-layer branch: negotiate the PUBLISHED layer
+/// 223 (the number core.telegram.org/schema currently documents).
+/// NOTE: the curated parsers in this branch still carry several
+/// 225/229-dialect field shapes (dialog unread_poll_votes_count,
+/// 229 inline-button structure, ...) — wire-verify and reconcile those
+/// before relying on docs-layer for production traffic.
+pub const API_LAYER: i32 = 223;
 
 // ---------------------------------------------------------------------------
 // API Client
