@@ -29,10 +29,9 @@
 //!
 //! The target user must be contactable (username, or a shared chat).
 
+use mtprsto::Client;
 use mtprsto::rpc::ChannelParticipantsFilter;
 use mtprsto::types::{AccessHash, ChannelId, InputChannel, InputUser};
-use mtprsto::Client;
-
 
 /// Default to the demo's saved user session when no path is given:
 /// the demo's `--user-phone` login writes it to %TEMP%/mtprsto_demo_session.json.
@@ -81,12 +80,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Create a megagroup.
     let chats = client
-        .create_channel("mtprsto demo", "Created by the channel_admin example", false, true)
+        .create_channel(
+            "mtprsto demo",
+            "Created by the channel_admin example",
+            false,
+            true,
+        )
         .await?;
     let Some(created) = chats.iter().find_map(|c| match c {
-        mtprsto::types::Chat::Channel { id, access_hash, .. } => {
-            Some((id.0, access_hash.map(|h| h.0).unwrap_or(0)))
-        }
+        mtprsto::types::Chat::Channel {
+            id, access_hash, ..
+        } => Some((id.0, access_hash.map(|h| h.0).unwrap_or(0))),
         _ => None,
     }) else {
         return Err("create_channel returned no channel".into());
@@ -100,29 +104,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let fetched = client.get_channels(std::slice::from_ref(&channel)).await?;
     for chat in &fetched {
-        if let mtprsto::types::Chat::Channel { title, username, .. } = chat {
+        if let mtprsto::types::Chat::Channel {
+            title, username, ..
+        } = chat
+        {
             println!("get_channels: \"{title}\" username={username:?}");
         }
     }
 
     // 3. Invite the user, then promote them with a rank.
     let input_user = match client.resolve_username(&user).await? {
-        mtprsto::types::InputPeer::User { user_id, access_hash } => InputUser::User {
+        mtprsto::types::InputPeer::User {
+            user_id,
+            access_hash,
+        } => InputUser::User {
             user_id,
             access_hash,
         },
         other => return Err(format!("expected a user peer, got {other:?}").into()),
     };
-    match client.invite_to_channel(&channel, std::slice::from_ref(&input_user)).await {
-        Ok(_) => println!("invited @{user}"),
+    match client
+        .invite_to_channel(&channel, std::slice::from_ref(&input_user))
+        .await
+    {
+        Ok(_) => println!("invited {user}"),
         Err(e) => println!("invite failed ({e}) — the user may block invites"),
     }
 
     // Admin rights bit-mask (ChatAdminRights flags): change_info, post
     // messages, edit messages, delete messages, invite users.
     const RIGHTS: i32 = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 10);
-    match client.edit_admin(&channel, &input_user, RIGHTS, "co-admin").await {
-        Ok(()) => println!("promoted @{user} to co-admin"),
+    match client
+        .edit_admin(&channel, &input_user, RIGHTS, "co-admin")
+        .await
+    {
+        Ok(()) => println!("promoted {user} to co-admin"),
         Err(e) => println!("edit_admin failed: {e}"),
     }
 

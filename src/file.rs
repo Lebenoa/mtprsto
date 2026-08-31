@@ -113,7 +113,7 @@ pub async fn upload<R: Read + Send>(
             id: file_id,
             parts: total_parts as i32,
             name,
-            md5_checksum: None,
+            md5_checksum: String::new(),
         }
     })
 }
