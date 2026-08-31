@@ -1617,7 +1617,7 @@ mod tests {
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(2);
         // dialog 1: plain (no pts, no draft)
-        w.write_u32(0xfc89f7f3); // dialog#fc89f7f3 ctor
+        w.write_u32(types::DIALOG); // dialog#d58a08c6 (layer 223 ctor)
         w.write_i32(0); // flags
         w.write_u32(types::PEER_USER);
         w.write_i64(42); // peer.user_id
@@ -1627,11 +1627,10 @@ mod tests {
         w.write_i32(1); // unread_count
         w.write_i32(0); // unread_mentions_count
         w.write_i32(0); // unread_reactions_count
-        w.write_i32(0); // unread_poll_votes_count (live wire field)
         w.write_u32(types::PEER_NOTIFY_SETTINGS); // notify_settings
         w.write_i32(0); // settings flags (all conditionals clear)
         // dialog 2: pts present (flags.0) + draft present (flags.1)
-        w.write_u32(0xfc89f7f3);
+        w.write_u32(types::DIALOG);
         w.write_i32(0b11); // flags: pts + draft
         w.write_u32(types::PEER_CHAT);
         w.write_i64(43); // peer.chat_id
@@ -1641,7 +1640,6 @@ mod tests {
         w.write_i32(0); // unread_count
         w.write_i32(0); // unread_mentions_count
         w.write_i32(0); // unread_reactions_count
-        w.write_i32(0); // unread_poll_votes_count
         w.write_u32(types::PEER_NOTIFY_SETTINGS); // notify_settings
         w.write_i32(0); // settings flags
         w.write_i32(77); // pts (flags.0)

@@ -100,13 +100,8 @@ pub const CHAT_PHOTO_EMPTY: u32 = 0x37c1011c;
 pub const USER_PROFILE_PHOTO: u32 = 0x82d1f706;
 pub const USER_PROFILE_PHOTO_EMPTY: u32 = 0x4f11bae1;
 
-// --- Message ---
-// Live layer-225 dialect ctor (wire-verified against production DCs
-// 2026-08; the published JSON and tdlib master carry other ids — all
-// three are accepted when parsing: MESSAGE + MESSAGE_V223 legacy +
-// the generated canonical via CTOR_ALIASES).
-pub const MESSAGE: u32 = 0x95ef6f2b;
-pub const MESSAGE_V223: u32 = 0x3ae56482;
+// --- Message (published layer 223: message#3ae56482) ---
+pub const MESSAGE: u32 = 0x3ae56482;
 pub const MESSAGE_EMPTY: u32 = 0x90a6ca84;
 pub const MESSAGE_SERVICE: u32 = 0x7a800e0a;
 // messageReplyHeader#6917560b
@@ -271,9 +266,9 @@ pub const MESSAGES_MESSAGES_SLICE: u32 = 0x5f206716;
 pub const MESSAGES_CHANNEL_MESSAGES: u32 = 0xc776ba4e;
 pub const MESSAGES_MESSAGES_NOT_MODIFIED: u32 = 0x74535f21;
 
-// --- Dialog (live layer-225 dialect: dialog#fc89f7f3, wire-verified;
-// old 0xd58a08c6 kept as a generated-side alias) ---
-pub const DIALOG: u32 = 0xfc89f7f3;
+// --- Dialog (published layer 223: dialog#d58a08c6 — no
+// unread_poll_votes_count; that field exists from layer 225) ---
+pub const DIALOG: u32 = 0xd58a08c6;
 pub const DIALOG_FOLDER: u32 = 0x71bd134c;
 
 // --- Sent code (Layer 223) ---

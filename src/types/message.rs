@@ -93,8 +93,8 @@ impl Message {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE | MESSAGE_V223 => {
-                // message#3ae56482 / live layer 225 #95ef6f2b: flags + flags2,
+            MESSAGE => {
+                // message#3ae56482: flags + flags2,
                 // id:int,
                 // message:string is REQUIRED, conditionals interleaved.
                 let flags = r.read_i32()?;
@@ -130,9 +130,9 @@ impl Message {
                 if flags2 & (1 << 0) != 0 {
                     let _via_business_bot = r.read_i64()?;
                 }
-                if flags2 & (1 << 19) != 0 {
-                    let _guestchat_via_from = Peer::read_from(r)?;
-                }
+                // NOTE: layer 223 message has NO guestchat_via_from field
+                // (flags2.19 is `legacy` at 223 — a no-byte true-flag);
+                // reading it here misparsed legacy messages.
                 let reply_to = if flags & (1 << 3) != 0 {
                     Some(ReplyHeader::read_from(r)?)
                 } else {

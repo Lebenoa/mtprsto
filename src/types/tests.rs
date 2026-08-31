@@ -475,35 +475,28 @@ fn test_tl_gen_builder_matches_handwritten() {
 }
 
 /// Every constructors.rs constant with a generated counterpart must
-/// match EITHER the generated canonical id (the fetched schema's value)
-/// OR one of the wire-verified alias ids in CTOR_ALIASES (production
-/// layer-225 dialect re-issues). This is the regression guard for the
-/// stale-constant class of bugs.
+/// equal the PUBLISHED layer-223 id (tl.json — the docs-layer dialect),
+/// which the generated parsers accept through their 223 alias arms
+/// (mirrored from tools/gentl.py CTOR_ALIASES on this branch).
 #[test]
 fn test_constructor_constants_match_generated() {
-    // Mirrors tools/gentl.py CTOR_ALIASES: generated type -> alias ids.
-    // Aliases marked "live" are wire-verified against production; the
-    // others are dual-accepted pending live evidence.
-    let aliases: &[(&str, u32)] = &[
-        ("MESSAGE", 0x95EF6F2B),              // live layer-225 dialect
-        ("CHANNEL", 0x1C32B11C),              // channel#1c32b11c (l225 era)
-        ("USER", 0x31774388),                 // user#31774388 (l225 era)
-        ("CHANNEL_FULL", 0xE4E0B29D),         // l225 era
-        ("MESSAGE_MEDIA_PHOTO", 0x695150D7),  // l225 era
-        ("MESSAGE_MEDIA_POLL", 0x4BD6E798),   // l225 era
-        ("MESSAGE_REPLY_HEADER", 0x6917560B), // l225 era
-        ("REPLY_INLINE_MARKUP", 0x48A30254),  // l225 era
-        ("KEYBOARD_BUTTON", 0x7D170CFF),      // l225 era
-        ("DIALOG", 0xD58A08C6),               // old published id
-    ];
-    // Method/ctor ids live-verified against production (the server
-    // accepts them even though tdlib master re-issued them): builders
-    // only, never parsed, so no generated alias is needed.
-    let live_verified_builders: &[&str] = &[
-        "INPUT_REPLY_TO_MESSAGE",
-        "CONTACTS_SEARCH",
-        "MESSAGES_SEND_MESSAGE",
-        "MESSAGES_EDIT_MESSAGE",
+    // Layer-223 published ids (from tl.json) for constants whose ctor
+    // was re-issued by layer 229 — the docs-layer dialect values.
+    let layer223: &[(&str, u32)] = &[
+        ("MESSAGE", 0x3AE56482),
+        ("DIALOG", 0xD58A08C6),
+        ("CHANNEL", 0x1C32B11C),
+        ("CHANNEL_FULL", 0xE4E0B29D),
+        ("MESSAGE_MEDIA_PHOTO", 0x695150D7),
+        ("MESSAGE_MEDIA_POLL", 0x4BD6E798),
+        ("MESSAGE_REPLY_HEADER", 0x6917560B),
+        ("REPLY_INLINE_MARKUP", 0x48A30254),
+        ("KEYBOARD_BUTTON", 0x7D170CFF),
+        ("INPUT_REPLY_TO_MESSAGE", 0x869FBE10),
+        ("CONTACTS_SEARCH", 0x11F812D8),
+        ("MESSAGES_SEND_MESSAGE", 0x545CD15A),
+        ("MESSAGES_EDIT_MESSAGE", 0x51E842E1),
+        ("USER", 0x31774388),                 // user#31774388 (223 era)
     ];
     let ours: Vec<(&str, u32)> = vec![
         ("USER", crate::types::USER),
@@ -542,11 +535,14 @@ fn test_constructor_constants_match_generated() {
     ];
     for (name, val) in ours {
         let gen_val = crate::types::gen_const(name);
-        let alias_ok = aliases.iter().any(|(n, id)| *n == name && *id == val);
-        let live_builder = live_verified_builders.contains(&name);
+        // The generated parsers are built from the 229 schema; a curated
+        // constant carrying the 223 id must appear in that type's alias
+        // arms (all layer223 entries above are aliased in the generated
+        // code), while unreissued ctors must match the canonical id.
+        let is_223_reissue = layer223.iter().any(|(n, id)| *n == name && *id == val);
         assert!(
-            Some(val) == gen_val || alias_ok || (live_builder && gen_val.is_some()),
-            "constructors::{name} diverges from the schema and aliases"
+            gen_val.is_some() && (gen_val == Some(val) || is_223_reissue),
+            "constructors::{name} diverges from the published layer-223 schema"
         );
     }
 
@@ -685,6 +681,10 @@ mod invited_users_tests {
     ///
     /// Byte-for-byte a live layer-225 payload: invite of @vary4_bot into
     /// a fresh megagroup ("mtprsto dbg").
+    // PRODUCTION-dialect fixture (layer-225 ctors). The docs-layer
+    // branch negotiates 223 — this regression lives on `master`; on
+    // docs-layer it is kept but skipped.
+    #[ignore = "layer-225 production-dialect fixture — regression runs on master"]
     #[test]
     fn test_chats_from_updates_rich_invited_users_no_stack_overflow() {
         const PAYLOAD: &[u8] = &[
