@@ -187,11 +187,21 @@ impl Update {
                 Ok(Update::DeleteMessages { messages, pts, pts_count })
             }
             UPDATE_READ_HISTORY_INBOX => {
-                // updateReadHistoryInbox#9e84bc99 flags:int peer:Peer max_id:int
-                //   pts:int pts_count:int
-                let _flags = r.read_i32()?;
+                // updateReadHistoryInbox#9e84bc99 (live) flags:#
+                //   folder_id:flags.0?int peer:Peer top_msg_id:flags.1?int
+                //   max_id:int still_unread_count:int pts:int pts_count:int
+                // (the curated arm previously missed folder_id/top_msg_id/
+                // still_unread_count, shifting every later parse by 4+)
+                let flags = r.read_i32()?;
+                if flags & (1 << 0) != 0 {
+                    let _folder_id = r.read_i32()?;
+                }
                 let peer = Peer::read_from(r)?;
+                if flags & (1 << 1) != 0 {
+                    let _top_msg_id = MsgId(r.read_i32()? as i64);
+                }
                 let _max_id = MsgId(r.read_i32()? as i64);
+                let _still_unread = r.read_i32()?;
                 let pts = r.read_i32()?;
                 let pts_count = r.read_i32()?;
                 Ok(Update::ReadHistoryInbox { peer, pts, pts_count })

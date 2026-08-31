@@ -116,9 +116,11 @@ impl Message {
                     let _saved_peer_id = Peer::read_from(r)?;
                 }
                 if flags & (1 << 2) != 0 {
-                    return Err(Error::Serialization(
-                        "message fwd_from (MessageFwdHeader) parsing not supported".into(),
-                    ));
+                    // fwd_from:MessageFwdHeader — decode via the generated
+                    // parser and discard (the curated MessageFull keeps no
+                    // fwd body; erroring here broke get_dialogs on any
+                    // dialog whose top message is a forward).
+                    let _fwd = crate::types::MessageFwdHeader::read_from(r)?;
                 }
                 let via_bot_id = if flags & (1 << 11) != 0 {
                     Some(UserId(r.read_i64()?))
@@ -165,9 +167,8 @@ impl Message {
                     let _forwards = r.read_i32()?; // forwards shares flags.10
                 }
                 if flags & (1 << 23) != 0 {
-                    return Err(Error::Serialization(
-                        "message replies (MessageReplies) parsing not supported".into(),
-                    ));
+                    // replies:MessageReplies — generated decode-discard.
+                    let _ = crate::types::MessageReplies::read_from(r)?;
                 }
                 let edit_date = if flags & (1 << 15) != 0 {
                     Some(r.read_i32()?)
@@ -183,9 +184,8 @@ impl Message {
                     None
                 };
                 if flags & (1 << 20) != 0 {
-                    return Err(Error::Serialization(
-                        "message reactions (MessageReactions) parsing not supported".into(),
-                    ));
+                    // reactions:MessageReactions — generated decode-discard.
+                    let _ = crate::types::MessageReactions::read_from(r)?;
                 }
                 if flags & (1 << 22) != 0 {
                     // restrictionReason#d072acb4 platform reason text
@@ -207,9 +207,8 @@ impl Message {
                     let _effect = r.read_i64()?;
                 }
                 if flags2 & (1 << 3) != 0 {
-                    return Err(Error::Serialization(
-                        "message factcheck (FactCheck) parsing not supported".into(),
-                    ));
+                    // factcheck:FactCheck — generated decode-discard.
+                    let _ = crate::types::FactCheck::read_from(r)?;
                 }
                 if flags2 & (1 << 5) != 0 {
                     let _report_delivery_until_date = r.read_i32()?;
@@ -218,9 +217,8 @@ impl Message {
                     let _paid_message_stars = r.read_i64()?;
                 }
                 if flags2 & (1 << 7) != 0 {
-                    return Err(Error::Serialization(
-                        "message suggested_post parsing not supported".into(),
-                    ));
+                    // suggested_post:SuggestedPost — generated decode-discard.
+                    let _ = crate::types::SuggestedPost::read_from(r)?;
                 }
                 if flags2 & (1 << 10) != 0 {
                     let _schedule_repeat_period = r.read_i32()?;
@@ -454,6 +452,7 @@ impl MessageAction {
 
 /// Message media (attachments on a message).
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum MessageMedia {
     None,
     Photo { photo: Photo },
@@ -529,7 +528,7 @@ impl MessageMedia {
                     let _ttl_seconds = r.read_i32()?;
                 }
                 Ok(MessageMedia::Document {
-                    document: document.unwrap_or(Document::Empty { id: DocumentId(0), access_hash: AccessHash(0), file_reference: Vec::new() }),
+                    document: document.unwrap_or(Document::Empty { id: DocumentId(0) }),
                     caption: String::new(),
                 })
             }

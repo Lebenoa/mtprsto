@@ -18,9 +18,9 @@
 //! TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abcdef... cargo run --example list_peers
 //! ```
 //!
-//! NOTE: `messages.getDialogs` parsing currently fails against live
-//! layer 225 with `unknown Peer constructor 0x3` (drift between the
-//! curated dialog parser and the wire shape) — known issue.
+//! NOTE: handles both `messages.dialogs` and `messages.dialogsSlice`
+//! responses, including the live `dialog#fc89f7f3` shape (with
+//! `unread_poll_votes_count` and `draftMessageEmpty` drafts).
 
 use mtprsto::Client;
 

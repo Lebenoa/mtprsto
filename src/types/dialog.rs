@@ -35,6 +35,9 @@ impl Dialog {
     /// draft:flags.1?DraftMessage folder_id:flags.4?int
     /// ttl_period:flags.5?int`.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        // dialog#fc89f7f3 — consume the constructor before the flags
+        // word (its omission misaligned the whole parse).
+        let _ctor = r.read_u32()?;
         let flags = r.read_i32()?;
         let peer = Peer::read_from(r)?;
         let top_message = MsgId(r.read_i32()? as i64);
@@ -43,6 +46,10 @@ impl Dialog {
         let unread_count = r.read_i32()?;
         let _unread_mentions = r.read_i32()?;
         let _unread_reactions = r.read_i32()?;
+        // unread_poll_votes_count:int — present on the live wire
+        // (dialog#fc89f7f3) even though the l225 schema draft omitted it;
+        // dropping it shifted every later field by 4 bytes and broke
+        // get_dialogs with "unknown Peer constructor" garbage.
         let _unread_poll_votes = r.read_i32()?;
         // notify_settings:PeerNotifySettings — always present.
         crate::types::skip_peer_notify_settings_public(r)?;
@@ -52,9 +59,9 @@ impl Dialog {
             None
         };
         if flags & (1 << 1) != 0 {
-            return Err(Error::Serialization(
-                "dialog draft (DraftMessage) parsing not supported".into(),
-            ));
+            // draft:flags.1?DraftMessage — decode via the generated
+            // parser and discard; the curated model keeps no draft body.
+            let _draft = crate::types::DraftMessage::read_from(r)?;
         }
         if flags & (1 << 4) != 0 {
             let _folder_id = r.read_i32()?;

@@ -53,8 +53,19 @@ impl TlResult for MsgId {
 
 impl TlResult for types::User {
     fn from_rpc_result(data: &[u8]) -> Result<Self> {
+        // Accept a bare user object or a Vector<User> (users.getUsers
+        // et al return vectors) — decode the first element.
         let mut r = TLReader::new(data);
-        types::User::read_from(&mut r)
+        let ctor = r.read_u32()?;
+        if ctor == crate::serialize::VECTOR {
+            let n = r.read_i32()?;
+            if n < 1 {
+                return Err(Error::Protocol("empty user vector".into()));
+            }
+            return types::User::read_from(&mut r);
+        }
+        // ctor was already consumed — reparse from the start.
+        types::User::read_from(&mut TLReader::new(data))
     }
 }
 
@@ -271,10 +282,13 @@ impl<'a> SendFileBuilder<'a> {
                     w.write_i32(0);
                     w.write_i32(reply_id as i32);
                 }
-                // inputMediaUploadedDocument#c55bccd9 flags:# file:InputFile
-                // mime_type:string attributes:Vector<DocumentAttribute>
-                w.write_u32(0xc55bccd9);
-                w.write_i32(0); // flags (no nosound/video/force-file)
+                // inputMediaUploadedDocument#37c9330 (live ctor) flags:#
+                //   file:InputFile thumb:flags.2?InputFile mime_type:string
+                //   attributes:Vector<DocumentAttribute> ttl_seconds:flags.1?int …
+                // (the old #c55bccd9 shape is rejected with
+                //  INPUT_CONSTRUCTOR_INVALID_C55BCCD9)
+                w.write_u32(0x37c9330);
+                w.write_i32(0); // flags (no thumb/ttl/…)
                 input_file.write_to(w);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
                 w.write_bytes(mime.essence_str().as_bytes());

@@ -1088,7 +1088,7 @@ impl Client {
     pub(crate) async fn resolve_peer(&mut self, peer: &str) -> Result<InputPeer> {
         if let Ok(id) = peer.parse::<i64>() {
             if id > 0 {
-                Ok(InputPeer::UserFromId { user_id: UserId(id) })
+                Ok(InputPeer::User { user_id: UserId(id), access_hash: AccessHash(0) })
             } else if id == i64::MIN {
                 Err(Error::Other("invalid chat id".into()))
             } else if format!("{id}").starts_with("-100") {
@@ -1394,7 +1394,6 @@ impl Client {
 /// Debug label for an input peer (used in tracing fields).
 fn peer_debug(peer: &InputPeer) -> String {
     match peer {
-        InputPeer::UserFromId { user_id } => format!("user:{}", user_id.0),
         InputPeer::User { user_id, .. } => format!("user:{}", user_id.0),
         InputPeer::Chat { chat_id } => format!("chat:{}", chat_id.0),
         InputPeer::Channel { channel_id, .. } => format!("channel:{}", channel_id.0),
@@ -1508,7 +1507,7 @@ mod tests {
         let mut client = Client::builder().build().unwrap();
         let peer = client.resolve_peer("12345").await.unwrap();
         match peer {
-            InputPeer::UserFromId { user_id } => assert_eq!(user_id.0, 12345),
+            InputPeer::User { user_id, .. } => assert_eq!(user_id.0, 12345),
             _ => panic!("expected UserFromId"),
         }
     }
@@ -1545,7 +1544,7 @@ mod tests {
         // users: one
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1);
-        w.write_u32(types::USER);
+        w.write_u32(types::USER_ID);
         w.write_i32((1 << 0) | (1 << 1));
         w.write_i32(0); // flags2
         w.write_i64(4242);
@@ -1582,7 +1581,9 @@ mod tests {
         w.write_i32(1); // count
         // dialogs:Vector<Dialog> — dialogs come FIRST
         w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(1);
+        w.write_i32(2);
+        // dialog 1: plain (no pts, no draft)
+        w.write_u32(0xfc89f7f3); // dialog#fc89f7f3 ctor
         w.write_i32(0); // flags
         w.write_u32(types::PEER_USER);
         w.write_i64(42); // peer.user_id
@@ -1592,12 +1593,32 @@ mod tests {
         w.write_i32(1); // unread_count
         w.write_i32(0); // unread_mentions_count
         w.write_i32(0); // unread_reactions_count
-        w.write_i32(0); // unread_poll_votes_count
+        w.write_i32(0); // unread_poll_votes_count (live wire field)
         w.write_u32(types::PEER_NOTIFY_SETTINGS); // notify_settings
         w.write_i32(0); // settings flags (all conditionals clear)
-        // (dialog pts flags.0 is clear → no extra word)
+        // dialog 2: pts present (flags.0) + draft present (flags.1)
+        w.write_u32(0xfc89f7f3);
+        w.write_i32(0b11); // flags: pts + draft
+        w.write_u32(types::PEER_CHAT);
+        w.write_i64(43); // peer.chat_id
+        w.write_i32(11); // top_message
+        w.write_i32(11); // read_inbox_max_id
+        w.write_i32(11); // read_outbox_max_id
+        w.write_i32(0); // unread_count
+        w.write_i32(0); // unread_mentions_count
+        w.write_i32(0); // unread_reactions_count
+        w.write_i32(0); // unread_poll_votes_count
+        w.write_u32(types::PEER_NOTIFY_SETTINGS); // notify_settings
+        w.write_i32(0); // settings flags
+        w.write_i32(77); // pts (flags.0)
+        // draftMessageEmpty#1b0c841a flags:# date:flags.0?int — the draft
+        // shape the live server sends in getDialogs responses
+        w.write_u32(0x1b0c841a);
+        w.write_i32(0); // draft flags (no date)
         // messages:Vector<Message> — one empty message
-        // (messageEmpty#90a6ca84 flags:int id:int)
+        // (messageEmpty#90a6ca84 flags:int id:int). Forwarded / reacted /
+        // replied messages are covered by the live-payload runs; the
+        // fixture keeps to the empty shape.
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1);
         w.write_u32(types::MESSAGE_EMPTY);
@@ -1610,10 +1631,14 @@ mod tests {
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(0);
 
-        let dialogs = Client::parse_dialogs(&w.into_bytes()).unwrap();
-        assert_eq!(dialogs.dialogs.len(), 1);
+        let dialogs = match Client::parse_dialogs(&w.into_bytes()) {
+            Ok(d) => d,
+            Err(e) => panic!("parse_dialogs failed: {e}"),
+        };
+        assert_eq!(dialogs.dialogs.len(), 2);
         assert_eq!(dialogs.dialogs[0].peer, types::Peer::User { user_id: UserId(42) });
         assert_eq!(dialogs.dialogs[0].top_message, MsgId(10));
+        assert_eq!(dialogs.dialogs[1].pts, Some(77));
         assert_eq!(dialogs.messages.len(), 1);
     }
 
@@ -1635,7 +1660,7 @@ mod tests {
         // users:Vector<User>
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1);
-        w.write_u32(types::USER);
+        w.write_u32(types::USER_ID);
         w.write_i32((1 << 0) | (1 << 3)); // access_hash + username
         w.write_i32(0); // flags2
         w.write_i64(4242); // id

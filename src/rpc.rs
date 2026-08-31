@@ -815,6 +815,10 @@ pub fn build_get_channel_difference(
     // flags:int = 0 (no force)
     w.write_i32(0);
     channel.write_to(&mut w);
+    // filter:ChannelMessagesFilter — channelMessagesFilterEmpty#94d42ee7
+    // (the field is unconditional; omitting it made the server read pts
+    // as the filter constructor → INPUT_CONSTRUCTOR_INVALID_01)
+    w.write_u32(0x94d42ee7);
     w.write_i32(pts);
     w.write_i32(limit);
     w.into_bytes()
@@ -896,14 +900,15 @@ mod tests {
 
     #[test]
     fn test_build_send_message() {
-        let peer = InputPeer::UserFromId { user_id: UserId(123) };
+        let peer = InputPeer::User { user_id: UserId(123), access_hash: AccessHash(0) };
         let payload = build_send_message(&peer, "hello", None, None);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MESSAGE);
         let flags = r.read_i32().unwrap();
         assert_eq!(flags, 0);
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 123);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "hello");
         // random_id (i64) must be present
         let _random_id = r.read_i64().unwrap();
@@ -913,13 +918,14 @@ mod tests {
     fn test_build_send_message_reply_layout() {
         // reply_to must sit between peer and message, serialized as
         // inputReplyToMessage#869fbe10 flags:# reply_to_msg_id:int
-        let peer = InputPeer::UserFromId { user_id: UserId(1) };
+        let peer = InputPeer::User { user_id: UserId(1), access_hash: AccessHash(0) };
         let payload = build_send_message(&peer, "hi", Some(42), None);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MESSAGE);
         assert_eq!(r.read_i32().unwrap(), 1 << 0); // reply_to flag
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(r.read_u32().unwrap(), INPUT_REPLY_TO_MESSAGE);
         assert_eq!(r.read_i32().unwrap(), 0); // inner flags
         assert_eq!(r.read_i32().unwrap(), 42); // reply_to_msg_id
@@ -1007,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_build_search() {
-        let peer = InputPeer::UserFromId { user_id: UserId(1) };
+        let peer = InputPeer::User { user_id: UserId(1), access_hash: AccessHash(0) };
         let payload = build_search(&peer, "hello", 10);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEARCH);
@@ -1026,7 +1032,7 @@ mod tests {
 
     #[test]
     fn test_build_send_media_layout() {
-        let peer = InputPeer::UserFromId { user_id: UserId(7) };
+        let peer = InputPeer::User { user_id: UserId(7), access_hash: AccessHash(0) };
         let media = InputMedia::Contact {
             phone_number: "+15551234".into(),
             first_name: "A".into(),
@@ -1038,8 +1044,9 @@ mod tests {
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MEDIA);
         let flags = r.read_i32().unwrap();
         assert_eq!(flags, (1 << 0) | (1 << 5) | (1 << 7) | (1 << 10));
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 7);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         // reply_to
         assert_eq!(r.read_u32().unwrap(), INPUT_REPLY_TO_MESSAGE);
         assert_eq!(r.read_i32().unwrap(), 0);
@@ -1058,14 +1065,15 @@ mod tests {
 
     #[test]
     fn test_build_send_media_geo_point_uses_double() {
-        let peer = InputPeer::UserFromId { user_id: UserId(1) };
+        let peer = InputPeer::User { user_id: UserId(1), access_hash: AccessHash(0) };
         let media = InputMedia::GeoPoint { lat: 1.5, long: -2.5 };
         let payload = build_send_media(&peer, &media, "", None, false, false, None);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MEDIA);
         assert_eq!(r.read_i32().unwrap(), 0);
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(r.read_u32().unwrap(), INPUT_MEDIA_GEO_POINT);
         assert_eq!(r.read_i32().unwrap(), 0); // inner flags (no accuracy_radius)
         let lat = f64::from_bits(r.read_u64().unwrap());
@@ -1078,7 +1086,7 @@ mod tests {
 
     #[test]
     fn test_build_send_multi_media_layout() {
-        let peer = InputPeer::UserFromId { user_id: UserId(3) };
+        let peer = InputPeer::User { user_id: UserId(3), access_hash: AccessHash(0) };
         let items = vec![
             InputSingleMedia { media: InputMedia::Empty, message: "one".into() },
             InputSingleMedia { media: InputMedia::Empty, message: "two".into() },
@@ -1087,8 +1095,9 @@ mod tests {
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MULTI_MEDIA);
         assert_eq!(r.read_i32().unwrap(), 0); // flags
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 3);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(r.read_u32().unwrap(), VECTOR);
         assert_eq!(r.read_i32().unwrap(), 2);
         for want in ["one", "two"] {
@@ -1102,13 +1111,14 @@ mod tests {
 
     #[test]
     fn test_build_delete_history_layout() {
-        let peer = InputPeer::UserFromId { user_id: UserId(9) };
+        let peer = InputPeer::User { user_id: UserId(9), access_hash: AccessHash(0) };
         let payload = build_delete_history(&peer, 77, false, true);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), MESSAGES_DELETE_HISTORY);
         assert_eq!(r.read_i32().unwrap(), 1 << 1); // revoke
-        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER_FROM_ID);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
         assert_eq!(r.read_i64().unwrap(), 9);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(r.read_i32().unwrap(), 77); // max_id
         // min_date/max_date omitted (flags unset)
     }
@@ -1239,12 +1249,13 @@ mod tests {
 
     #[test]
     fn test_build_get_user_photos_layout() {
-        let user = InputUser::FromId { user_id: UserId(8) };
+        let user = InputUser::User { user_id: UserId(8), access_hash: AccessHash(0) };
         let payload = build_get_user_photos(&user, 4, 999, 10);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), PHOTOS_GET_USER_PHOTOS);
-        assert_eq!(r.read_u32().unwrap(), INPUT_USER_FROM_ID);
-        assert_eq!(r.read_i64().unwrap(), 8);
+        assert_eq!(r.read_u32().unwrap(), INPUT_USER);
+        assert_eq!(r.read_i64().unwrap(), 8); // user_id
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
         assert_eq!(r.read_i32().unwrap(), 4);
         assert_eq!(r.read_i64().unwrap(), 999);
         assert_eq!(r.read_i32().unwrap(), 10);
