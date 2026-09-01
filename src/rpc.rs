@@ -34,24 +34,25 @@ use crate::types::{
     CHANNELS_LEAVE_CHANNEL, CONTACTS_RESOLVE_PHONE, CONTACTS_RESOLVE_USERNAME, CONTACTS_SEARCH,
     DOCUMENT_ATTRIBUTE_FILENAME, Dialog, Dialogs, FileLocation, HELP_GET_CONFIG,
     HELP_GET_NEAREST_DC, INPUT_MEDIA_CONTACT, INPUT_MEDIA_EMPTY, INPUT_MEDIA_GEO_POINT,
-    INPUT_MEDIA_UPLOADED_DOCUMENT, INPUT_MEDIA_UPLOADED_PHOTO, INPUT_PHOTO, INPUT_REPLY_TO_MESSAGE,
-    INPUT_SINGLE_MEDIA, INPUT_WEB_FILE_LOCATION, InputChannel, InputPeer, InputUser,
-    MESSAGES_DELETE_HISTORY, MESSAGES_DELETE_MESSAGES, MESSAGES_DIALOGS, MESSAGES_DIALOGS_SLICE,
-    MESSAGES_EDIT_CHAT_ABOUT, MESSAGES_EDIT_MESSAGE, MESSAGES_FORWARD_MESSAGES,
-    MESSAGES_GET_BOT_CALLBACK_ANSWER, MESSAGES_GET_DIALOGS, MESSAGES_GET_HISTORY,
-    MESSAGES_GET_MESSAGES, MESSAGES_IMPORT_CHAT_INVITE, MESSAGES_READ_HISTORY, MESSAGES_SEARCH,
-    MESSAGES_SEND_MEDIA, MESSAGES_SEND_MESSAGE, MESSAGES_SEND_MULTI_MEDIA, MESSAGES_SET_TYPING,
-    MESSAGES_UPDATE_PINNED_MESSAGE, MsgId, PHOTOS_DELETE_PHOTOS, PHOTOS_GET_USER_PHOTOS,
-    PHOTOS_UPDATE_PROFILE_PHOTO, PHOTOS_UPLOAD_PROFILE_PHOTO, SEND_MESSAGE_CANCEL_ACTION,
-    SEND_MESSAGE_CHOOSE_CONTACT_ACTION, SEND_MESSAGE_CHOOSE_STICKER_ACTION,
-    SEND_MESSAGE_GAME_PLAY_ACTION, SEND_MESSAGE_GEO_LOCATION_ACTION,
-    SEND_MESSAGE_RECORD_AUDIO_ACTION, SEND_MESSAGE_RECORD_ROUND_ACTION,
-    SEND_MESSAGE_RECORD_VIDEO_ACTION, SEND_MESSAGE_TYPING_ACTION, SEND_MESSAGE_UPLOAD_AUDIO_ACTION,
-    SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION, SEND_MESSAGE_UPLOAD_PHOTO_ACTION,
-    SEND_MESSAGE_UPLOAD_ROUND_ACTION, SEND_MESSAGE_UPLOAD_VIDEO_ACTION,
-    SPEAKING_IN_GROUP_CALL_ACTION, UPDATES_GET_CHANNEL_DIFFERENCE, UPDATES_GET_DIFFERENCE,
-    UPDATES_GET_STATE, UPLOAD_GET_CDN_FILE, UPLOAD_GET_FILE, UPLOAD_GET_WEB_FILE,
-    UPLOAD_SAVE_BIG_FILE_PART, UPLOAD_SAVE_FILE_PART, USERS_GET_FULL_USER, USERS_GET_USERS, VECTOR,
+    INPUT_MEDIA_UPLOADED_DOCUMENT, INPUT_MEDIA_UPLOADED_PHOTO, INPUT_MESSAGE_ID, INPUT_PHOTO,
+    INPUT_REPLY_TO_MESSAGE, INPUT_SINGLE_MEDIA, INPUT_WEB_FILE_LOCATION, InputChannel, InputPeer,
+    InputUser, MESSAGES_DELETE_HISTORY, MESSAGES_DELETE_MESSAGES, MESSAGES_DIALOGS,
+    MESSAGES_DIALOGS_SLICE, MESSAGES_EDIT_CHAT_ABOUT, MESSAGES_EDIT_MESSAGE,
+    MESSAGES_FORWARD_MESSAGES, MESSAGES_GET_BOT_CALLBACK_ANSWER, MESSAGES_GET_DIALOGS,
+    MESSAGES_GET_HISTORY, MESSAGES_GET_MESSAGES, MESSAGES_IMPORT_CHAT_INVITE,
+    MESSAGES_READ_HISTORY, MESSAGES_SEARCH, MESSAGES_SEND_MEDIA, MESSAGES_SEND_MESSAGE,
+    MESSAGES_SEND_MULTI_MEDIA, MESSAGES_SET_TYPING, MESSAGES_UPDATE_PINNED_MESSAGE, MsgId,
+    PHOTOS_DELETE_PHOTOS, PHOTOS_GET_USER_PHOTOS, PHOTOS_UPDATE_PROFILE_PHOTO,
+    PHOTOS_UPLOAD_PROFILE_PHOTO, SEND_MESSAGE_CANCEL_ACTION, SEND_MESSAGE_CHOOSE_CONTACT_ACTION,
+    SEND_MESSAGE_CHOOSE_STICKER_ACTION, SEND_MESSAGE_GAME_PLAY_ACTION,
+    SEND_MESSAGE_GEO_LOCATION_ACTION, SEND_MESSAGE_RECORD_AUDIO_ACTION,
+    SEND_MESSAGE_RECORD_ROUND_ACTION, SEND_MESSAGE_RECORD_VIDEO_ACTION, SEND_MESSAGE_TYPING_ACTION,
+    SEND_MESSAGE_UPLOAD_AUDIO_ACTION, SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION,
+    SEND_MESSAGE_UPLOAD_PHOTO_ACTION, SEND_MESSAGE_UPLOAD_ROUND_ACTION,
+    SEND_MESSAGE_UPLOAD_VIDEO_ACTION, SPEAKING_IN_GROUP_CALL_ACTION,
+    UPDATES_GET_CHANNEL_DIFFERENCE, UPDATES_GET_DIFFERENCE, UPDATES_GET_STATE, UPLOAD_GET_CDN_FILE,
+    UPLOAD_GET_FILE, UPLOAD_GET_WEB_FILE, UPLOAD_SAVE_BIG_FILE_PART, UPLOAD_SAVE_FILE_PART,
+    USERS_GET_FULL_USER, USERS_GET_USERS, VECTOR,
 };
 
 // ===========================================================================
@@ -188,21 +189,25 @@ pub fn build_get_history(
 }
 
 /// Build `messages.getMessages` payload.
+///
+/// The modern ctor takes `Vector<InputMessage>` — each id wrapped in
+/// `inputMessageID#a676a322` — not the bare `Vector<int>` of the
+/// pre-`#63c66506` shape.
 #[must_use]
 pub fn build_get_messages(msg_ids: &[MsgId]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MESSAGES_GET_MESSAGES);
-    // Vector<int> of message IDs
     w.write_u32(TL_VECTOR);
     w.write_i32(msg_ids.len() as i32);
     for id in msg_ids {
+        w.write_u32(INPUT_MESSAGE_ID);
         w.write_i32(id.0 as i32);
     }
     w.into_bytes()
 }
 
-/// Build `channels.getMessages` payload (legacy ctor `#e5906e3f` with
-/// `Vector<int>` ids — see [`crate::types::CHANNELS_GET_MESSAGES`]).
+/// Build `channels.getMessages` payload (ctor `#ad8c9a23`, ids wrapped in
+/// `inputMessageID` — see [`crate::types::CHANNELS_GET_MESSAGES`]).
 ///
 /// Plain `messages.getMessages` answers `CHANNEL_INVALID` for channel
 /// peers, so fetching messages by id must route on the peer type.
@@ -211,16 +216,17 @@ pub fn build_channels_get_messages(channel: &InputChannel, msg_ids: &[MsgId]) ->
     let mut w = TLWriter::new();
     w.write_u32(CHANNELS_GET_MESSAGES);
     channel.write_to(&mut w);
-    // Vector<int> of message IDs
+    // Vector<InputMessage>, each element inputMessageID#a676a322 id:int
     w.write_u32(TL_VECTOR);
     w.write_i32(msg_ids.len() as i32);
     for id in msg_ids {
+        w.write_u32(INPUT_MESSAGE_ID);
         w.write_i32(id.0 as i32);
     }
     w.into_bytes()
 }
 
-/// Build `channels.deleteMessages` payload (legacy ctor `#84c1f4e6`,
+/// Build `channels.deleteMessages` payload (ctor `#84c1fd4e`,
 /// no flags word — see [`crate::types::CHANNELS_DELETE_MESSAGES`]).
 #[must_use]
 pub fn build_channels_delete_messages(channel: &InputChannel, msg_ids: &[MsgId]) -> Vec<u8> {
@@ -1454,9 +1460,25 @@ mod tests {
         assert_eq!(r.read_i64().unwrap(), 12);
         assert_eq!(r.read_i64().unwrap(), 34);
         assert_eq!(r.read_u32().unwrap(), VECTOR);
+        // Vector<InputMessage>, each inputMessageID#a676a322 id:int
         assert_eq!(r.read_i32().unwrap(), 2);
+        assert_eq!(r.read_u32().unwrap(), INPUT_MESSAGE_ID);
         assert_eq!(r.read_i32().unwrap(), 1);
+        assert_eq!(r.read_u32().unwrap(), INPUT_MESSAGE_ID);
         assert_eq!(r.read_i32().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_build_get_messages_wraps_ids_as_input_message() {
+        let payload = build_get_messages(&[MsgId(5), MsgId(6)]);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_GET_MESSAGES);
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 2);
+        assert_eq!(r.read_u32().unwrap(), INPUT_MESSAGE_ID);
+        assert_eq!(r.read_i32().unwrap(), 5);
+        assert_eq!(r.read_u32().unwrap(), INPUT_MESSAGE_ID);
+        assert_eq!(r.read_i32().unwrap(), 6);
     }
 
     #[test]
@@ -1469,7 +1491,7 @@ mod tests {
         let payload = build_channels_delete_messages(&channel, &ids);
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), CHANNELS_DELETE_MESSAGES);
-        // legacy ctor: no flags word — InputChannel follows directly
+        // no flags word — InputChannel follows directly
         assert_eq!(r.read_u32().unwrap(), INPUT_CHANNEL);
         assert_eq!(r.read_i64().unwrap(), 56);
         assert_eq!(r.read_i64().unwrap(), 78);
