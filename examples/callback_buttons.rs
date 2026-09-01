@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read the newest messages from the bot chat.
     let messages = client
         .messages(&bot)
-        .await
+        .await? // resolves the peer; `?` surfaces a bad peer
         .page_size(10)
         .collect(10)
         .await?;

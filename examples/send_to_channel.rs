@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("sent message id {:?}", msg);
 
     if let Some(path) = file {
-        let id = client.send_file(&channel_id, &path).await.send().await?;
+        let id = client.send_file(&channel_id, &path).await?.send().await?;
         println!("sent file {:?} as message id {:?}", path, id);
     }
 

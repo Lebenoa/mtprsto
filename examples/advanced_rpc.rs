@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let first = client.send("@lebenoa", "step 1 (ordered)").await?;
     let _second = client
         .message("@lebenoa", "step 2 (after step 1 was processed)")
-        .await
+        .await? // resolves the peer; `?` surfaces a bad peer
         .after_msg(first)
         .send()
         .await?;
@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    the update stream — useful for fire-and-forget logging calls.
     let _ = client
         .message("@lebenoa", "this send had no update push")
-        .await
+        .await?
         .without_updates()
         .send()
         .await?;

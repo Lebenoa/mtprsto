@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Upload with 4 parallel workers and send it as a document.
     let msg_id = client
         .send_file(&peer, &path)
-        .await
+        .await? // resolves the peer; `?` surfaces a bad peer
         .caption("uploaded by mtprsto")
         .workers(4)
         .send()
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // location and size, then download through the configured parallelism.
     let messages = client
         .messages(&peer)
-        .await
+        .await? // resolves the peer
         .page_size(10)
         .collect(10)
         .await?;

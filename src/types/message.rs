@@ -116,6 +116,17 @@ impl Message {
         }
     }
 
+    /// The photo behind the message, when it carries one (non-empty).
+    #[must_use]
+    pub fn photo(&self) -> Option<Photo> {
+        match self.media() {
+            Some(MessageMedia::Photo {
+                photo: p @ Photo::Photo { .. },
+            }) => Some(p.clone()),
+            _ => None,
+        }
+    }
+
     /// # Errors
     ///
     /// Forwards [`Error::Serialization`] from [`Self::read_from`].

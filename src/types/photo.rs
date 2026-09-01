@@ -24,6 +24,17 @@ pub enum FileLocation {
         thumb_size: String,
         dc_id: i32,
     },
+    /// Photo download location, synthesized from a `photo#fb197a65`
+    /// (`inputFileLocation#dfdaabe1` on the wire): `thumb_size` selects
+    /// the size variant, `size` is the expected byte length.
+    Photo {
+        id: i64,
+        access_hash: i64,
+        reference: Vec<u8>,
+        thumb_size: String,
+        size: i64,
+        dc_id: i32,
+    },
     Web {
         dc_id: i32,
         url: String,

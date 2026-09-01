@@ -326,6 +326,35 @@ impl PhotoSize {
             ))),
         }
     }
+
+    /// The size's TL `type` selector string (`""` for the full-size
+    /// progressive variant, `"m"`/`"x"`/… otherwise) — the `thumb_size`
+    /// a photo download location needs.
+    pub fn type_name(&self) -> &str {
+        match self {
+            PhotoSize::PhotoPathSize { r#type, .. }
+            | PhotoSize::PhotoSizeProgressive { r#type, .. }
+            | PhotoSize::PhotoStrippedSize { r#type, .. }
+            | PhotoSize::PhotoCachedSize { r#type, .. }
+            | PhotoSize::PhotoSize { r#type, .. }
+            | PhotoSize::PhotoSizeEmpty { r#type } => r#type,
+        }
+    }
+
+    /// Downloadable byte length of this size variant: `photoSize.size`,
+    /// the byte payload of `photoCachedSize`, and the max entry of the
+    /// progressive `sizes` list. `None` for stripped/path/empty variants
+    /// (those are previews, not downloadable files).
+    pub fn size_bytes(&self) -> Option<i64> {
+        match self {
+            PhotoSize::PhotoSize { size, .. } => Some(*size as i64),
+            PhotoSize::PhotoCachedSize { bytes, .. } => Some(bytes.len() as i64),
+            PhotoSize::PhotoSizeProgressive { sizes, .. } => sizes.iter().max().map(|&s| s as i64),
+            PhotoSize::PhotoPathSize { .. }
+            | PhotoSize::PhotoStrippedSize { .. }
+            | PhotoSize::PhotoSizeEmpty { .. } => None,
+        }
+    }
 }
 
 /// Union `Photo` (2 constructors).
@@ -397,5 +426,58 @@ impl Photo {
                 "unknown Photo constructor {other:#x}"
             ))),
         }
+    }
+
+    /// Largest-photo-size picker: the variant with the greatest pixel
+    /// area that still carries a downloadable byte length
+    /// (`photoSize`, `photoSizeProgressive`, `photoCachedSize`).
+    /// `None` for `photoEmpty` or when no sized variant exists.
+    pub fn largest_size(&self) -> Option<&PhotoSize> {
+        let Photo::Photo { sizes, .. } = self else {
+            return None;
+        };
+        sizes
+            .iter()
+            .filter(|s| s.size_bytes().is_some())
+            // Pixel area for size ranking; photo dimensions fit u16 on the
+            // wire so the product cannot overflow i64.
+            .max_by_key(|s| {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    let (w, h) = {
+                        let (w, h) = s.dimensions();
+                        (i64::from(w), i64::from(h))
+                    };
+                    w * h
+                }
+            })
+    }
+
+    /// Download location for this photo at its largest available size,
+    /// synthesized from the `photo` fields (`id`, `access_hash`,
+    /// `file_reference`, `dc_id`) plus the largest size's `type` selector
+    /// and byte length — the shape `upload.getFile` expects.
+    ///
+    /// Returns `None` for `photoEmpty` or when no sized variant exists.
+    pub fn location(&self) -> Option<super::photo::FileLocation> {
+        let Photo::Photo {
+            id,
+            access_hash,
+            file_reference,
+            dc_id,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let size = self.largest_size()?;
+        Some(super::photo::FileLocation::Photo {
+            id: id.0,
+            access_hash: access_hash.0,
+            reference: file_reference.clone(),
+            thumb_size: size.type_name().to_string(),
+            size: size.size_bytes()?,
+            dc_id: *dc_id,
+        })
     }
 }

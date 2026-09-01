@@ -11,9 +11,12 @@ errors, and a pluggable session layer.
 - **Pure MTProto 2.0** — abridged/intermediate framing, obfuscated transport,
   DH key exchange, AES-256-IGE message encryption.
 - **High-level `Client`** — builder config, bot/user login, `send`,
-  `send_file`, message builder (`.reply_to().silent()`), history iterator,
-  dialogs, updates pump, callback queries, channel admin, file
-  upload/download, raw invoke.
+  `send_file` (documents and compressed photos), message builder
+  (`.reply_to().silent().no_webpage()`), file builder (`.as_photo()
+  .caption().reply_to().silent()`), history iterator, dialogs, updates
+  pump, callback queries, channel admin, `forward_messages`, `set_typing`,
+  `pin_message`, `join_channel` / `import_chat_invite`, file
+  upload/download, raw invoke, and typed `invoke::<T>()` decoding.
 - **SenderPool** — multi-connection pool (1 main + aux, adaptive scaling),
   batched acks (≥16 pending or 10 s), ping/pong keepalive with silent-
   disconnect reconnect, transparent bad-server-salt retry, periodic salt
@@ -24,6 +27,12 @@ errors, and a pluggable session layer.
   and the whole peer-resolution surface accept `-100…` strings; the access
   hash is resolved from the persisted session cache or a `channels.getChannels`
   bootstrap and cached automatically.
+- **Peer-safe fluent builders** — `client.message(...)`, `send_file(...)`,
+  and `messages(...)` return `Result` builders: an unresolvable peer
+  surfaces as an `Err` through `?` instead of a panic.
+- **Photo ergonomics** — `Photo::largest_size()` / `Photo::location()`
+  produce a ready-to-download `FileLocation`, and `Message::photo()`
+  pulls the photo out of a message in one call.
 - **WebSocket fallback** (optional `ws` feature) — `TransportPolicy::Auto`
   switches new connections to `wss://` after 2 TCP failures on a DC within
   5 minutes, and returns to TCP once it works again. Default is TCP-only;

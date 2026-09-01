@@ -35,8 +35,8 @@ use crate::session::{SessionData, SessionStorage, SessionStore};
 use crate::types::{
     self, AccessHash, CONTACTS_FOUND, CONTACTS_RESOLVE_USERNAME, CONTACTS_RESOLVED_PEER, ChannelId,
     Chat, ChatId, Dialogs, INPUT_PEER_EMPTY, INPUT_USER_SELF, InputChannel, InputPeer,
-    MESSAGES_DELETE_MESSAGES, MESSAGES_GET_DIALOGS, MESSAGES_SEND_MESSAGE, MsgId, State,
-    USERS_GET_FULL_USER, User, UserId,
+    MESSAGES_DELETE_MESSAGES, MESSAGES_GET_DIALOGS, MsgId, State, USERS_GET_FULL_USER, User,
+    UserId,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -581,25 +581,11 @@ impl Client {
     /// Returns an error when the RPC fails or the response is not a
     /// recognizable sent-message update.
     pub async fn send_to_peer(&self, input_peer: &InputPeer, text: &str) -> Result<MsgId> {
-        let result = self
-            .invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
-                // messages.sendMessage#545cd15a flags:# ... peer:InputPeer
-                // reply_to:flags.0?InputReplyTo message:string random_id:long ...
-                let flags: i32 = 0;
-                w.write_i32(flags);
-
-                // Write the input peer
-                input_peer.write_to(w);
-                // Message text
-                w.write_bytes(text.as_bytes());
-
-                // random_id:long (required by layer 223)
-                w.write_i64(rand::random::<i64>());
-
-                // reply_markup (none)
-                Ok(())
-            })
-            .await?;
+        // Shared rpc builder — same wire shape as the fluent
+        // MessageBuilder path (flags + peer + message + random_id), so
+        // the two send paths cannot drift.
+        let payload = rpc::build_send_message(input_peer, text, None, None);
+        let result = self.invoke_raw(payload).await?;
 
         if std::env::var("MTPRSTO_DEBUG").is_ok() {
             // debug-only dump of the raw response prefix; any RPC payload
@@ -1758,58 +1744,62 @@ impl Client {
     }
 
     /// Start a fluent message build:
-    /// `client.message(peer, "hi").reply_to(id).silent().send().await?`.
+    /// `client.message(peer, "hi")?.reply_to(id).silent().send().await?`.
     ///
     /// `peer` accepts the same forms as [`Client::send`] (numeric id or
     /// `@username`).
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics when the peer cannot be resolved: fluent builders have no
-    /// error channel before send, so a bad peer is a caller bug surfaced
-    /// as a fail-fast panic.
-    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
+    /// Returns the peer-resolution error when `peer` cannot be resolved
+    /// (unknown username, missing access hash); the builder itself is
+    /// returned on success so failures surface through `?` instead of a
+    /// panic.
     pub async fn message(
         &self,
         peer: &str,
         text: impl Into<String>,
-    ) -> crate::ergonomics::MessageBuilder<'_> {
-        let peer = self.resolve_peer(peer).await.expect("peer resolution");
-        crate::ergonomics::MessageBuilder::new(self, peer, text.into())
+    ) -> Result<crate::ergonomics::MessageBuilder<'_>> {
+        let peer = self.resolve_peer(peer).await?;
+        Ok(crate::ergonomics::MessageBuilder::new(
+            self,
+            peer,
+            text.into(),
+        ))
     }
 
     /// Start a fluent file send:
-    /// `client.send_file(peer, path).caption("hi").send().await?`.
+    /// `client.send_file(peer, path)?.caption("hi").send().await?`.
     ///
-    /// Uploads the file (chunked) and sends it as a document message.
+    /// Uploads the file (chunked) and sends it as a document message;
+    /// chain [`SendFileBuilder::as_photo`](crate::ergonomics::SendFileBuilder::as_photo)
+    /// to send an image as a compressed photo instead.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics when the peer cannot be resolved: fluent builders have no
-    /// error channel before send, so a bad peer is a caller bug surfaced
-    /// as a fail-fast panic.
-    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
+    /// Returns the peer-resolution error when `peer` cannot be resolved.
     pub async fn send_file(
         &self,
         peer: &str,
         path: impl Into<std::path::PathBuf>,
-    ) -> crate::ergonomics::SendFileBuilder<'_> {
-        let peer = self.resolve_peer(peer).await.expect("peer resolution");
-        crate::ergonomics::SendFileBuilder::new(self, peer, path.into())
+    ) -> Result<crate::ergonomics::SendFileBuilder<'_>> {
+        let peer = self.resolve_peer(peer).await?;
+        Ok(crate::ergonomics::SendFileBuilder::new(
+            self,
+            peer,
+            path.into(),
+        ))
     }
 
     /// Start a history iterator over a peer's recent messages:
-    /// `client.messages(peer).take(10).collect().await?`.
+    /// `client.messages(peer)?.page_size(10).collect(10).await?`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics when the peer cannot be resolved: fluent builders have no
-    /// error channel before first use, so a bad peer is a caller bug
-    /// surfaced as a fail-fast panic.
-    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
-    pub async fn messages(&self, peer: &str) -> crate::ergonomics::MessagesIter<'_> {
-        let peer = self.resolve_peer(peer).await.expect("peer resolution");
-        crate::ergonomics::MessagesIter::new(self, peer)
+    /// Returns the peer-resolution error when `peer` cannot be resolved.
+    pub async fn messages(&self, peer: &str) -> Result<crate::ergonomics::MessagesIter<'_>> {
+        let peer = self.resolve_peer(peer).await?;
+        Ok(crate::ergonomics::MessagesIter::new(self, peer))
     }
 
     /// Fetch one page of history (used by [`Client::messages`]).

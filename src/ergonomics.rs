@@ -5,7 +5,7 @@
 //! examples where a network is not required.
 
 use crate::error::{Error, Result};
-use crate::serialize::{TLReader, TLWriter};
+use crate::serialize::TLReader;
 use crate::types::{self, InputPeer, MsgId};
 
 // ===========================================================================
@@ -83,10 +83,10 @@ impl TlResult for types::User {
 }
 
 impl TlResult for types::Dialogs {
-    fn from_rpc_result(_data: &[u8]) -> Result<Self> {
-        Err(Error::Protocol(
-            "Dialogs decoding requires messages.getDialogs parse support".into(),
-        ))
+    /// Decodes `messages.Dialogs*` (dialogs/slice/notModified) via
+    /// [`types::Dialogs::parse`].
+    fn from_rpc_result(data: &[u8]) -> Result<Self> {
+        Self::parse(data)
     }
 }
 
@@ -115,7 +115,7 @@ impl TlResult for types::Difference {
 /// # async fn demo(client: Client) -> Result<()> {
 /// let id = client
 ///     .message("du_ton", "hi")
-///     .await // resolves the peer, then chain fluent setters
+///     .await? // resolves the peer; `?` surfaces a bad peer
 ///     .reply_to(MsgId(42))
 ///     .silent()
 ///     .send()
@@ -126,6 +126,7 @@ impl TlResult for types::Difference {
 ///
 /// # Errors
 ///
+/// [`crate::client::Client::message`] returns the peer-resolution error;
 /// [`MessageBuilder::send`](Self::send) returns transport/RPC errors.
 #[must_use = "a MessageBuilder does nothing until `.send()` is awaited"]
 pub struct MessageBuilder<'a> {
@@ -210,45 +211,21 @@ impl<'a> MessageBuilder<'a> {
             without_updates,
             client,
         } = self;
-        let mut flags: i32 = 0;
-        if no_webpage {
-            flags |= 1 << 1;
-        }
-        if reply_to.is_some() {
-            flags |= 1 << 0;
-        }
-        if silent {
-            flags |= 1 << 5;
-        }
-
-        let query = {
-            let mut w = TLWriter::new();
-            w.write_u32(types::MESSAGES_SEND_MESSAGE);
-            w.write_i32(flags);
-            peer.write_to(&mut w);
-            if let Some(reply_id) = reply_to {
-                // inputReplyToMessage#869fbe10
-                w.write_u32(types::INPUT_REPLY_TO_MESSAGE);
-                w.write_i32(0);
-                // MsgId values are Telegram message counters, well inside i32
-                w.write_i32(i32::try_from(reply_id).unwrap_or(i32::MAX));
-            }
-            w.write_bytes(text.as_bytes());
-            w.write_i64(rand::random::<i64>()); // random_id
-            w.into_bytes()
-        };
-        let query = match after_msg {
-            Some(after) => crate::mtproto::build_invoke_after_msg(
+        // Payload built once by the shared rpc builder — the same wire
+        // shape `Client::send` uses (flags + peer + reply_to + message +
+        // random_id), so the two paths cannot drift.
+        let mut query =
+            crate::rpc::build_send_message_full(&peer, &text, reply_to, silent, no_webpage, None);
+        // MsgId values are Telegram message counters, well inside u64.
+        if let Some(after) = after_msg {
+            query = crate::mtproto::build_invoke_after_msg(
                 u64::try_from(after).unwrap_or(u64::MAX),
                 &query,
-            ),
-            None => query,
-        };
-        let query = if without_updates {
-            crate::mtproto::build_invoke_without_updates(&query)
-        } else {
-            query
-        };
+            );
+        }
+        if without_updates {
+            query = crate::mtproto::build_invoke_without_updates(&query);
+        }
 
         let result = client.invoke_raw(query).await?;
         if std::env::var("MTPRSTO_DEBUG").is_ok() {
@@ -265,6 +242,30 @@ impl<'a> MessageBuilder<'a> {
 // ===========================================================================
 
 /// Fluent builder produced by [`crate::client::Client::send_file`].
+///
+/// By default the file is sent as a **document** (any mime type, keeps
+/// the original bytes). Call [`as_photo`](Self::as_photo) to send an
+/// image as a compressed photo instead:
+///
+/// ```no_run
+/// # use mtprsto::{client::Client, Result};
+/// # async fn demo(client: Client) -> Result<()> {
+/// client
+///     .send_file("du_ton", "cat.jpg")
+///     .await?
+///     .as_photo() // inputMediaUploadedPhoto — compressed, album-able
+///     .caption("mrrp")
+///     .send()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Peer resolution in [`crate::client::Client::send_file`] can fail
+/// before the builder exists; `.send()` itself surfaces upload/transport
+/// errors.
 #[must_use = "a SendFileBuilder does nothing until `.send()` is awaited"]
 pub struct SendFileBuilder<'a> {
     client: &'a crate::client::Client,
@@ -272,6 +273,9 @@ pub struct SendFileBuilder<'a> {
     path: std::path::PathBuf,
     caption: String,
     workers: usize,
+    as_photo: bool,
+    reply_to: Option<i64>,
+    silent: bool,
 }
 
 impl<'a> SendFileBuilder<'a> {
@@ -287,6 +291,9 @@ impl<'a> SendFileBuilder<'a> {
             path,
             caption: String::new(),
             workers: 4,
+            as_photo: false,
+            reply_to: None,
+            silent: false,
         }
     }
 
@@ -302,7 +309,30 @@ impl<'a> SendFileBuilder<'a> {
         self
     }
 
-    /// Upload the file and send it as a document message.
+    /// Send the image as a compressed **photo**
+    /// (`inputMediaUploadedPhoto`) instead of a document.
+    ///
+    /// The server re-encodes the image and it participates in photo
+    /// albums; use the default document mode to preserve exact bytes.
+    pub const fn as_photo(mut self) -> Self {
+        self.as_photo = true;
+        self
+    }
+
+    /// Make this a reply to the given message id.
+    pub const fn reply_to(mut self, msg_id: crate::types::MsgId) -> Self {
+        self.reply_to = Some(msg_id.0);
+        self
+    }
+
+    /// Deliver silently (no notification sound).
+    pub const fn silent(mut self) -> Self {
+        self.silent = true;
+        self
+    }
+
+    /// Upload the file and send it as a document (default) or photo
+    /// message.
     ///
     /// # Errors
     ///
@@ -315,42 +345,35 @@ impl<'a> SendFileBuilder<'a> {
             path,
             caption,
             workers,
+            as_photo,
+            reply_to,
+            silent,
         } = self;
         let pool = client.pool();
         let input_file = crate::file::upload_file(pool, &path, workers).await?;
 
-        // messages.sendMedia with inputMediaUploadedDocument
-        let flags: i32 = 0; // reply_to:flags.0 is never set by this builder
-
-        let result = client
-            .invoke_with_method(types::MESSAGES_SEND_MEDIA, |w| {
-                w.write_i32(flags);
-                peer.write_to(w);
-                // inputMediaUploadedDocument#37c9330 (live ctor) flags:#
-                //   file:InputFile thumb:flags.2?InputFile mime_type:string
-                //   attributes:Vector<DocumentAttribute> ttl_seconds:flags.1?int …
-                // (the old #c55bccd9 shape is rejected with
-                //  INPUT_CONSTRUCTOR_INVALID_C55BCCD9)
-                w.write_u32(0x037c_9330);
-                w.write_i32(0); // flags (no thumb/ttl/…)
-                input_file.write_to(w);
-                let mime = mime_guess::from_path(&path).first_or_octet_stream();
-                w.write_bytes(mime.essence_str().as_bytes());
-                // Vector<DocumentAttribute> with a single filename attribute
-                w.write_u32(types::VECTOR);
-                w.write_i32(1);
-                w.write_u32(types::DOCUMENT_ATTRIBUTE_FILENAME);
-                let name = path
+        let media = if as_photo {
+            crate::rpc::InputMedia::UploadedPhoto { file: input_file }
+        } else {
+            crate::rpc::InputMedia::UploadedDocument {
+                file: input_file,
+                mime_type: mime_guess::from_path(&path)
+                    .first_or_octet_stream()
+                    .essence_str()
+                    .to_string(),
+                file_name: path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .unwrap_or("file.bin");
-                w.write_bytes(name.as_bytes());
-                w.write_bytes(caption.as_bytes());
-                w.write_i64(rand::random::<i64>()); // random_id
-                Ok(())
-            })
-            .await?;
+                    .unwrap_or("file.bin")
+                    .to_string(),
+            }
+        };
+        let payload = crate::rpc::build_send_media(
+            &peer, &media, &caption, reply_to, silent, false, // clear_draft
+            None,  // schedule_date
+        );
 
+        let result = client.invoke_raw(payload).await?;
         MsgId::from_rpc_result(&result)
     }
 }

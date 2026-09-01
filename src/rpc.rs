@@ -520,6 +520,24 @@ pub fn build_get_file(location: &FileLocation, offset: i64, limit: i32) -> Vec<u
             w.write_bytes(reference);
             w.write_bytes(thumb_size.as_bytes());
         }
+        FileLocation::Photo {
+            id,
+            access_hash,
+            reference,
+            thumb_size,
+            dc_id: _,
+            size: _,
+        } => {
+            // inputFileLocation#dfdaabe1 — same wire shape as the
+            // VolumeId variant, with the photo's size selector string
+            // (""/"m"/"x"/…) as the final field.
+            w.write_u32(0xdfda_abe1); // inputFileLocation
+            w.write_i64(*id);
+            w.write_i32(0); // volume local_id — unused for photo refs
+            w.write_i64(*access_hash);
+            w.write_bytes(reference);
+            w.write_bytes(thumb_size.as_bytes());
+        }
         _ => {
             // Unsupported location type — write empty
             w.write_u32(0);
@@ -1334,8 +1352,8 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
     use crate::types::{
-        AccessHash, BOOL_TRUE, ChannelId, INPUT_CHANNEL, INPUT_PEER_CHANNEL, INPUT_PEER_EMPTY,
-        INPUT_PEER_USER, INPUT_USER, UserId,
+        AccessHash, BOOL_TRUE, ChannelId, INPUT_CHANNEL, INPUT_FILE, INPUT_MEDIA_UPLOADED_PHOTO,
+        INPUT_PEER_CHANNEL, INPUT_PEER_EMPTY, INPUT_PEER_USER, INPUT_USER, UserId,
     };
 
     #[test]
@@ -1826,5 +1844,222 @@ mod tests {
         assert_eq!(r.read_i32().unwrap(), 4);
         assert_eq!(r.read_i64().unwrap(), 999);
         assert_eq!(r.read_i32().unwrap(), 10);
+    }
+
+    #[test]
+    fn test_build_send_message_full_flags() {
+        let peer = InputPeer::User {
+            user_id: UserId(1),
+            access_hash: AccessHash(0),
+        };
+        // silent + no_webpage + reply: flags 1 | (1<<1) | (1<<5)
+        let payload = build_send_message_full(&peer, "x", Some(9), true, true, None);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MESSAGE);
+        assert_eq!(r.read_i32().unwrap(), (1 << 0) | (1 << 1) | (1 << 5));
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
+        assert_eq!(r.read_u32().unwrap(), INPUT_REPLY_TO_MESSAGE);
+        assert_eq!(r.read_i32().unwrap(), 0); // inner flags
+        assert_eq!(r.read_i32().unwrap(), 9); // reply_to_msg_id
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "x");
+        let _random_id = r.read_i64().unwrap();
+        // schedule_date omitted
+    }
+
+    #[test]
+    fn test_build_send_message_delegates_to_full() {
+        let peer = InputPeer::User {
+            user_id: UserId(2),
+            access_hash: AccessHash(3),
+        };
+        // random_id differs per call — mask the 8-byte tail before
+        // comparing so only the deterministic prefix matters.
+        let mask_random = |mut p: Vec<u8>| {
+            let tail = p.len() - 8;
+            p[tail..].fill(0);
+            p
+        };
+        let simple = build_send_message(&peer, "hello", Some(7), None);
+        let full = build_send_message_full(&peer, "hello", Some(7), false, false, None);
+        assert_eq!(
+            mask_random(simple),
+            mask_random(full),
+            "build_send_message must equal the full builder"
+        );
+    }
+
+    #[test]
+    fn test_build_forward_messages_layout() {
+        let from = InputPeer::User {
+            user_id: UserId(1),
+            access_hash: AccessHash(0),
+        };
+        let to = InputPeer::Channel {
+            channel_id: ChannelId(100),
+            access_hash: AccessHash(200),
+        };
+        let ids = vec![MsgId(11), MsgId(22), MsgId(33)];
+        let payload = build_forward_messages(&from, &ids, &to, true, true, Some(44), None);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_FORWARD_MESSAGES);
+        // silent (1<<5) | top_msg_id (1<<9) | drop_author (1<<11)
+        assert_eq!(r.read_i32().unwrap(), (1 << 5) | (1 << 9) | (1 << 11));
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
+        // id:Vector<int>
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 3);
+        assert_eq!(r.read_i32().unwrap(), 11);
+        assert_eq!(r.read_i32().unwrap(), 22);
+        assert_eq!(r.read_i32().unwrap(), 33);
+        // random_id:Vector<long> — 3 values
+        assert_eq!(r.read_u32().unwrap(), VECTOR);
+        assert_eq!(r.read_i32().unwrap(), 3);
+        let _ = r.read_i64().unwrap();
+        let _ = r.read_i64().unwrap();
+        let _ = r.read_i64().unwrap();
+        // to_peer
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_CHANNEL);
+        assert_eq!(r.read_i64().unwrap(), 100);
+        assert_eq!(r.read_i64().unwrap(), 200);
+        // top_msg_id (flag set) then schedule_date (unset)
+        assert_eq!(r.read_i32().unwrap(), 44);
+    }
+
+    #[test]
+    fn test_build_set_typing_layout() {
+        let peer = InputPeer::User {
+            user_id: UserId(5),
+            access_hash: AccessHash(0),
+        };
+        let payload = build_set_typing(&peer, None, TypingAction::Typing);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_SET_TYPING);
+        assert_eq!(r.read_i32().unwrap(), 0); // no top_msg_id
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 5);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
+        assert_eq!(r.read_u32().unwrap(), SEND_MESSAGE_TYPING_ACTION);
+
+        // top_msg_id set + a progress action
+        let payload = build_set_typing(
+            &peer,
+            Some(77),
+            TypingAction::UploadDocument { progress: 42 },
+        );
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_SET_TYPING);
+        assert_eq!(r.read_i32().unwrap(), 1 << 0);
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 5);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
+        assert_eq!(r.read_i32().unwrap(), 77); // top_msg_id
+        assert_eq!(r.read_u32().unwrap(), SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION);
+        assert_eq!(r.read_i32().unwrap(), 42);
+    }
+
+    #[test]
+    fn test_build_update_pinned_message_layout() {
+        let peer = InputPeer::Channel {
+            channel_id: ChannelId(9),
+            access_hash: AccessHash(10),
+        };
+        let payload = build_update_pinned_message(&peer, MsgId(123), true, true, false);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_UPDATE_PINNED_MESSAGE);
+        // silent (1<<0) | unpin (1<<1)
+        assert_eq!(r.read_i32().unwrap(), (1 << 0) | (1 << 1));
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_CHANNEL);
+        assert_eq!(r.read_i64().unwrap(), 9);
+        assert_eq!(r.read_i64().unwrap(), 10);
+        assert_eq!(r.read_i32().unwrap(), 123);
+    }
+
+    #[test]
+    fn test_build_join_and_import_invite_layout() {
+        let channel = InputChannel::Channel {
+            channel_id: ChannelId(31),
+            access_hash: AccessHash(41),
+        };
+        let payload = build_join_channel(&channel);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), CHANNELS_JOIN_CHANNEL);
+        assert_eq!(r.read_u32().unwrap(), INPUT_CHANNEL);
+        assert_eq!(r.read_i64().unwrap(), 31);
+        assert_eq!(r.read_i64().unwrap(), 41);
+
+        let payload = build_import_chat_invite("aBcD1234");
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_IMPORT_CHAT_INVITE);
+        assert_eq!(
+            String::from_utf8(r.read_bytes().unwrap()).unwrap(),
+            "aBcD1234"
+        );
+    }
+
+    #[test]
+    fn test_build_get_file_photo_location_layout() {
+        let loc = FileLocation::Photo {
+            id: 555,
+            access_hash: 666,
+            reference: vec![7, 8],
+            thumb_size: "x".into(),
+            size: 12345,
+            dc_id: 2,
+        };
+        let payload = build_get_file(&loc, 4096, 1024 * 1024);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), UPLOAD_GET_FILE);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags
+        // inputFileLocation#dfdaabe1: id, volume_local_id, access_hash,
+        // file_reference, thumb_size
+        assert_eq!(r.read_u32().unwrap(), 0xdfda_abe1);
+        assert_eq!(r.read_i64().unwrap(), 555);
+        assert_eq!(r.read_i32().unwrap(), 0); // local_id placeholder
+        assert_eq!(r.read_i64().unwrap(), 666);
+        assert_eq!(r.read_bytes().unwrap(), vec![7, 8]);
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "x");
+        assert_eq!(r.read_i64().unwrap(), 4096);
+        assert_eq!(r.read_i32().unwrap(), 1024 * 1024);
+    }
+
+    #[test]
+    fn test_build_send_media_uploaded_photo_layout() {
+        use crate::types::InputFile as TlInputFile;
+        let peer = InputPeer::User {
+            user_id: UserId(1),
+            access_hash: AccessHash(0),
+        };
+        let media = InputMedia::UploadedPhoto {
+            file: TlInputFile::Id {
+                id: 77,
+                parts: 1,
+                name: "cat.jpg".into(),
+                md5_checksum: String::new(),
+            },
+        };
+        let payload = build_send_media(&peer, &media, "mrrp", None, false, false, None);
+        let mut r = TLReader::new(&payload);
+        assert_eq!(r.read_u32().unwrap(), MESSAGES_SEND_MEDIA);
+        assert_eq!(r.read_i32().unwrap(), 0); // flags
+        assert_eq!(r.read_u32().unwrap(), INPUT_PEER_USER);
+        assert_eq!(r.read_i64().unwrap(), 1);
+        assert_eq!(r.read_i64().unwrap(), 0); // access_hash
+        // inputMediaUploadedPhoto#7d8375da flags + InputFile
+        assert_eq!(r.read_u32().unwrap(), INPUT_MEDIA_UPLOADED_PHOTO);
+        assert_eq!(r.read_i32().unwrap(), 0); // media flags
+        assert_eq!(r.read_u32().unwrap(), INPUT_FILE);
+        assert_eq!(r.read_i64().unwrap(), 77);
+        assert_eq!(r.read_i32().unwrap(), 1);
+        assert_eq!(
+            String::from_utf8(r.read_bytes().unwrap()).unwrap(),
+            "cat.jpg"
+        );
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "");
+        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "mrrp");
+        let _random_id = r.read_i64().unwrap();
     }
 }

@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Fluent builder: reply to it, silently, without a link preview.
     let reply = client
         .message(&peer, "got it")
-        .await
+        .await? // resolves the peer; `?` surfaces a bad peer
         .reply_to(msg_id)
         .silent()
         .no_webpage()

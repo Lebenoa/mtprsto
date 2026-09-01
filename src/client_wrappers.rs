@@ -14,7 +14,7 @@ use crate::types::{
     Chat, ChatId, InputChannel, InputPeer, InputUser, MESSAGES_AFFECTED_HISTORY,
     MESSAGES_AFFECTED_MESSAGES, MESSAGES_BOT_CALLBACK_ANSWER, MESSAGES_CHANNEL_MESSAGES,
     MESSAGES_MESSAGES, MESSAGES_MESSAGES_NOT_MODIFIED, MESSAGES_MESSAGES_SLICE, Message, MsgId,
-    PHOTOS_UPLOAD_PROFILE_PHOTO, Peer, User,
+    PHOTOS_UPLOAD_PROFILE_PHOTO, Peer, Updates, User,
 };
 
 use crate::client::Client;
@@ -338,6 +338,151 @@ impl Client {
         let payload = rpc::build_search(&input_peer, query, limit);
         let result = self.invoke_raw(payload).await?;
         messages_from_container(&result)
+    }
+
+    /// Forward messages from one peer to another.
+    ///
+    /// Returns the new message id in the destination when the answer
+    /// carries one (the server replies with an Updates container; a
+    /// `updateShortSentMessage`-style answer yields the id directly).
+    ///
+    /// With `drop_author` the messages lose their original sender
+    /// footer; with `silent` no notification is raised.
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure (`MESSAGE_ID_INVALID`,
+    /// `CHAT_FORWARDS_RESTRICTED` for protected chats, …).
+    #[tracing::instrument(name = "mtprsto::forward_messages", skip(self, msg_ids), err)]
+    pub async fn forward_messages(
+        &self,
+        from_peer: &str,
+        msg_ids: &[MsgId],
+        to_peer: &str,
+        drop_author: bool,
+        silent: bool,
+    ) -> Result<Option<MsgId>> {
+        let from = self.resolve_peer(from_peer).await?;
+        let to = self.resolve_peer(to_peer).await?;
+        let payload =
+            rpc::build_forward_messages(&from, msg_ids, &to, drop_author, silent, None, None);
+        let result = self.invoke_raw(payload).await?;
+        let updates = Updates::parse(&result)?;
+        Ok(updates.message_id())
+    }
+
+    /// Broadcast a chat action ("typing…", upload progress, …) in
+    /// `peer`. The indicator fades client-side after ~5s; call with
+    /// [`rpc::TypingAction::Cancel`] to stop it immediately.
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure.
+    #[tracing::instrument(name = "mtprsto::set_typing", skip(self), err)]
+    pub async fn set_typing(
+        &self,
+        peer: &str,
+        top_msg_id: Option<MsgId>,
+        action: rpc::TypingAction,
+    ) -> Result<()> {
+        let input_peer = self.resolve_peer(peer).await?;
+        let payload = rpc::build_set_typing(&input_peer, top_msg_id.map(|id| id.0), action);
+        let result = self.invoke_raw(payload).await?;
+        // setTyping answers Bool.
+        if result.starts_with(&crate::types::BOOL_FALSE.to_le_bytes()) {
+            return Err(Error::Protocol("setTyping returned boolFalse".into()));
+        }
+        Ok(())
+    }
+
+    /// Pin (or unpin with `unpin = true`) a message in `peer`.
+    ///
+    /// Returns the new message id when the answer carries one.
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure (`CHAT_NOT_MODIFIED`, `MESSAGE_ID_INVALID`).
+    #[tracing::instrument(name = "mtprsto::pin_message", skip(self), err)]
+    pub async fn pin_message(
+        &self,
+        peer: &str,
+        msg_id: MsgId,
+        silent: bool,
+        unpin: bool,
+    ) -> Result<Option<MsgId>> {
+        let input_peer = self.resolve_peer(peer).await?;
+        let payload = rpc::build_update_pinned_message(&input_peer, msg_id, silent, unpin, false);
+        let result = self.invoke_raw(payload).await?;
+        let updates = Updates::parse(&result)?;
+        Ok(updates.message_id())
+    }
+
+    /// Join a public channel/supergroup by its [`InputChannel`].
+    ///
+    /// The join result carries the chat object; on success this also
+    /// persists the channel's access hash so later `-100…` id resolution
+    /// works.
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure (`CHANNEL_PRIVATE`, `USER_ALREADY_PARTICIPANT`, …).
+    #[tracing::instrument(name = "mtprsto::join_channel", skip(self, channel), err)]
+    pub async fn join_channel(&self, channel: &InputChannel) -> Result<Vec<Chat>> {
+        let payload = rpc::build_join_channel(channel);
+        let result = self.invoke_raw(payload).await?;
+        let chats = Self::chats_from_updates(&result, crate::types::CHANNELS_JOIN_CHANNEL)?;
+        for chat in &chats {
+            if let Chat::Channel {
+                id: ChatId(cid),
+                access_hash: Some(hash),
+                ..
+            } = chat
+            {
+                self.persist_peer_hash(&InputPeer::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: *hash,
+                })
+                .await;
+            }
+        }
+        Ok(chats)
+    }
+
+    /// Join a private chat/group via a `t.me/+…` or `t.me/joinchat/…`
+    /// invite hash (the part after the last `/`).
+    ///
+    /// The join result carries the chat object; on success this also
+    /// persists channel access hashes so later `-100…` id resolution
+    /// works.
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure (`INVITE_HASH_EXPIRED`,
+    /// `INVITE_HASH_INVALID`, `USER_ALREADY_PARTICIPANT`, …).
+    #[tracing::instrument(name = "mtprsto::import_chat_invite", skip(self), err)]
+    pub async fn import_chat_invite(&self, hash: &str) -> Result<Vec<Chat>> {
+        // Accept full links (`https://t.me/+HASH`, `t.me/joinchat/HASH`)
+        // as well as bare hashes.
+        let hash = hash.rsplit('/').find(|p| !p.is_empty()).unwrap_or(hash);
+        let hash = hash.trim_start_matches('+');
+        let payload = rpc::build_import_chat_invite(hash);
+        let result = self.invoke_raw(payload).await?;
+        let chats = Self::chats_from_updates(&result, crate::types::MESSAGES_IMPORT_CHAT_INVITE)?;
+        for chat in &chats {
+            if let Chat::Channel {
+                id: ChatId(cid),
+                access_hash: Some(hash),
+                ..
+            } = chat
+            {
+                self.persist_peer_hash(&InputPeer::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: *hash,
+                })
+                .await;
+            }
+        }
+        Ok(chats)
     }
 
     /// Press an inline button and fetch the bot's answer.

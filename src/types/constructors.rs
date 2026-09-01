@@ -426,6 +426,7 @@ pub const SPEAKING_IN_GROUP_CALL_ACTION: u32 = 0xd92c2285;
 pub const SEND_MESSAGE_CHOOSE_STICKER_ACTION: u32 = 0xb05ac6b1;
 /// `sendMessageHistoryImportAction#dbda9246 progress:int = SendMessageAction;`
 pub const SEND_MESSAGE_HISTORY_IMPORT_ACTION: u32 = 0xdbda9246;
+
 pub const MESSAGES_SEARCH: u32 = 0x29ee847a;
 /// `messages.affectedHistory#b45c69d1 pts:int pts_count:int offset:int`
 pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
