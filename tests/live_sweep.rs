@@ -154,26 +154,28 @@ async fn live_sweep() {
         );
     }
 
-    let pong = async {
-        let mut w = mtprsto::serialize::TLWriter::new();
-        w.write_u32(0x7abe_77ec); // ping#7abe77ec ping_id:long
-        w.write_i64(0x5ca1_ab1e);
-        let raw = client.invoke_raw(w.into_bytes()).await?;
+    // help.getConfig — the smallest real RPC that is valid inside
+    // invokeWithLayer (bare ping is transport-level and the server
+    // rejects it there with INPUT_METHOD_INVALID, which this sweep
+    // learned the hard way). Proves the full encrypt→send→decrypt loop.
+    let config = async {
+        let raw = client.invoke_raw(rpc::build_get_config()).await?;
         let ctor = u32::from_le_bytes(
             raw[..4]
                 .try_into()
-                .map_err(|_| Error::Protocol("ping answer shorter than a constructor".into()))?,
+                .map_err(|_| Error::Protocol("config answer shorter than a constructor".into()))?,
         );
-        if ctor == 0x3477_73c5 {
-            Ok("pong#347773c5".to_string())
+        // config#cc1a241e — anything else means the dialect drifted.
+        if ctor == 0xcc1a_241e {
+            Ok(format!("config#cc1a241e, {} bytes", raw.len()))
         } else {
-            Err(Error::Protocol(format!("expected pong, got {ctor:#x}")))
+            Err(Error::Protocol(format!("expected config, got {ctor:#x}")))
         }
     };
     let _ = step(
-        "ping/pong (invoke_raw round trip)",
+        "help.getConfig (invoke_raw round trip)",
         |s: &String| s.clone(),
-        pong.await,
+        config.await,
     );
 
     if !has_session {
@@ -187,17 +189,31 @@ async fn live_sweep() {
     // ------------------------------------------------------------------
     // Tier 1 — authorized read surface.
     // ------------------------------------------------------------------
+    // A session file that was never logged in (fresh handshake only)
+    // answers AUTH_KEY_UNREGISTERED for every authorized method. Treat
+    // that as one skip with instructions, not 9 identical failures.
     let me = client.get_me().await;
-    if let Ok(u) = &me {
-        println!(
-            "        me: {} (@{}) id {}",
-            u.full_name(),
-            u.username().unwrap_or("-"),
-            u.id().0
-        );
-    }
-    let _me = step("get_me (users.getFullUser)", |_| String::new(), me);
-
+    let me = match me {
+        Ok(u) => u,
+        Err(e) if mtprsto::error::is_auth_error_message(&e.to_string()) => {
+            skip(
+                "Tier 1 (authorized surface)",
+                "session file has no login behind it — sign in once with this key first",
+            );
+            report_and_finish();
+        }
+        Err(e) => {
+            fail("get_me (users.getFullUser)", e.to_string());
+            report_and_finish();
+        }
+    };
+    println!(
+        "        me: {} (@{}) id {}",
+        me.full_name(),
+        me.username().unwrap_or("-"),
+        me.id().0
+    );
+    pass("get_me (users.getFullUser)", &format!("id {}", me.id().0));
     let state = client.get_state().await;
     let _ = step(
         "get_state (updates.getState)",
@@ -226,11 +242,8 @@ async fn live_sweep() {
         durov,
     );
 
-    if let (Some(me), Ok(())) = (&_me, Ok::<(), Error>(())) {
-        let _ = me;
-    }
-    // users.getUsers needs the self InputUser with the real access hash,
-    // which get_me does not carry — Self_ answers for the own account.
+    // users.getUsers with the self handle — Self_ answers for the own
+    // account without needing the access hash.
     let users = client.get_users(&[mtprsto::types::InputUser::Self_]).await;
     let _ = step(
         "get_users(Self_) (users.getUsers)",
