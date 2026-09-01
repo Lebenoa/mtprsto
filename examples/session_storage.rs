@@ -59,7 +59,10 @@ impl SessionStorage for MemoryStore {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let api_id: i32 = std::env::var("TELEGRAM_API_ID").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    let api_id: i32 = std::env::var("TELEGRAM_API_ID")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     let api_hash = std::env::var("TELEGRAM_API_HASH").unwrap_or_default();
 
     // 1. The default backend: JSON file (identical to `.session("p")`).
@@ -97,9 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .session_storage(Box::new(shared.shared()))
         .build()?;
     client_b.connect().await?;
-    println!(
-        "client B: connected — auth key loaded from the backend, no second handshake"
-    );
+    println!("client B: connected — auth key loaded from the backend, no second handshake");
 
     println!("OK: custom session storage round-trips the auth key correctly");
     Ok(())

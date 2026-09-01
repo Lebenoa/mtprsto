@@ -1,4 +1,4 @@
-//! Connection pool for MTProto sessions.
+//! Connection pool for `MTProto` sessions.
 //!
 //! `SenderPool` manages multiple TCP connections to a Telegram DC,
 //! load-balancing RPC requests across them and handling reconnection.
@@ -17,12 +17,25 @@
 //! doesn't block the others.
 //! ```
 
+// Wire-format engine: byte wrangling is this module's job — TL field
+// order, int32 wire ids, offset arithmetic over length-checked
+// buffers. The cast/index/arithmetic classes are inherent to that
+// job; they are relaxed once here, invariants held by hand. Every
+// other lint still applies.
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::string_slice
+)]
+#![allow(clippy::unreadable_literal)] // ids/hex quoted verbatim from the TL schema
+
 use crate::error::{Error, Result};
 use crate::mtproto::MtProtoSession;
 use crate::transport;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-
 
 /// Which wire transport the pool prefers when opening connections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +47,7 @@ pub enum TransportPolicy {
     /// WebSocket (`wss://`) for subsequent connects until TCP succeeds again.
     Auto,
 }
+
 /// Protocol-level timings and knobs (ack batching, keepalive, salt
 /// refresh, padding). Defaults follow gotd/mtproto practice; tighten or
 /// loosen via [`crate::Client::builder`].
@@ -79,9 +93,9 @@ pub struct PoolConfig {
     pub min_connections: usize,
     /// Maximum number of connections.
     pub max_connections: usize,
-    /// Which transport to prefer (see [`TransportPolicy`]). Default TcpOnly.
+    /// Which transport to prefer (see [`TransportPolicy`]). Default `TcpOnly`.
     pub transport_policy: TransportPolicy,
-    /// Threshold for scaling up: if inflight > 2 * aux_count for > 10s.
+    /// Threshold for scaling up: if inflight > 2 * `aux_count` for > 10s.
     pub scale_up_threshold: u32,
     /// Seconds of high load before scaling up.
     pub scale_up_duration_secs: u64,
@@ -132,17 +146,17 @@ enum PoolCodec {
 impl PoolCodec {
     async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
         match self {
-            PoolCodec::Tcp(c) => c.send(payload).await,
+            Self::Tcp(c) => c.send(payload).await,
             #[cfg(feature = "ws")]
-            PoolCodec::Ws(c) => c.send_frame(payload).await,
+            Self::Ws(c) => c.send_frame(payload).await,
         }
     }
 
     async fn recv_frame(&mut self) -> Result<Vec<u8>> {
         match self {
-            PoolCodec::Tcp(c) => c.recv().await,
+            Self::Tcp(c) => c.recv().await,
             #[cfg(feature = "ws")]
-            PoolCodec::Ws(c) => c.recv_frame().await,
+            Self::Ws(c) => c.recv_frame().await,
         }
     }
 }
@@ -172,12 +186,13 @@ struct TcpFailover {
 }
 
 impl TcpFailover {
-    const WINDOW: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+    const WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
     const THRESHOLD: usize = 2;
 
     fn record_failure(&mut self) {
         let now = std::time::Instant::now();
-        self.recent.retain(|t| now.duration_since(*t) <= Self::WINDOW);
+        self.recent
+            .retain(|t| now.duration_since(*t) <= Self::WINDOW);
         self.recent.push(now);
     }
 
@@ -185,7 +200,7 @@ impl TcpFailover {
         self.recent.clear();
     }
 
-    fn should_prefer_ws(&self) -> bool {
+    const fn should_prefer_ws(&self) -> bool {
         self.recent.len() >= Self::THRESHOLD
     }
 }
@@ -208,7 +223,7 @@ pub struct SenderPool {
     protocol: ProtocolConfig,
     /// Next connection index for round-robin.
     next_index: Mutex<usize>,
-    /// Received msg_ids awaiting a batched msgs_ack (flushed at
+    /// Received `msg_ids` awaiting a batched `msgs_ack` (flushed at
     /// [`ProtocolConfig::ack_batch_max`] pending or after
     /// [`ProtocolConfig::ack_flush_interval`], per
     /// SPEC §5.4).
@@ -224,10 +239,11 @@ const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 /// Reconnect a connection after this long without a pong (SPEC BS-1: 90 s).
 const PONG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 /// Refresh the server salt on this cadence (SPEC §9: salt validity ~30 min).
-const SALT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(25 * 60);
+const SALT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_mins(25);
 
 impl SenderPool {
     /// Create a new pool for the given DC with an existing session.
+    #[must_use]
     pub fn new(
         dc_id: i32,
         api_id: i32,
@@ -249,6 +265,7 @@ impl SenderPool {
     }
 
     /// Create a pool with just a DC ID and config (no session yet).
+    #[must_use]
     pub fn without_session(dc_id: i32, config: PoolConfig) -> Self {
         let session = MtProtoSession::new(vec![0u8; 256], 0);
         Self::new(dc_id, 0, session, config, ProtocolConfig::default())
@@ -274,6 +291,11 @@ impl SenderPool {
     ///
     /// Each connection performs the Obfuscated2 handshake; all framed I/O
     /// goes through the per-connection codec (`send_frame`/`recv_frame`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a connection to the DC cannot be established
+    /// for the main or any auxiliary connection.
     pub async fn connect(&mut self) -> Result<()> {
         if !self.connections.is_empty() {
             return Ok(());
@@ -281,12 +303,8 @@ impl SenderPool {
 
         // Main connection: failure/success updates the tracker inline.
         let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
-        let (outcome, res) = Self::connect_one(
-            self.dc_id,
-            self.config.transport_policy,
-            prefer_ws,
-        )
-        .await;
+        let (outcome, res) =
+            Self::connect_one(self.dc_id, self.config.transport_policy, prefer_ws).await;
         self.update_failover(outcome).await;
         let codec = res?;
         self.connections.push(Arc::new(PooledConnection {
@@ -296,15 +314,15 @@ impl SenderPool {
         // Open additional aux connections in parallel — log failures but
         // don't abort (tokio::spawn needs 'static futures, so the tracker
         // is snapshotted up front and outcomes are folded in afterwards).
-        let aux_count = (self.config.min_connections.min(self.config.max_connections))
-            .saturating_sub(1);
+        let aux_count =
+            (self.config.min_connections.min(self.config.max_connections)).saturating_sub(1);
         let dc_id = self.dc_id;
         let policy = self.config.transport_policy;
         let prefer_ws = self.tcp_failover.lock().await.should_prefer_ws();
         let mut handles = Vec::with_capacity(aux_count);
         for _ in 0..aux_count {
             handles.push(tokio::spawn(async move {
-                SenderPool::connect_one(dc_id, policy, prefer_ws).await.1
+                Self::connect_one(dc_id, policy, prefer_ws).await.1
             }));
         }
         let results = futures_collect(handles).await;
@@ -316,7 +334,12 @@ impl SenderPool {
                     }));
                 }
                 Err(e) => {
-                    tracing::warn!("aux connection {} to DC {} failed: {}", i + 1, self.dc_id, e);
+                    tracing::warn!(
+                        "aux connection {} to DC {} failed: {}",
+                        i + 1,
+                        self.dc_id,
+                        e
+                    );
                 }
             }
         }
@@ -345,10 +368,15 @@ impl SenderPool {
     /// separate queue, and the write-only ack is not msg_id-correlated.
     ///
     /// On I/O error the dead connection is reconnected transparently and the
-    /// SAME encrypted payload is retried once. MTProto dedupes by msg_id
-    /// (identical bytes ⇒ identical msg_id), so the server treats the retry
+    /// SAME encrypted payload is retried once. `MTProto` dedupes by `msg_id`
+    /// (identical bytes ⇒ identical `msg_id`), so the server treats the retry
     /// as a retransmit, not a new request — safe even for non-idempotent
     /// methods.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the pool has no connections, the reconnect
+    /// after an I/O error fails, or the retried send fails again.
     pub async fn send_raw(&self, data: &[u8]) -> Result<Vec<u8>> {
         if self.connections.is_empty() {
             return Err(Error::Transport("pool has no connections".into()));
@@ -368,7 +396,9 @@ impl SenderPool {
             Err(Error::Network(e)) => {
                 tracing::warn!(
                     "I/O error on connection {} to DC {}: {}",
-                    idx, self.dc_id, e
+                    idx,
+                    self.dc_id,
+                    e
                 );
                 // Reconnect the dead connection, then retry once (same bytes)
                 self.reconnect_connection(conn).await?;
@@ -386,9 +416,14 @@ impl SenderPool {
         codec.recv_frame().await
     }
 
-    /// Send an encrypted message, allocate msg_id/seq_no atomically,
+    /// Send an encrypted message, allocate `msg_id`/`seq_no` atomically,
     /// and receive the response.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors from the underlying `send_raw` round trip.
     #[tracing::instrument(name = "mtprsto::send_encrypted", skip_all, err)]
+    #[allow(clippy::significant_drop_tightening)] // the scoped lock blocks already end at last use
     pub async fn send_encrypted(&self, payload: &[u8]) -> Result<(u64, Vec<u8>)> {
         // Allocate msg_id and seq_no under write lock
         let (msg_id, seq_no) = {
@@ -408,16 +443,32 @@ impl SenderPool {
         Ok((msg_id, response))
     }
 
-    /// High-level RPC: wraps method bytes in invokeWithLayer, encrypts,
+    /// High-level RPC: wraps method bytes in `invokeWithLayer`, encrypts,
     /// sends on one connection, decrypts the response, sends a write-only
-    /// ack, unwraps gzip/rpc_result, classifies rpc_error, and returns the
+    /// ack, unwraps gzip/`rpc_result`, classifies `rpc_error`, and returns the
     /// inner result bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on I/O failure, protocol-level rejection
+    /// (`rpc_error`, bad-message notification, session state that never
+    /// settles), or a response that never arrives within the read timeout.
+    ///
+    /// # Panics
+    ///
+    /// Cannot panic: the retry loop returns on every path, so the trailing
+    /// `unreachable!` guard is never actually reached.
     #[tracing::instrument(name = "mtprsto::send_rpc", skip_all, err)]
+    #[allow(clippy::too_many_lines)] // one function owning the RPC lifecycle: send → retry → classify → ack; splitting it would scatter the msg_id state machine
     pub async fn send_rpc(&self, method_bytes: &[u8]) -> Result<Vec<u8>> {
         use crate::serialize::{
-            BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED, MSGS_ACK, PONG,
-            RPC_RESULT,
+            BAD_SERVER_SALT, MSGS_ACK, NEW_SERVER_SALT, NEW_SESSION_CREATED, PONG, RPC_RESULT,
         };
+
+        // Every network read is bounded: a blackholed/dead connection
+        // (or a server that just stops answering a dialect) must not
+        // block the caller — or the runtime — forever.
+        const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
         // invokeWithLayer(initConnection(query)) — the server rejects bare
         // RPCs with INPUT_FETCH_ERROR / API_ID_* errors because it can't
@@ -447,34 +498,35 @@ impl SenderPool {
             *ni = (*ni + 1) % self.connections.len().max(1);
             idx
         };
-        let conn = self.connections.get(idx).ok_or_else(|| {
-            Error::Transport("pool has no connections".into())
-        })?;
+        let conn = self
+            .connections
+            .get(idx)
+            .ok_or_else(|| Error::Transport("pool has no connections".into()))?;
+        // The scoped session/codec guards below drop at their last use —
+        // clippy's drop-point model cannot see that through the async
+        // block (significant_drop_tightening / _in_scrutinee).
+        #[allow(
+            clippy::significant_drop_tightening,
+            clippy::significant_drop_in_scrutinee
+        )]
         'outer: for attempt in 0..4u32 {
-            // Every network read is bounded: a blackholed/dead connection
-            // (or a server that just stops answering a dialect) must not
-            // block the caller — or the runtime — forever.
-            const READ_TIMEOUT: std::time::Duration =
-                std::time::Duration::from_secs(30);
-
             let (msg_id, mut response) = match async {
                 let (msg_id, encrypted) = {
                     let mut session = self.session.write().await;
                     let msg_id = session.next_msg_id();
                     let seq_no = session.next_seq_no(true);
-                    (msg_id, session.encrypt_message(&full_payload, msg_id, seq_no))
+                    (
+                        msg_id,
+                        session.encrypt_message(&full_payload, msg_id, seq_no),
+                    )
                 };
                 let mut codec = conn.codec.lock().await;
                 tokio::time::timeout(READ_TIMEOUT, codec.send_frame(&encrypted))
                     .await
-                    .map_err(|_| {
-                        Error::Transport("send_frame read timed out".into())
-                    })??;
+                    .map_err(|_| Error::Transport("send_frame read timed out".into()))??;
                 let response = tokio::time::timeout(READ_TIMEOUT, codec.recv_frame())
                     .await
-                    .map_err(|_| {
-                        Error::Transport("read timed out".into())
-                    })??;
+                    .map_err(|_| Error::Transport("read timed out".into()))??;
                 Ok::<_, Error>((msg_id, response))
             }
             .await
@@ -485,10 +537,11 @@ impl SenderPool {
                     self.reconnect_connection(conn).await?;
                     continue; // same encrypted bytes re-sent; server dedupes
                 }
-                Err(Error::Transport(msg))
-                    if msg.contains("read timed out") =>
-                {
-                    tracing::warn!("read timed out on connection {idx} to DC {}: {msg}", self.dc_id);
+                Err(Error::Transport(msg)) if msg.contains("read timed out") => {
+                    tracing::warn!(
+                        "read timed out on connection {idx} to DC {}: {msg}",
+                        self.dc_id
+                    );
                     self.reconnect_connection(conn).await?;
                     continue; // re-send on a fresh connection
                 }
@@ -514,7 +567,12 @@ impl SenderPool {
                     if item.len() < 4 {
                         continue;
                     }
-                    let ctor = u32::from_le_bytes(item[0..4].try_into().unwrap());
+                    let ctor = u32::from_le_bytes(
+                        // invariant: the `item.len() < 4` guard above
+                        // guarantees a full 4-byte constructor here
+                        #[allow(clippy::unwrap_used)]
+                        item[0..4].try_into().unwrap(),
+                    );
                     match ctor {
                         BAD_SERVER_SALT => {
                             // The query was NOT processed — adopt the fresh
@@ -542,8 +600,12 @@ impl SenderPool {
                         MSGS_ACK | PONG => {}
                         RPC_RESULT => {
                             // rpc_result#f35c6d01 req_msg_id:long result
-                            let req =
-                                u64::from_le_bytes(item[4..12].try_into().unwrap());
+                            let req = u64::from_le_bytes(
+                                // invariant: RPC_RESULT matched, so the item
+                                // carries its full 12-byte header
+                                #[allow(clippy::unwrap_used)]
+                                item[4..12].try_into().unwrap(),
+                            );
                             if req == msg_id {
                                 return Self::parse_rpc_result_body(item);
                             }
@@ -593,12 +655,21 @@ impl SenderPool {
         }
         let new_salt = match ctor {
             // bad_server_salt#edab447b ... new_salt at [20..28]
-            BAD_SERVER_SALT => u64::from_le_bytes(item[20..28].try_into().unwrap()),
             // new_session_created#9ec20908 first_msg_id:long
-            // unique_id:long server_salt:long — salt at [20..28]
-            NEW_SESSION_CREATED => u64::from_le_bytes(item[20..28].try_into().unwrap()),
+            // unique_id:long server_salt:long — salt at [20..28] in both
+            BAD_SERVER_SALT | NEW_SESSION_CREATED => u64::from_le_bytes(
+                // invariant: the `item.len() < 28` guard above guarantees
+                // this full 8-byte field
+                #[allow(clippy::unwrap_used)]
+                item[20..28].try_into().unwrap(),
+            ),
             // new_server_salt#1160b89c new_server_salt:long — salt at [4..12]
-            NEW_SERVER_SALT => u64::from_le_bytes(item[4..12].try_into().unwrap()),
+            NEW_SERVER_SALT => u64::from_le_bytes(
+                // invariant: the `item.len() < 28` guard above guarantees
+                // this full 8-byte field
+                #[allow(clippy::unwrap_used)]
+                item[4..12].try_into().unwrap(),
+            ),
             _ => return false,
         };
         let mut session = self.session.write().await;
@@ -615,7 +686,12 @@ impl SenderPool {
         use crate::serialize::MSG_CONTAINER;
 
         if data.len() < 4
-            || u32::from_le_bytes(data[0..4].try_into().unwrap()) != MSG_CONTAINER
+            || u32::from_le_bytes(
+                // invariant: the `data.len() < 4` guard above guarantees
+                // this full 4-byte constructor
+                #[allow(clippy::unwrap_used)]
+                data[0..4].try_into().unwrap(),
+            ) != MSG_CONTAINER
         {
             return Ok(vec![data]);
         }
@@ -632,7 +708,12 @@ impl SenderPool {
             if off + 4 > data.len() {
                 break;
             }
-            let len = i32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
+            let len = i32::from_le_bytes(
+                // invariant: the `off + 4 > data.len()` guard above
+                // guarantees this full 4-byte length field
+                #[allow(clippy::unwrap_used)]
+                data[off..off + 4].try_into().unwrap(),
+            ) as usize;
             off += 4;
             if off + len > data.len() {
                 break;
@@ -645,12 +726,17 @@ impl SenderPool {
 
     /// Pick the meaningful message out of a `msg_container`: the
     /// `rpc_result` item if present, else the first non-service item.
-    /// Service noise (msgs_ack, pong, new_session_created) is skipped.
+    /// Service noise (`msgs_ack`, `pong`, `new_session_created`) is skipped.
     fn choose_container_item(data: &[u8]) -> Result<Option<&[u8]>> {
         use crate::serialize::{MSG_CONTAINER, MSGS_ACK, NEW_SESSION_CREATED, PONG};
 
         if data.len() < 4
-            || u32::from_le_bytes(data[0..4].try_into().unwrap()) != MSG_CONTAINER
+            || u32::from_le_bytes(
+                // invariant: the `data.len() < 4` guard above guarantees
+                // this full 4-byte constructor
+                #[allow(clippy::unwrap_used)]
+                data[0..4].try_into().unwrap(),
+            ) != MSG_CONTAINER
         {
             return Ok(Some(data));
         }
@@ -669,7 +755,12 @@ impl SenderPool {
             if off + 4 > bytes.len() {
                 break;
             }
-            let len = i32::from_le_bytes(bytes[off..off + 4].try_into().unwrap()) as usize;
+            let len = i32::from_le_bytes(
+                // invariant: the `off + 4 > bytes.len()` guard above
+                // guarantees this full 4-byte length field
+                #[allow(clippy::unwrap_used)]
+                bytes[off..off + 4].try_into().unwrap(),
+            ) as usize;
             off += 4;
             if off + len > bytes.len() {
                 break;
@@ -692,8 +783,8 @@ impl SenderPool {
         Ok(rpc.or(first))
     }
 
-    /// Parse an `rpc_result#f35c6d01` wrapper: request msg_id, gzip, and
-    /// rpc_error classification. `data` starts at the rpc_result ctor.
+    /// Parse an `rpc_result#f35c6d01` wrapper: request `msg_id`, gzip, and
+    /// `rpc_error` classification. `data` starts at the `rpc_result` ctor.
     fn parse_rpc_result_body(data: &[u8]) -> Result<Vec<u8>> {
         use crate::serialize::{
             RPC_ANSWER_DROPPED, RPC_ANSWER_DROPPED_RUNNING, RPC_ANSWER_UNKNOWN, RPC_ERROR,
@@ -718,7 +809,12 @@ impl SenderPool {
                 inner.len()
             )));
         }
-        let inner_ctor = u32::from_le_bytes(inner[..4].try_into().unwrap());
+        let inner_ctor = u32::from_le_bytes(
+            // invariant: the `inner.len() < 4` guard above guarantees
+            // this full 4-byte constructor
+            #[allow(clippy::unwrap_used)]
+            inner[..4].try_into().unwrap(),
+        );
         if inner_ctor == RPC_ERROR {
             let (code, msg) = crate::mtproto::parse_rpc_error(&inner)?;
             return Err(crate::error::classify_rpc_error(code, &msg));
@@ -737,16 +833,15 @@ impl SenderPool {
         }
         // A bad_msg_notification can also arrive inside rpc_result.
         if inner_ctor == crate::serialize::BAD_MSG_NOTIFICATION {
-            let (bad_msg_id, _seqno, code) =
-                crate::mtproto::parse_bad_msg_notification(&inner)?;
+            let (bad_msg_id, _seqno, code) = crate::mtproto::parse_bad_msg_notification(&inner)?;
             return Err(classify_bad_msg(code, bad_msg_id));
         }
         Ok(inner)
     }
 
-    /// Detect gzip_packed (possibly nested) and return decompressed bytes.
+    /// Detect `gzip_packed` (possibly nested) and return decompressed bytes.
     fn unwrap_gzip(data: &[u8]) -> Result<Vec<u8>> {
-        use crate::serialize::{TLReader, GZIP_PACKED};
+        use crate::serialize::{GZIP_PACKED, TLReader};
 
         if data.len() < 4 {
             return Ok(data.to_vec());
@@ -771,8 +866,15 @@ impl SenderPool {
     ///
     /// Returns `(req_msg_id, server_now, windows)`. Useful for pre-warming
     /// salts around clock-boundary reconnects; the pool otherwise keeps its
-    /// salt fresh via bad_server_salt / new_server_salt handling.
-    pub async fn get_future_salts(&self, num: i32) -> Result<(u64, i32, Vec<crate::mtproto::SaltWindow>)> {
+    /// salt fresh via `bad_server_salt` / `new_server_salt` handling.
+    ///
+    /// # Errors
+    /// Returns any failure from the salt-request round-trip: transport,
+    /// decryption, decompression, or response parsing.
+    pub async fn get_future_salts(
+        &self,
+        num: i32,
+    ) -> Result<(u64, i32, Vec<crate::mtproto::SaltWindow>)> {
         // getFutureSalts is a BARE service message, not an RPC method —
         // wrapping it in invokeWithLayer yields INPUT_METHOD_INVALID
         // (the ctor the server reports back is getFutureSalts itself).
@@ -783,10 +885,7 @@ impl SenderPool {
             session.decrypt_message(&response)?.1
         };
         let body = Self::unwrap_gzip(&plaintext)?;
-        let body = match Self::choose_container_item(&body)? {
-            Some(item) => item.to_vec(),
-            None => body,
-        };
+        let body = Self::choose_container_item(&body)?.map_or_else(|| body.clone(), <[u8]>::to_vec);
         crate::mtproto::parse_future_salts(&body)
     }
 
@@ -794,7 +893,11 @@ impl SenderPool {
     /// (`msgs_state_req#da69fb52` → `msgs_state_info#04deb57d`).
     ///
     /// Returns the raw `info` byte string (one status byte per requested
-    /// msg_id, bit 2 = message is known to the server).
+    /// `msg_id`, bit 2 = message is known to the server).
+    ///
+    /// # Errors
+    /// Returns an error if the request round-trip fails or the server
+    /// answers with something other than `msgs_state_info`.
     pub async fn query_msgs_state(&self, msg_ids: &[u64]) -> Result<Vec<u8>> {
         let req = crate::mtproto::build_msgs_state_req(msg_ids);
         let payload = self.send_rpc(&req).await?;
@@ -809,9 +912,10 @@ impl SenderPool {
         r.read_bytes()
     }
 
-    /// Queue an ack for the given received msg_id (SPEC §5.4 batching:
-    /// flush immediately at [`ProtocolConfig::ack_batch_max`] pending, otherwise wait for
-    /// the flusher task). Best-effort — flush errors are logged, not fatal.
+    /// Queue an ack for the given received `msg_id` (SPEC §5.4 batching:
+    /// flush immediately at [`ProtocolConfig::ack_batch_max`] pending,
+    /// otherwise wait for the flusher task). Best-effort — flush errors are
+    /// logged, not fatal.
     async fn queue_ack(&self, resp_msg_id: u64) {
         let flush = {
             let mut pending = self.pending_acks.lock().await;
@@ -823,7 +927,7 @@ impl SenderPool {
         }
     }
 
-    /// Write one batched `msgs_ack` for every queued msg_id (write-only —
+    /// Write one batched `msgs_ack` for every queued `msg_id` (write-only —
     /// no reply expected).
     async fn flush_acks(&self) {
         let ids: Vec<u64> = {
@@ -847,6 +951,7 @@ impl SenderPool {
 
     /// Spawn the periodic ack flusher (every
     /// [`ProtocolConfig::ack_flush_interval`]). Call once after `connect`.
+    #[allow(clippy::unused_async)] // uniform spawned-task signature with the other pool loops; no awaits today
     pub fn spawn_ack_flusher(self: &Arc<Self>) {
         let protocol = self.protocol.clone();
         let pool_arc = self.clone();
@@ -863,7 +968,7 @@ impl SenderPool {
     /// [`ProtocolConfig::ping_interval`]; a connection that goes
     /// [`ProtocolConfig::pong_timeout`] without
     /// a pong is silently disconnected and reconnected with the same
-    /// auth_key (SPEC BS-1).
+    /// `auth_key` (SPEC BS-1).
     pub fn spawn_keepalive(self: &Arc<Self>) {
         let protocol = self.protocol.clone();
         let pool_arc = self.clone();
@@ -883,8 +988,8 @@ impl SenderPool {
                     // gotd parity: ping_delay_disconnect makes the server reap the
                     // connection itself if we stop pinging (delay = interval
                     // + timeout, like gotd's pingLoop).
-                    let delay = (protocol.ping_interval.as_secs()
-                        + protocol.pong_timeout.as_secs()) as i32;
+                    let delay =
+                        (protocol.ping_interval.as_secs() + protocol.pong_timeout.as_secs()) as i32;
                     let ping = crate::mtproto::build_ping_delay_disconnect(ping_id, delay);
                     let encrypted = {
                         let mut session = pool_arc.session.write().await;
@@ -898,16 +1003,15 @@ impl SenderPool {
                     }
                     match tokio::time::timeout(protocol.pong_timeout, codec.recv_frame()).await {
                         Ok(Ok(resp)) => {
-                            if let Ok((_, plaintext)) =
-                                pool_arc.session.write().await.decrypt_message(&resp)
-                            {
-                                let body = SenderPool::unwrap_gzip(&plaintext)
+                            let decrypted = pool_arc.session.write().await.decrypt_message(&resp);
+                            if let Ok((_, plaintext)) = decrypted {
+                                let body = Self::unwrap_gzip(&plaintext)
                                     .unwrap_or_else(|_| plaintext.clone());
                                 match crate::mtproto::parse_pong(&body) {
                                     Ok(_) => {}
-                                    Err(_) => tracing::debug!(
-                                        "keepalive got non-pong frame; discarded"
-                                    ),
+                                    Err(_) => {
+                                        tracing::debug!("keepalive got non-pong frame; discarded");
+                                    }
                                 }
                             }
                         }
@@ -943,7 +1047,8 @@ impl SenderPool {
     /// ask for future salt windows and adopt the one currently valid
     /// (SPEC §9: salt validity ~30 min).
     pub fn spawn_salt_refresher(self: &Arc<Self>) {
-        let protocol = self.protocol.clone();        let pool_arc = self.clone();
+        let protocol = self.protocol.clone();
+        let pool_arc = self.clone();
         tokio::spawn(async move {
             // Sleep FIRST: a tokio interval fires its first tick
             // immediately, which would spam getFutureSalts at startup.
@@ -951,9 +1056,9 @@ impl SenderPool {
                 tokio::time::sleep(protocol.salt_refresh_interval).await;
                 match pool_arc.get_future_salts(3).await {
                     Ok((_req_id, server_now, windows)) => {
-                        let fresh = windows.iter().find(|w| {
-                            w.valid_since <= server_now && server_now < w.valid_until
-                        });
+                        let fresh = windows
+                            .iter()
+                            .find(|w| w.valid_since <= server_now && server_now < w.valid_until);
                         if let Some(w) = fresh {
                             let mut session = pool_arc.session.write().await;
                             if session.server_salt != w.salt {
@@ -1048,16 +1153,14 @@ impl SenderPool {
     async fn connect_ws(
         dc_id: i32,
     ) -> Result<transport::Obfuscated2Transport<crate::ws::WsTransport>> {
-        crate::ws::connect_obfuscated2_ws(
-            dc_id, transport::TransportProtocol::Intermediate,
-        )
-        .await
+        crate::ws::connect_obfuscated2_ws(dc_id, transport::TransportProtocol::Intermediate).await
     }
 
     /// Stub for no-`ws` builds: keeps `connect_one` uniform. Never called
     /// because all WS branches are cfg-gated off.
     #[cfg(not(feature = "ws"))]
     #[allow(dead_code)]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)] // cfg-mirrors the real `connect_ws` so call sites stay uniform; stub never awaits by design
     async fn connect_ws(dc_id: i32) -> Result<transport::Obfuscated2Transport> {
         let _ = dc_id;
         Err(Error::Transport(
@@ -1079,8 +1182,7 @@ impl SenderPool {
             let exp = attempts.min(10); // cap to prevent overflow
             let delay_ms = base_delay.saturating_mul(1u64 << exp);
             let jitter = rand::random::<u64>() % (delay_ms / 4 + 1);
-            let delay =
-                std::time::Duration::from_millis((delay_ms + jitter).min(60_000));
+            let delay = std::time::Duration::from_millis((delay_ms + jitter).min(60_000));
 
             tokio::time::sleep(delay).await;
 
@@ -1090,41 +1192,58 @@ impl SenderPool {
             self.update_failover(outcome).await;
             match res {
                 Ok(codec) => {
-                    let mut locked = conn.codec.lock().await;
-                    *locked = codec;
+                    // Guard drops on return — the scoped block IS the
+                    // last use (clippy cannot see through the return).
+                    #[allow(clippy::significant_drop_tightening)]
+                    {
+                        let mut locked = conn.codec.lock().await;
+                        *locked = codec;
+                    }
                     return Ok(());
                 }
                 Err(e) => {
                     attempts += 1;
                     tracing::warn!(
                         "reconnect to DC {} failed (attempt {}): {}",
-                        self.dc_id, attempts, e
+                        self.dc_id,
+                        attempts,
+                        e
                     );
                 }
             }
         }
     }
 
-    /// Reconnect a connection at a given index.
+    /// Reconnect the connection at `conn_index`.
+    ///
+    /// # Errors
+    /// Returns a transport error when `conn_index` is out of range or the
+    /// reconnection attempts are exhausted.
     pub async fn reconnect(&self, conn_index: usize) -> Result<()> {
         if conn_index >= self.connections.len() {
             return Err(Error::Transport("invalid connection index".into()));
         }
-        self.reconnect_connection(&self.connections[conn_index]).await
+        self.reconnect_connection(&self.connections[conn_index])
+            .await
     }
 
     /// Get the number of active connections.
-    pub fn connection_count(&self) -> usize {
+    #[must_use]
+    pub const fn connection_count(&self) -> usize {
         self.connections.len()
     }
 
     /// Get the DC ID.
-    pub fn dc_id(&self) -> i32 {
+    #[must_use]
+    pub const fn dc_id(&self) -> i32 {
         self.dc_id
     }
 
     /// Scale up by adding an aux connection. Requires `&mut self` so the
     /// new connection is actually inserted into the pool.
+    ///
+    /// # Errors
+    /// Returns a transport error when opening the new connection fails.
     pub async fn scale_up(&mut self) -> Result<()> {
         if self.connections.len() >= self.config.max_connections {
             return Ok(());
@@ -1140,31 +1259,36 @@ impl SenderPool {
         }));
         tracing::info!(
             "scaled up: now {} connection(s) to DC {}",
-            self.connections.len(), self.dc_id
+            self.connections.len(),
+            self.dc_id
         );
         Ok(())
     }
 }
 
-/// Join a list of task handles, flattening a cancelled task (JoinError)
-/// into a transport error so callers can treat every slot uniformly.
-async fn futures_collect<T>(
-    handles: Vec<tokio::task::JoinHandle<Result<T>>>,
-) -> Vec<Result<T>> {
+/// Join a list of task handles, flattening a cancelled task
+/// ([`tokio::task::JoinError`]) into a transport error so callers can treat
+/// every slot uniformly.
+async fn futures_collect<T>(handles: Vec<tokio::task::JoinHandle<Result<T>>>) -> Vec<Result<T>> {
     let mut out = Vec::with_capacity(handles.len());
     for h in handles {
         out.push(h.await.unwrap_or_else(|e| {
-            Err(crate::error::Error::Transport(format!("task join failed: {e}")))
+            Err(crate::error::Error::Transport(format!(
+                "task join failed: {e}"
+            )))
         }));
     }
     out
 }
 
-/// Human-readable meaning of a `bad_msg_notification` error_code
-/// (SPEC §5.2). Code 20 (salt invalidated) cannot be auto-recovered here
-/// because the notification carries no new salt — the caller re-encrypts
-/// with the adopted salt on its next request.
-pub fn describe_bad_msg_code(code: i32) -> &'static str {
+/// Human-readable meaning of a `bad_msg_notification` `error_code`
+/// (SPEC §5.2).
+///
+/// Code 20 (salt invalidated) cannot be auto-recovered here because the
+/// notification carries no new salt — the caller re-encrypts with the
+/// adopted salt on its next request.
+#[must_use]
+pub const fn describe_bad_msg_code(code: i32) -> &'static str {
     match code {
         16 => "msg_id too low",
         17 => "msg_id too high",
@@ -1201,15 +1325,23 @@ fn classify_bad_msg(code: i32, bad_msg_id: u64) -> Error {
 
 #[cfg(test)]
 mod bad_msg_tests {
+    // Test code: unwrap is the idiomatic failure mode here.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
     fn test_describe_bad_msg_codes() {
         assert_eq!(describe_bad_msg_code(16), "msg_id too low");
-        assert_eq!(describe_bad_msg_code(18), "incorrect two lower order msg_id bits");
+        assert_eq!(
+            describe_bad_msg_code(18),
+            "incorrect two lower order msg_id bits"
+        );
         assert_eq!(describe_bad_msg_code(20), "message too old");
         assert_eq!(describe_bad_msg_code(48), "incorrect server salt");
-        assert_eq!(describe_bad_msg_code(65), "message not authorised (no auth_key)");
+        assert_eq!(
+            describe_bad_msg_code(65),
+            "message not authorised (no auth_key)"
+        );
         assert!(describe_bad_msg_code(42).starts_with("unknown"));
     }
 
@@ -1220,8 +1352,7 @@ mod bad_msg_tests {
         w.write_u64(0x1234);
         w.write_i32(5);
         w.write_i32(16);
-        let (id, seqno, code) =
-            crate::mtproto::parse_bad_msg_notification(w.as_bytes()).unwrap();
+        let (id, seqno, code) = crate::mtproto::parse_bad_msg_notification(w.as_bytes()).unwrap();
         assert_eq!((id, seqno, code), (0x1234, 5, 16));
     }
 
@@ -1257,16 +1388,18 @@ mod bad_msg_tests {
         }
         let container = c.into_bytes();
 
-        let chosen = SenderPool::choose_container_item(&container).unwrap().unwrap();
-        assert_eq!(u32::from_le_bytes(chosen[0..4].try_into().unwrap()), crate::serialize::RPC_RESULT);
+        let chosen = SenderPool::choose_container_item(&container)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            u32::from_le_bytes(chosen[0..4].try_into().unwrap()),
+            crate::serialize::RPC_RESULT
+        );
     }
 
     #[test]
     fn test_classify_bad_msg_code_65_is_no_auth_key() {
-        assert!(matches!(
-            classify_bad_msg(65, 1),
-            Error::NoAuthKey
-        ));
+        assert!(matches!(classify_bad_msg(65, 1), Error::NoAuthKey));
         let e = classify_bad_msg(16, 1);
         assert!(matches!(e, Error::BadMessage { code: 16, .. }));
         assert!(!e.is_transient());
@@ -1280,6 +1413,8 @@ mod bad_msg_tests {
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap is the idiomatic failure mode here.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
@@ -1294,7 +1429,13 @@ mod tests {
     #[test]
     fn test_pool_creation() {
         let session = MtProtoSession::new(vec![0u8; 256], 12345);
-        let pool = SenderPool::new(2, 0, session, PoolConfig::default(), ProtocolConfig::default());
+        let pool = SenderPool::new(
+            2,
+            0,
+            session,
+            PoolConfig::default(),
+            ProtocolConfig::default(),
+        );
         assert_eq!(pool.dc_id(), 2);
     }
 
@@ -1321,13 +1462,18 @@ mod tests {
 
     #[test]
     fn test_transport_policy_default_is_tcp_only() {
-        assert_eq!(PoolConfig::default().transport_policy, TransportPolicy::TcpOnly);
+        assert_eq!(
+            PoolConfig::default().transport_policy,
+            TransportPolicy::TcpOnly
+        );
         assert_eq!(TransportPolicy::default(), TransportPolicy::TcpOnly);
     }
 }
 
 #[cfg(test)]
 mod envelope_debug_tests {
+    // Test code: unwrap is the idiomatic failure mode here.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     /// Decode the full RPC envelope field-by-field per the layer 223
     /// schema to catch layout drift without hitting the network.
@@ -1336,7 +1482,9 @@ mod envelope_debug_tests {
         let resolve = crate::rpc::build_resolve_username("lebenoa");
         let full = crate::mtproto::build_invoke_with_layer(
             223,
-            &crate::mtproto::build_init_connection(12345, "mtprsto", "unknown", "0.1.0", "en", &resolve),
+            &crate::mtproto::build_init_connection(
+                12345, "mtprsto", "unknown", "0.1.0", "en", &resolve,
+            ),
         );
         let mut r = crate::serialize::TLReader::new(&full);
         assert_eq!(r.read_u32().unwrap(), crate::types::INVOKE_WITH_LAYER);
@@ -1344,15 +1492,27 @@ mod envelope_debug_tests {
         assert_eq!(r.read_u32().unwrap(), crate::types::INIT_CONNECTION);
         assert_eq!(r.read_i32().unwrap(), 0); // flags
         assert_eq!(r.read_i32().unwrap(), 12345); // api_id
-        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "mtprsto");
-        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "unknown");
+        assert_eq!(
+            String::from_utf8(r.read_bytes().unwrap()).unwrap(),
+            "mtprsto"
+        );
+        assert_eq!(
+            String::from_utf8(r.read_bytes().unwrap()).unwrap(),
+            "unknown"
+        );
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "0.1.0");
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "en"); // system_lang_code
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), ""); // lang_pack
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "en"); // lang_code
-        assert_eq!(r.read_u32().unwrap(), crate::types::CONTACTS_RESOLVE_USERNAME);
+        assert_eq!(
+            r.read_u32().unwrap(),
+            crate::types::CONTACTS_RESOLVE_USERNAME
+        );
         assert_eq!(r.read_i32().unwrap(), 0); // flags (no referer)
-        assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "lebenoa");
+        assert_eq!(
+            String::from_utf8(r.read_bytes().unwrap()).unwrap(),
+            "lebenoa"
+        );
         assert_eq!(r.position(), full.len(), "trailing bytes in envelope");
     }
 }

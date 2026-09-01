@@ -7,17 +7,65 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
-use super::chat_gen::{BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant, ChatParticipants, ChatPhoto, DataJSON, DocumentAttribute, ExportedChatInvite, Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText, StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount, StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings, TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage, WebPageAttribute};
-use super::input_gen::{InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet, InputStickerSetItem, InputUser, MaskCoords, TextWithEntities};
-use super::message_gen::{AccountPasswordInputSettings, AuctionBidLevel, AuthAuthorization, AuthCodeType, AuthSentCode, AuthSentCodeType, Birthday, Boost, BotApp, BotBusinessConnection, BusinessBotRights, ButtonType, ChannelParticipant, ChatTheme, CodeSettings, DcOption, DialogFilter, DialogPeer, DraftMessage, EmailVerification, EncryptedChat, EncryptedFile, EncryptedMessage, EphemeralMessage, FactCheck, FolderPeer, GroupCall, GroupCallMessage, GroupCallParticipant, GroupCallParticipantVideo, GroupCallParticipantVideoSourceGroup, HelpTermsOfService, InputBotInlineMessage, InputBotInlineMessageID, InputBotInlineResult, InputCheckPasswordSRP, InputEncryptedChat, InputEncryptedFile, InputPasskeyCredential, InputPasskeyResponse, InputReplyTo, InputRichFile, InputRichMessage, InputSecureFile, InputSecureValue, InputTheme, InputThemeSettings, JoinChatBotResult, KeyboardButtonRow, KeyboardButtonStyle, KeyboardInlineButton, KeyboardInlineButtonRow, LangPackDifference, LangPackString, Message, MessageAction, MessageEntity, MessageFwdHeader, MessageMedia, MessagePeerReaction, MessageReactions, MessageReactor, MessageReplies, MessageReplyHeader, MessagesEmojiGameInfo, MessagesStickerSet, NotifyPeer, PaidReactionPrivacy, PasswordKdfAlgo, PaymentCharge, PaymentRequestedInfo, PeerLocated, PeerSettings, PhoneCall, PhoneCallDiscardReason, PhoneCallProtocol, PhoneConnection, PostAddress, PrivacyKey, QuickReply, RequestPeerType, RequestedPeer, RichMessage, SecureCredentialsEncrypted, SecureData, SecureFile, SecurePasswordKdfAlgo, SecurePlainData, SecureSecretSettings, SecureValue, SecureValueType, SendMessageAction, StarGiftAuctionRound, StarGiftAuctionState, StarGiftAuctionUserState, StarsRevenueStatus, StickerKeyword, StickerPack, StoriesStealthMode, SuggestedPost, Theme, WebDomainException};
-use super::peer_gen::{Peer};
+use super::chat_gen::{
+    BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant,
+    ChatParticipants, ChatPhoto, DataJSON, DocumentAttribute, ExportedChatInvite, Game,
+    GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall, InputMedia,
+    InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice, MediaArea,
+    MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome, NotificationSound, Page,
+    PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem, PageRelatedArticle,
+    PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer, PollAnswerVoters,
+    PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText, StarGift,
+    StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
+    StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings,
+    TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage,
+    WebPageAttribute,
+};
+use super::input_gen::{
+    InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet,
+    InputStickerSetItem, InputUser, MaskCoords, TextWithEntities,
+};
+use super::message_gen::{
+    AccountPasswordInputSettings, AuctionBidLevel, AuthAuthorization, AuthCodeType, AuthSentCode,
+    AuthSentCodeType, Birthday, Boost, BotApp, BotBusinessConnection, BusinessBotRights,
+    ButtonType, ChannelParticipant, ChatTheme, CodeSettings, DcOption, DialogFilter, DialogPeer,
+    DraftMessage, EmailVerification, EncryptedChat, EncryptedFile, EncryptedMessage,
+    EphemeralMessage, FactCheck, FolderPeer, GroupCall, GroupCallMessage, GroupCallParticipant,
+    GroupCallParticipantVideo, GroupCallParticipantVideoSourceGroup, HelpTermsOfService,
+    InputBotInlineMessage, InputBotInlineMessageID, InputBotInlineResult, InputCheckPasswordSRP,
+    InputEncryptedChat, InputEncryptedFile, InputPasskeyCredential, InputPasskeyResponse,
+    InputReplyTo, InputRichFile, InputRichMessage, InputSecureFile, InputSecureValue, InputTheme,
+    InputThemeSettings, JoinChatBotResult, KeyboardButtonRow, KeyboardButtonStyle,
+    KeyboardInlineButton, KeyboardInlineButtonRow, LangPackDifference, LangPackString, Message,
+    MessageAction, MessageEntity, MessageFwdHeader, MessageMedia, MessagePeerReaction,
+    MessageReactions, MessageReactor, MessageReplies, MessageReplyHeader, MessagesEmojiGameInfo,
+    MessagesStickerSet, NotifyPeer, PaidReactionPrivacy, PasswordKdfAlgo, PaymentCharge,
+    PaymentRequestedInfo, PeerLocated, PeerSettings, PhoneCall, PhoneCallDiscardReason,
+    PhoneCallProtocol, PhoneConnection, PostAddress, PrivacyKey, QuickReply, RequestPeerType,
+    RequestedPeer, RichMessage, SecureCredentialsEncrypted, SecureData, SecureFile,
+    SecurePasswordKdfAlgo, SecurePlainData, SecureSecretSettings, SecureValue, SecureValueType,
+    SendMessageAction, StarGiftAuctionRound, StarGiftAuctionState, StarGiftAuctionUserState,
+    StarsRevenueStatus, StickerKeyword, StickerPack, StoriesStealthMode, SuggestedPost, Theme,
+    WebDomainException,
+};
+use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
 use super::reply_markup_gen::{KeyboardButton, ReplyMarkup};
-use super::user_gen::{EmojiStatus, PeerColor, RecentStory, RestrictionReason, User, UserProfilePhoto, UserStatus, Username};
+use super::user_gen::{
+    EmojiStatus, PeerColor, RecentStory, RestrictionReason, User, UserProfilePhoto, UserStatus,
+    Username,
+};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const UPDATE_BOT_STARS_SUBSCRIPTION_ID: u32 = 0x6c0d8e23;
 pub const UPDATE_EPHEMERAL_BOT_CALLBACK_QUERY_ID: u32 = 0x7c1079d6;
@@ -196,9 +244,26 @@ pub const UPDATES_TOO_LONG_ID: u32 = 0xe317af7e;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Update {
     /// `updateBotStarsSubscription#6c0d8e23`
-    BotStarsSubscription { flags: i32, canceled: bool, payment_failed: bool, restored: bool, user_id: UserId, payload: Vec<u8>, qts: i32 },
+    BotStarsSubscription {
+        flags: i32,
+        canceled: bool,
+        payment_failed: bool,
+        restored: bool,
+        user_id: UserId,
+        payload: Vec<u8>,
+        qts: i32,
+    },
     /// `updateEphemeralBotCallbackQuery#7c1079d6`
-    EphemeralBotCallbackQuery { flags: i32, query_id: i64, user_id: UserId, peer: Option<Peer>, msg_id: i32, data: Vec<u8>, chat_instance: Option<i64>, message: EphemeralMessage },
+    EphemeralBotCallbackQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        peer: Option<Peer>,
+        msg_id: i32,
+        data: Vec<u8>,
+        chat_instance: Option<i64>,
+        message: EphemeralMessage,
+    },
     /// `updateEditEphemeralMessage#4bbb8f01`
     EditEphemeralMessage { message: EphemeralMessage },
     /// `updateDeleteEphemeralMessages#56dbfcf8`
@@ -206,71 +271,192 @@ pub enum Update {
     /// `updateNewEphemeralMessage#20bcbba1`
     NewEphemeralMessage { message: EphemeralMessage },
     /// `updateWebBrowserException#140502d1`
-    WebBrowserException { flags: i32, delete: bool, open_external_browser: Option<bool>, exception: WebDomainException },
+    WebBrowserException {
+        flags: i32,
+        delete: bool,
+        open_external_browser: Option<bool>,
+        exception: WebDomainException,
+    },
     /// `updateWebBrowserSettings#c39a2ade`
-    WebBrowserSettings { flags: i32, open_external_browser: bool, display_close_button: bool },
+    WebBrowserSettings {
+        flags: i32,
+        open_external_browser: bool,
+        display_close_button: bool,
+    },
     /// `updateNewBotConnection#b22083a6`
-    NewBotConnection { flags: i32, confirmed: bool, bot_id: i64, date: Option<i32>, device: Option<String>, location: Option<String> },
+    NewBotConnection {
+        flags: i32,
+        confirmed: bool,
+        bot_id: i64,
+        date: Option<i32>,
+        device: Option<String>,
+        location: Option<String>,
+    },
     /// `updateJoinChatWebViewDecision#bdac7e70`
-    JoinChatWebViewDecision { peer: Peer, query_id: i64, result: JoinChatBotResult },
+    JoinChatWebViewDecision {
+        peer: Peer,
+        query_id: i64,
+        result: JoinChatBotResult,
+    },
     /// `updateAiComposeTones#8c0f91fb`
     AiComposeTones,
     /// `updateBotGuestChatQuery#cdd4093d`
-    BotGuestChatQuery { flags: i32, query_id: i64, message: Message, reference_messages: Option<Vec<Message>>, qts: i32 },
+    BotGuestChatQuery {
+        flags: i32,
+        query_id: i64,
+        message: Message,
+        reference_messages: Option<Vec<Message>>,
+        qts: i32,
+    },
     /// `updateManagedBot#4880ed9a`
-    ManagedBot { user_id: UserId, bot_id: i64, qts: i32 },
+    ManagedBot {
+        user_id: UserId,
+        bot_id: i64,
+        qts: i32,
+    },
     /// `updateChatParticipantRank#bd8367b9`
-    ChatParticipantRank { chat_id: ChatId, user_id: UserId, rank: String, version: i32 },
+    ChatParticipantRank {
+        chat_id: ChatId,
+        user_id: UserId,
+        rank: String,
+        version: i32,
+    },
     /// `updateStarGiftCraftFail#ac072444`
     StarGiftCraftFail,
     /// `updateEmojiGameInfo#fb9c547a`
     EmojiGameInfo { info: MessagesEmojiGameInfo },
     /// `updateStarGiftAuctionUserState#dc58f31e`
-    StarGiftAuctionUserState { gift_id: i64, user_state: StarGiftAuctionUserState },
+    StarGiftAuctionUserState {
+        gift_id: i64,
+        user_state: StarGiftAuctionUserState,
+    },
     /// `updateStarGiftAuctionState#48e246c2`
-    StarGiftAuctionState { gift_id: i64, state: StarGiftAuctionState },
+    StarGiftAuctionState {
+        gift_id: i64,
+        state: StarGiftAuctionState,
+    },
     /// `updateDeleteGroupCallMessages#3e85e92c`
-    DeleteGroupCallMessages { call: InputGroupCall, messages: Vec<i32> },
+    DeleteGroupCallMessages {
+        call: InputGroupCall,
+        messages: Vec<i32>,
+    },
     /// `updatePinnedForumTopics#def143d0`
-    PinnedForumTopics { flags: i32, peer: Peer, order: Option<Vec<i32>> },
+    PinnedForumTopics {
+        flags: i32,
+        peer: Peer,
+        order: Option<Vec<i32>>,
+    },
     /// `updatePinnedForumTopic#683b2c52`
-    PinnedForumTopic { flags: i32, pinned: bool, peer: Peer, topic_id: i32 },
+    PinnedForumTopic {
+        flags: i32,
+        pinned: bool,
+        peer: Peer,
+        topic_id: i32,
+    },
     /// `updateGroupCallEncryptedMessage#c957a766`
-    GroupCallEncryptedMessage { call: InputGroupCall, from_id: Peer, encrypted_message: Vec<u8> },
+    GroupCallEncryptedMessage {
+        call: InputGroupCall,
+        from_id: Peer,
+        encrypted_message: Vec<u8>,
+    },
     /// `updateGroupCallMessage#d8326f0d`
-    GroupCallMessage { call: InputGroupCall, message: GroupCallMessage },
+    GroupCallMessage {
+        call: InputGroupCall,
+        message: GroupCallMessage,
+    },
     /// `updateMonoForumNoPaidException#9f812b08`
-    MonoForumNoPaidException { flags: i32, exception: bool, channel_id: ChannelId, saved_peer_id: Peer },
+    MonoForumNoPaidException {
+        flags: i32,
+        exception: bool,
+        channel_id: ChannelId,
+        saved_peer_id: Peer,
+    },
     /// `updateReadMonoForumOutbox#a4a79376`
-    ReadMonoForumOutbox { channel_id: ChannelId, saved_peer_id: Peer, read_max_id: i32 },
+    ReadMonoForumOutbox {
+        channel_id: ChannelId,
+        saved_peer_id: Peer,
+        read_max_id: i32,
+    },
     /// `updateReadMonoForumInbox#77b0e372`
-    ReadMonoForumInbox { channel_id: ChannelId, saved_peer_id: Peer, read_max_id: i32 },
+    ReadMonoForumInbox {
+        channel_id: ChannelId,
+        saved_peer_id: Peer,
+        read_max_id: i32,
+    },
     /// `updateGroupCallChainBlocks#a477288f`
-    GroupCallChainBlocks { call: InputGroupCall, sub_chain_id: i32, blocks: Vec<Vec<u8>>, next_offset: i32 },
+    GroupCallChainBlocks {
+        call: InputGroupCall,
+        sub_chain_id: i32,
+        blocks: Vec<Vec<u8>>,
+        next_offset: i32,
+    },
     /// `updateSentPhoneCode#504aa18f`
     SentPhoneCode { sent_code: AuthSentCode },
     /// `updatePaidReactionPrivacy#8b725fce`
     PaidReactionPrivacy { private: PaidReactionPrivacy },
     /// `updateBotPurchasedPaidMedia#283bd312`
-    BotPurchasedPaidMedia { user_id: UserId, payload: String, qts: i32 },
+    BotPurchasedPaidMedia {
+        user_id: UserId,
+        payload: String,
+        qts: i32,
+    },
     /// `updateStarsRevenueStatus#a584b019`
-    StarsRevenueStatus { peer: Peer, status: StarsRevenueStatus },
+    StarsRevenueStatus {
+        peer: Peer,
+        status: StarsRevenueStatus,
+    },
     /// `updateBusinessBotCallbackQuery#1ea2fda7`
-    BusinessBotCallbackQuery { flags: i32, query_id: i64, user_id: UserId, connection_id: String, message: Message, reply_to_message: Option<Message>, chat_instance: i64, data: Option<Vec<u8>> },
+    BusinessBotCallbackQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        connection_id: String,
+        message: Message,
+        reply_to_message: Option<Message>,
+        chat_instance: i64,
+        data: Option<Vec<u8>>,
+    },
     /// `updateStarsBalance#4e80a379`
     StarsBalance { balance: StarsAmount },
     /// `updateNewStoryReaction#1824e40b`
-    NewStoryReaction { story_id: i32, peer: Peer, reaction: Reaction },
+    NewStoryReaction {
+        story_id: i32,
+        peer: Peer,
+        reaction: Reaction,
+    },
     /// `updateBotDeleteBusinessMessage#a02a982e`
-    BotDeleteBusinessMessage { connection_id: String, peer: Peer, messages: Vec<i32>, qts: i32 },
+    BotDeleteBusinessMessage {
+        connection_id: String,
+        peer: Peer,
+        messages: Vec<i32>,
+        qts: i32,
+    },
     /// `updateBotEditBusinessMessage#07df587c`
-    BotEditBusinessMessage { flags: i32, connection_id: String, message: Message, reply_to_message: Option<Message>, qts: i32 },
+    BotEditBusinessMessage {
+        flags: i32,
+        connection_id: String,
+        message: Message,
+        reply_to_message: Option<Message>,
+        qts: i32,
+    },
     /// `updateBotNewBusinessMessage#9ddb347c`
-    BotNewBusinessMessage { flags: i32, connection_id: String, message: Message, reply_to_message: Option<Message>, qts: i32 },
+    BotNewBusinessMessage {
+        flags: i32,
+        connection_id: String,
+        message: Message,
+        reply_to_message: Option<Message>,
+        qts: i32,
+    },
     /// `updateBotBusinessConnect#8ae5c97a`
-    BotBusinessConnect { connection: BotBusinessConnection, qts: i32 },
+    BotBusinessConnect {
+        connection: BotBusinessConnection,
+        qts: i32,
+    },
     /// `updateDeleteQuickReplyMessages#566fe7cd`
-    DeleteQuickReplyMessages { shortcut_id: i32, messages: Vec<i32> },
+    DeleteQuickReplyMessages {
+        shortcut_id: i32,
+        messages: Vec<i32>,
+    },
     /// `updateQuickReplyMessage#3e050d0f`
     QuickReplyMessage { message: Message },
     /// `updateDeleteQuickReply#53e6f1ec`
@@ -284,21 +470,54 @@ pub enum Update {
     /// `updateSavedReactionTags#39c67432`
     SavedReactionTags,
     /// `updatePinnedSavedDialogs#686c85a6`
-    PinnedSavedDialogs { flags: i32, order: Option<Vec<DialogPeer>> },
+    PinnedSavedDialogs {
+        flags: i32,
+        order: Option<Vec<DialogPeer>>,
+    },
     /// `updateSavedDialogPinned#aeaf9e74`
-    SavedDialogPinned { flags: i32, pinned: bool, peer: DialogPeer },
+    SavedDialogPinned {
+        flags: i32,
+        pinned: bool,
+        peer: DialogPeer,
+    },
     /// `updateBotMessageReactions#09cb7759`
-    BotMessageReactions { peer: Peer, msg_id: i32, date: i32, reactions: Vec<ReactionCount>, qts: i32 },
+    BotMessageReactions {
+        peer: Peer,
+        msg_id: i32,
+        date: i32,
+        reactions: Vec<ReactionCount>,
+        qts: i32,
+    },
     /// `updateBotMessageReaction#ac21d3ce`
-    BotMessageReaction { peer: Peer, msg_id: i32, date: i32, actor: Peer, old_reactions: Vec<Reaction>, new_reactions: Vec<Reaction>, qts: i32 },
+    BotMessageReaction {
+        peer: Peer,
+        msg_id: i32,
+        date: i32,
+        actor: Peer,
+        old_reactions: Vec<Reaction>,
+        new_reactions: Vec<Reaction>,
+        qts: i32,
+    },
     /// `updatePeerWallpaper#ae3f101d`
-    PeerWallpaper { flags: i32, wallpaper_overridden: bool, peer: Peer, wallpaper: Option<WallPaper> },
+    PeerWallpaper {
+        flags: i32,
+        wallpaper_overridden: bool,
+        peer: Peer,
+        wallpaper: Option<WallPaper>,
+    },
     /// `updateChannelViewForumAsMessages#07b68920`
-    ChannelViewForumAsMessages { channel_id: ChannelId, enabled: bool },
+    ChannelViewForumAsMessages {
+        channel_id: ChannelId,
+        enabled: bool,
+    },
     /// `updateBotChatBoost#904dd49c`
     BotChatBoost { peer: Peer, boost: Boost, qts: i32 },
     /// `updateSentStoryReaction#7d627683`
-    SentStoryReaction { peer: Peer, story_id: i32, reaction: Reaction },
+    SentStoryReaction {
+        peer: Peer,
+        story_id: i32,
+        reaction: Reaction,
+    },
     /// `updateStoriesStealthMode#2c084dc1`
     StoriesStealthMode { stealth_mode: StoriesStealthMode },
     /// `updateStoryID#1bf335b9`
@@ -312,19 +531,38 @@ pub enum Update {
     /// `updateUser#20529438`
     User { user_id: UserId },
     /// `updateMessageExtendedMedia#d5a41724`
-    MessageExtendedMedia { peer: Peer, msg_id: i32, extended_media: Vec<MessageExtendedMedia> },
+    MessageExtendedMedia {
+        peer: Peer,
+        msg_id: i32,
+        extended_media: Vec<MessageExtendedMedia>,
+    },
     /// `updateMoveStickerSetToTop#86fccf85`
-    MoveStickerSetToTop { flags: i32, masks: bool, emojis: bool, stickerset: i64 },
+    MoveStickerSetToTop {
+        flags: i32,
+        masks: bool,
+        emojis: bool,
+        stickerset: i64,
+    },
     /// `updateRecentReactions#6f7863f4`
     RecentReactions,
     /// `updateRecentEmojiStatuses#30f443db`
     RecentEmojiStatuses,
     /// `updateUserEmojiStatus#28373599`
-    UserEmojiStatus { user_id: UserId, emoji_status: EmojiStatus },
+    UserEmojiStatus {
+        user_id: UserId,
+        emoji_status: EmojiStatus,
+    },
     /// `updateReadFeaturedEmojiStickers#fb4c496c`
     ReadFeaturedEmojiStickers,
     /// `updateTranscribedAudio#0084cd5a`
-    TranscribedAudio { flags: i32, pending: bool, peer: Peer, msg_id: i32, transcription_id: i64, text: String },
+    TranscribedAudio {
+        flags: i32,
+        pending: bool,
+        peer: Peer,
+        msg_id: i32,
+        transcription_id: i64,
+        text: String,
+    },
     /// `updateSavedRingtones#74d8be99`
     SavedRingtones,
     /// `updateBotMenuButton#14b85813`
@@ -334,43 +572,150 @@ pub enum Update {
     /// `updateAttachMenuBots#17b7a20b`
     AttachMenuBots,
     /// `updateMessageReactions#1e297bfa`
-    MessageReactions { flags: i32, peer: Peer, msg_id: i32, top_msg_id: Option<i32>, saved_peer_id: Option<Peer>, reactions: MessageReactions },
+    MessageReactions {
+        flags: i32,
+        peer: Peer,
+        msg_id: i32,
+        top_msg_id: Option<i32>,
+        saved_peer_id: Option<Peer>,
+        reactions: MessageReactions,
+    },
     /// `updateBotChatInviteRequester#7cb34d79`
-    BotChatInviteRequester { flags: i32, peer: Peer, date: i32, user_id: UserId, about: String, invite: ExportedChatInvite, qts: i32, query_id: Option<i64> },
+    BotChatInviteRequester {
+        flags: i32,
+        peer: Peer,
+        date: i32,
+        user_id: UserId,
+        about: String,
+        invite: ExportedChatInvite,
+        qts: i32,
+        query_id: Option<i64>,
+    },
     /// `updatePendingJoinRequests#7063c3db`
-    PendingJoinRequests { peer: Peer, requests_pending: i32, recent_requesters: Vec<i64> },
+    PendingJoinRequests {
+        peer: Peer,
+        requests_pending: i32,
+        recent_requesters: Vec<i64>,
+    },
     /// `updateBotCommands#4d712f2e`
-    BotCommands { peer: Peer, bot_id: i64, commands: Vec<BotCommand> },
+    BotCommands {
+        peer: Peer,
+        bot_id: i64,
+        commands: Vec<BotCommand>,
+    },
     /// `updateGroupCallConnection#0b783982`
-    GroupCallConnection { flags: i32, presentation: bool, params: DataJSON },
+    GroupCallConnection {
+        flags: i32,
+        presentation: bool,
+        params: DataJSON,
+    },
     /// `updateBotStopped#c4870a49`
-    BotStopped { user_id: UserId, date: i32, stopped: bool, qts: i32 },
+    BotStopped {
+        user_id: UserId,
+        date: i32,
+        stopped: bool,
+        qts: i32,
+    },
     /// `updateChannelParticipant#985d3abb`
-    ChannelParticipant { flags: i32, via_chatlist: bool, channel_id: ChannelId, date: i32, actor_id: i64, user_id: UserId, prev_participant: Option<ChannelParticipant>, new_participant: Option<ChannelParticipant>, invite: Option<ExportedChatInvite>, qts: i32 },
+    ChannelParticipant {
+        flags: i32,
+        via_chatlist: bool,
+        channel_id: ChannelId,
+        date: i32,
+        actor_id: i64,
+        user_id: UserId,
+        prev_participant: Option<ChannelParticipant>,
+        new_participant: Option<ChannelParticipant>,
+        invite: Option<ExportedChatInvite>,
+        qts: i32,
+    },
     /// `updateChatParticipant#d087663a`
-    ChatParticipant { flags: i32, chat_id: ChatId, date: i32, actor_id: i64, user_id: UserId, prev_participant: Option<ChatParticipant>, new_participant: Option<ChatParticipant>, invite: Option<ExportedChatInvite>, qts: i32 },
+    ChatParticipant {
+        flags: i32,
+        chat_id: ChatId,
+        date: i32,
+        actor_id: i64,
+        user_id: UserId,
+        prev_participant: Option<ChatParticipant>,
+        new_participant: Option<ChatParticipant>,
+        invite: Option<ExportedChatInvite>,
+        qts: i32,
+    },
     /// `updatePeerHistoryTTL#bb9bb9a5`
-    PeerHistoryTTL { flags: i32, peer: Peer, ttl_period: Option<i32> },
+    PeerHistoryTTL {
+        flags: i32,
+        peer: Peer,
+        ttl_period: Option<i32>,
+    },
     /// `updateGroupCall#9d2216e0`
-    GroupCall { flags: i32, live_story: bool, peer: Option<Peer>, call: GroupCall },
+    GroupCall {
+        flags: i32,
+        live_story: bool,
+        peer: Option<Peer>,
+        call: GroupCall,
+    },
     /// `updateGroupCallParticipants#f2ebdb4e`
-    GroupCallParticipants { call: InputGroupCall, participants: Vec<GroupCallParticipant>, version: i32 },
+    GroupCallParticipants {
+        call: InputGroupCall,
+        participants: Vec<GroupCallParticipant>,
+        version: i32,
+    },
     /// `updateChat#f89a6a4e`
     Chat { chat_id: ChatId },
     /// `updatePinnedChannelMessages#5bb98608`
-    PinnedChannelMessages { flags: i32, pinned: bool, channel_id: ChannelId, messages: Vec<i32>, pts: i32, pts_count: i32 },
+    PinnedChannelMessages {
+        flags: i32,
+        pinned: bool,
+        channel_id: ChannelId,
+        messages: Vec<i32>,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updatePinnedMessages#ed85eab5`
-    PinnedMessages { flags: i32, pinned: bool, peer: Peer, messages: Vec<i32>, pts: i32, pts_count: i32 },
+    PinnedMessages {
+        flags: i32,
+        pinned: bool,
+        peer: Peer,
+        messages: Vec<i32>,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateChannelUserTyping#8c88c923`
-    ChannelUserTyping { flags: i32, channel_id: ChannelId, top_msg_id: Option<i32>, from_id: Peer, action: SendMessageAction },
+    ChannelUserTyping {
+        flags: i32,
+        channel_id: ChannelId,
+        top_msg_id: Option<i32>,
+        from_id: Peer,
+        action: SendMessageAction,
+    },
     /// `updatePeerBlocked#ebe07752`
-    PeerBlocked { flags: i32, blocked: bool, blocked_my_stories_from: bool, peer_id: Peer },
+    PeerBlocked {
+        flags: i32,
+        blocked: bool,
+        blocked_my_stories_from: bool,
+        peer_id: Peer,
+    },
     /// `updateReadChannelDiscussionOutbox#695c9e7c`
-    ReadChannelDiscussionOutbox { channel_id: ChannelId, top_msg_id: i32, read_max_id: i32 },
+    ReadChannelDiscussionOutbox {
+        channel_id: ChannelId,
+        top_msg_id: i32,
+        read_max_id: i32,
+    },
     /// `updateReadChannelDiscussionInbox#d6b19546`
-    ReadChannelDiscussionInbox { flags: i32, channel_id: ChannelId, top_msg_id: i32, read_max_id: i32, broadcast_id: Option<i64>, broadcast_post: Option<i32> },
+    ReadChannelDiscussionInbox {
+        flags: i32,
+        channel_id: ChannelId,
+        top_msg_id: i32,
+        read_max_id: i32,
+        broadcast_id: Option<i64>,
+        broadcast_post: Option<i32>,
+    },
     /// `updateChannelMessageForwards#d29a27f4`
-    ChannelMessageForwards { channel_id: ChannelId, id: i32, forwards: i32 },
+    ChannelMessageForwards {
+        channel_id: ChannelId,
+        id: i32,
+        forwards: i32,
+    },
     /// `updatePhoneCallSignalingData#2661bf09`
     PhoneCallSignalingData { phone_call_id: i64, data: Vec<u8> },
     /// `updateDialogFilters#3504914f`
@@ -378,9 +723,19 @@ pub enum Update {
     /// `updateDialogFilterOrder#a5d72105`
     DialogFilterOrder { order: Vec<i32> },
     /// `updateDialogFilter#26ffde7d`
-    DialogFilter { flags: i32, id: i32, filter: Option<DialogFilter> },
+    DialogFilter {
+        flags: i32,
+        id: i32,
+        filter: Option<DialogFilter>,
+    },
     /// `updateMessagePollVote#7699f014`
-    MessagePollVote { poll_id: i64, peer: Peer, options: Vec<Vec<u8>>, positions: Vec<i32>, qts: i32 },
+    MessagePollVote {
+        poll_id: i64,
+        peer: Peer,
+        options: Vec<Vec<u8>>,
+        positions: Vec<i32>,
+        qts: i32,
+    },
     /// `updateLoginToken#564fe691`
     LoginToken,
     /// `updateGeoLiveViewed#871fb939`
@@ -388,7 +743,12 @@ pub enum Update {
     /// `updateTheme#8216fba3`
     Theme { theme: Theme },
     /// `updateDeleteScheduledMessages#f2a71983`
-    DeleteScheduledMessages { flags: i32, peer: Peer, messages: Vec<i32>, sent_messages: Option<Vec<i32>> },
+    DeleteScheduledMessages {
+        flags: i32,
+        peer: Peer,
+        messages: Vec<i32>,
+        sent_messages: Option<Vec<i32>>,
+    },
     /// `updateNewScheduledMessage#39a51dfb`
     NewScheduledMessage { message: Message },
     /// `updatePeerLocated#b4afcfb0`
@@ -396,19 +756,49 @@ pub enum Update {
     /// `updatePeerSettings#6a7e7366`
     PeerSettings { peer: Peer, settings: PeerSettings },
     /// `updateFolderPeers#19360dc0`
-    FolderPeers { folder_peers: Vec<FolderPeer>, pts: i32, pts_count: i32 },
+    FolderPeers {
+        folder_peers: Vec<FolderPeer>,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateChatDefaultBannedRights#54c01850`
-    ChatDefaultBannedRights { peer: Peer, default_banned_rights: ChatBannedRights, version: i32 },
+    ChatDefaultBannedRights {
+        peer: Peer,
+        default_banned_rights: ChatBannedRights,
+        version: i32,
+    },
     /// `updateMessagePoll#d64c522b`
-    MessagePoll { flags: i32, peer: Option<Peer>, msg_id: Option<i32>, top_msg_id: Option<i32>, poll_id: i64, poll: Option<Poll>, results: PollResults },
+    MessagePoll {
+        flags: i32,
+        peer: Option<Peer>,
+        msg_id: Option<i32>,
+        top_msg_id: Option<i32>,
+        poll_id: i64,
+        poll: Option<Poll>,
+        results: PollResults,
+    },
     /// `updateDialogUnreadMark#b658f23e`
-    DialogUnreadMark { flags: i32, unread: bool, peer: DialogPeer, saved_peer_id: Option<Peer> },
+    DialogUnreadMark {
+        flags: i32,
+        unread: bool,
+        peer: DialogPeer,
+        saved_peer_id: Option<Peer>,
+    },
     /// `updateChannelAvailableMessages#b23fc698`
-    ChannelAvailableMessages { channel_id: ChannelId, available_min_id: i32 },
+    ChannelAvailableMessages {
+        channel_id: ChannelId,
+        available_min_id: i32,
+    },
     /// `updateContactsReset#7084a7be`
     ContactsReset,
     /// `updateChannelReadMessagesContents#25f324f7`
-    ChannelReadMessagesContents { flags: i32, channel_id: ChannelId, top_msg_id: Option<i32>, saved_peer_id: Option<Peer>, messages: Vec<i32> },
+    ChannelReadMessagesContents {
+        flags: i32,
+        channel_id: ChannelId,
+        top_msg_id: Option<i32>,
+        saved_peer_id: Option<Peer>,
+        messages: Vec<i32>,
+    },
     /// `updateFavedStickers#e511996d`
     FavedStickers,
     /// `updateLangPack#56022f4d`
@@ -418,19 +808,51 @@ pub enum Update {
     /// `updatePhoneCall#ab0f6b1e`
     PhoneCall { phone_call: PhoneCall },
     /// `updateBotPrecheckoutQuery#8caa9a96`
-    BotPrecheckoutQuery { flags: i32, query_id: i64, user_id: UserId, payload: Vec<u8>, info: Option<PaymentRequestedInfo>, shipping_option_id: Option<String>, currency: String, total_amount: i64 },
+    BotPrecheckoutQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        payload: Vec<u8>,
+        info: Option<PaymentRequestedInfo>,
+        shipping_option_id: Option<String>,
+        currency: String,
+        total_amount: i64,
+    },
     /// `updateBotShippingQuery#b5aefd7d`
-    BotShippingQuery { query_id: i64, user_id: UserId, payload: Vec<u8>, shipping_address: PostAddress },
+    BotShippingQuery {
+        query_id: i64,
+        user_id: UserId,
+        payload: Vec<u8>,
+        shipping_address: PostAddress,
+    },
     /// `updateBotWebhookJSONQuery#9b9240a6`
-    BotWebhookJSONQuery { query_id: i64, data: DataJSON, timeout: i32 },
+    BotWebhookJSONQuery {
+        query_id: i64,
+        data: DataJSON,
+        timeout: i32,
+    },
     /// `updateBotWebhookJSON#8317c0c3`
     BotWebhookJSON { data: DataJSON },
     /// `updatePinnedDialogs#fa0f3ca2`
-    PinnedDialogs { flags: i32, folder_id: Option<i32>, order: Option<Vec<DialogPeer>> },
+    PinnedDialogs {
+        flags: i32,
+        folder_id: Option<i32>,
+        order: Option<Vec<DialogPeer>>,
+    },
     /// `updateDialogPinned#6e6fe51c`
-    DialogPinned { flags: i32, pinned: bool, folder_id: Option<i32>, peer: DialogPeer },
+    DialogPinned {
+        flags: i32,
+        pinned: bool,
+        folder_id: Option<i32>,
+        peer: DialogPeer,
+    },
     /// `updateChannelWebPage#2f2ba99f`
-    ChannelWebPage { channel_id: ChannelId, webpage: WebPage, pts: i32, pts_count: i32 },
+    ChannelWebPage {
+        channel_id: ChannelId,
+        webpage: WebPage,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updatePtsChanged#3354678f`
     PtsChanged,
     /// `updateConfig#a229dd06`
@@ -440,67 +862,204 @@ pub enum Update {
     /// `updateReadFeaturedStickers#571d2742`
     ReadFeaturedStickers,
     /// `updateDraftMessage#edfc111e`
-    DraftMessage { flags: i32, peer: Peer, top_msg_id: Option<i32>, saved_peer_id: Option<Peer>, draft: DraftMessage },
+    DraftMessage {
+        flags: i32,
+        peer: Peer,
+        top_msg_id: Option<i32>,
+        saved_peer_id: Option<Peer>,
+        draft: DraftMessage,
+    },
     /// `updateReadChannelOutbox#b75f99a9`
     ReadChannelOutbox { channel_id: ChannelId, max_id: i32 },
     /// `updateInlineBotCallbackQuery#691e9052`
-    InlineBotCallbackQuery { flags: i32, query_id: i64, user_id: UserId, msg_id: InputBotInlineMessageID, chat_instance: i64, data: Option<Vec<u8>>, game_short_name: Option<String> },
+    InlineBotCallbackQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        msg_id: InputBotInlineMessageID,
+        chat_instance: i64,
+        data: Option<Vec<u8>>,
+        game_short_name: Option<String>,
+    },
     /// `updateEditMessage#e40370a3`
-    EditMessage { message: Message, pts: i32, pts_count: i32 },
+    EditMessage {
+        message: Message,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateBotCallbackQuery#b9cfc48d`
-    BotCallbackQuery { flags: i32, query_id: i64, user_id: UserId, peer: Peer, msg_id: i32, chat_instance: i64, data: Option<Vec<u8>>, game_short_name: Option<String> },
+    BotCallbackQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        peer: Peer,
+        msg_id: i32,
+        chat_instance: i64,
+        data: Option<Vec<u8>>,
+        game_short_name: Option<String>,
+    },
     /// `updateEditChannelMessage#1b3f4df7`
-    EditChannelMessage { message: Message, pts: i32, pts_count: i32 },
+    EditChannelMessage {
+        message: Message,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateBotInlineSend#12f12a07`
-    BotInlineSend { flags: i32, user_id: UserId, query: String, geo: Option<GeoPoint>, id: String, msg_id: Option<InputBotInlineMessageID> },
+    BotInlineSend {
+        flags: i32,
+        user_id: UserId,
+        query: String,
+        geo: Option<GeoPoint>,
+        id: String,
+        msg_id: Option<InputBotInlineMessageID>,
+    },
     /// `updateBotInlineQuery#496f379c`
-    BotInlineQuery { flags: i32, query_id: i64, user_id: UserId, query: String, geo: Option<GeoPoint>, peer_type: Option<InlineQueryPeerType>, offset: String },
+    BotInlineQuery {
+        flags: i32,
+        query_id: i64,
+        user_id: UserId,
+        query: String,
+        geo: Option<GeoPoint>,
+        peer_type: Option<InlineQueryPeerType>,
+        offset: String,
+    },
     /// `updateSavedGifs#9375341e`
     SavedGifs,
     /// `updateStickerSets#31c24808`
-    StickerSets { flags: i32, masks: bool, emojis: bool },
+    StickerSets {
+        flags: i32,
+        masks: bool,
+        emojis: bool,
+    },
     /// `updateStickerSetsOrder#0bb2d201`
-    StickerSetsOrder { flags: i32, masks: bool, emojis: bool, order: Vec<i64> },
+    StickerSetsOrder {
+        flags: i32,
+        masks: bool,
+        emojis: bool,
+        order: Vec<i64>,
+    },
     /// `updateNewStickerSet#688a30aa`
     NewStickerSet { stickerset: MessagesStickerSet },
     /// `updateChatParticipantAdmin#d7ca61a2`
-    ChatParticipantAdmin { chat_id: ChatId, user_id: UserId, is_admin: bool, version: i32 },
+    ChatParticipantAdmin {
+        chat_id: ChatId,
+        user_id: UserId,
+        is_admin: bool,
+        version: i32,
+    },
     /// `updateChannelMessageViews#f226ac08`
-    ChannelMessageViews { channel_id: ChannelId, id: i32, views: i32 },
+    ChannelMessageViews {
+        channel_id: ChannelId,
+        id: i32,
+        views: i32,
+    },
     /// `updateDeleteChannelMessages#c32d5b12`
-    DeleteChannelMessages { channel_id: ChannelId, messages: Vec<i32>, pts: i32, pts_count: i32 },
+    DeleteChannelMessages {
+        channel_id: ChannelId,
+        messages: Vec<i32>,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateReadChannelInbox#922e6e10`
-    ReadChannelInbox { flags: i32, folder_id: Option<i32>, channel_id: ChannelId, max_id: i32, still_unread_count: i32, pts: i32 },
+    ReadChannelInbox {
+        flags: i32,
+        folder_id: Option<i32>,
+        channel_id: ChannelId,
+        max_id: i32,
+        still_unread_count: i32,
+        pts: i32,
+    },
     /// `updateNewChannelMessage#62ba04d9`
-    NewChannelMessage { message: Message, pts: i32, pts_count: i32 },
+    NewChannelMessage {
+        message: Message,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateChannel#635b4c09`
     Channel { channel_id: ChannelId },
     /// `updateChannelTooLong#108d941f`
-    ChannelTooLong { flags: i32, channel_id: ChannelId, pts: Option<i32> },
+    ChannelTooLong {
+        flags: i32,
+        channel_id: ChannelId,
+        pts: Option<i32>,
+    },
     /// `updateReadMessagesContents#f8227181`
-    ReadMessagesContents { flags: i32, messages: Vec<i32>, pts: i32, pts_count: i32, date: Option<i32> },
+    ReadMessagesContents {
+        flags: i32,
+        messages: Vec<i32>,
+        pts: i32,
+        pts_count: i32,
+        date: Option<i32>,
+    },
     /// `updateWebPage#7f891213`
-    WebPage { webpage: WebPage, pts: i32, pts_count: i32 },
+    WebPage {
+        webpage: WebPage,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateReadHistoryOutbox#2f2f21bf`
-    ReadHistoryOutbox { peer: Peer, max_id: i32, pts: i32, pts_count: i32 },
+    ReadHistoryOutbox {
+        peer: Peer,
+        max_id: i32,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateReadHistoryInbox#9e84bc99`
-    ReadHistoryInbox { flags: i32, folder_id: Option<i32>, peer: Peer, top_msg_id: Option<i32>, max_id: i32, still_unread_count: i32, pts: i32, pts_count: i32 },
+    ReadHistoryInbox {
+        flags: i32,
+        folder_id: Option<i32>,
+        peer: Peer,
+        top_msg_id: Option<i32>,
+        max_id: i32,
+        still_unread_count: i32,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateUserPhone#05492a13`
     UserPhone { user_id: UserId, phone: String },
     /// `updatePrivacy#ee3b272a`
-    Privacy { key: PrivacyKey, rules: Vec<PrivacyRule> },
+    Privacy {
+        key: PrivacyKey,
+        rules: Vec<PrivacyRule>,
+    },
     /// `updateServiceNotification#ebe46819`
-    ServiceNotification { flags: i32, popup: bool, invert_media: bool, inbox_date: Option<i32>, r#type: String, message: String, media: MessageMedia, entities: Vec<MessageEntity> },
+    ServiceNotification {
+        flags: i32,
+        popup: bool,
+        invert_media: bool,
+        inbox_date: Option<i32>,
+        r#type: String,
+        message: String,
+        media: MessageMedia,
+        entities: Vec<MessageEntity>,
+    },
     /// `updateNotifySettings#bec268ef`
-    NotifySettings { peer: NotifyPeer, notify_settings: PeerNotifySettings },
+    NotifySettings {
+        peer: NotifyPeer,
+        notify_settings: PeerNotifySettings,
+    },
     /// `updateDcOptions#8e5e9873`
     DcOptions { dc_options: Vec<DcOption> },
     /// `updateChatParticipantDelete#e32f3d77`
-    ChatParticipantDelete { chat_id: ChatId, user_id: UserId, version: i32 },
+    ChatParticipantDelete {
+        chat_id: ChatId,
+        user_id: UserId,
+        version: i32,
+    },
     /// `updateChatParticipantAdd#3dda5451`
-    ChatParticipantAdd { chat_id: ChatId, user_id: UserId, inviter_id: i64, date: i32, version: i32 },
+    ChatParticipantAdd {
+        chat_id: ChatId,
+        user_id: UserId,
+        inviter_id: i64,
+        date: i32,
+        version: i32,
+    },
     /// `updateEncryptedMessagesRead#38fe25b7`
-    EncryptedMessagesRead { chat_id: i32, max_date: i32, date: i32 },
+    EncryptedMessagesRead {
+        chat_id: i32,
+        max_date: i32,
+        date: i32,
+    },
     /// `updateEncryption#b4a2e88d`
     Encryption { chat: EncryptedChat, date: i32 },
     /// `updateEncryptedChatTyping#1710f156`
@@ -508,23 +1067,52 @@ pub enum Update {
     /// `updateNewEncryptedMessage#12bcbd9a`
     NewEncryptedMessage { message: EncryptedMessage, qts: i32 },
     /// `updateNewAuthorization#8951abef`
-    NewAuthorization { flags: i32, unconfirmed: bool, hash: i64, date: Option<i32>, device: Option<String>, location: Option<String> },
+    NewAuthorization {
+        flags: i32,
+        unconfirmed: bool,
+        hash: i64,
+        date: Option<i32>,
+        device: Option<String>,
+        location: Option<String>,
+    },
     /// `updateUserName#a7848924`
-    UserName { user_id: UserId, first_name: String, last_name: String, usernames: Vec<Username> },
+    UserName {
+        user_id: UserId,
+        first_name: String,
+        last_name: String,
+        usernames: Vec<Username>,
+    },
     /// `updateUserStatus#e5bdf8de`
     UserStatus { user_id: UserId, status: UserStatus },
     /// `updateChatParticipants#07761198`
     ChatParticipants { participants: ChatParticipants },
     /// `updateChatUserTyping#83487af0`
-    ChatUserTyping { chat_id: ChatId, from_id: Peer, action: SendMessageAction },
+    ChatUserTyping {
+        chat_id: ChatId,
+        from_id: Peer,
+        action: SendMessageAction,
+    },
     /// `updateUserTyping#2a17bf5c`
-    UserTyping { flags: i32, user_id: UserId, top_msg_id: Option<i32>, action: SendMessageAction },
+    UserTyping {
+        flags: i32,
+        user_id: UserId,
+        top_msg_id: Option<i32>,
+        action: SendMessageAction,
+    },
     /// `updateDeleteMessages#a20db0e5`
-    DeleteMessages { messages: Vec<i32>, pts: i32, pts_count: i32 },
+    DeleteMessages {
+        messages: Vec<i32>,
+        pts: i32,
+        pts_count: i32,
+    },
     /// `updateMessageID#4e90bfd6`
     MessageID { id: MsgId, random_id: i64 },
     /// `updateNewMessage#1f2b0afd`
-    NewMessage { message: Message, pts: i32, pts_count: i32 },
+    NewMessage {
+        message: Message,
+        pts: i32,
+        pts_count: i32,
+    },
     /// Constructor not recognized by this library version.
     Other { constructor: u32 },
 }
@@ -534,1496 +1122,1974 @@ impl Update {
         let ctor = r.read_u32()?;
         match ctor {
             UPDATE_BOT_STARS_SUBSCRIPTION_ID => {
-    let flags = r.read_i32()?;
-    let canceled = flags & (1 << 0) != 0;
-    let payment_failed = flags & (1 << 1) != 0;
-    let restored = flags & (1 << 2) != 0;
-    let user_id = r.read_i64()?;
-    let payload = r.read_bytes()?;
-    let qts = r.read_i32()?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotStarsSubscription { flags, canceled, payment_failed, restored, user_id, payload, qts })
+                let flags = r.read_i32()?;
+                let canceled = flags & (1 << 0) != 0;
+                let payment_failed = flags & (1 << 1) != 0;
+                let restored = flags & (1 << 2) != 0;
+                let user_id = r.read_i64()?;
+                let payload = r.read_bytes()?;
+                let qts = r.read_i32()?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotStarsSubscription {
+                    flags,
+                    canceled,
+                    payment_failed,
+                    restored,
+                    user_id,
+                    payload,
+                    qts,
+                })
             }
             UPDATE_EPHEMERAL_BOT_CALLBACK_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let peer = if flags & (1 << 0) != 0 {
-        let peer = Peer::read_from(r)?;
-        Some(peer)
-    } else {
-        None
-    };
-    let msg_id = r.read_i32()?;
-    let data = r.read_bytes()?;
-    let chat_instance = if flags & (1 << 1) != 0 {
-        let chat_instance = r.read_i64()?;
-        Some(chat_instance)
-    } else {
-        None
-    };
-    let message = EphemeralMessage::read_from(r)?;
-    let user_id = UserId(user_id);
-                Ok(Update::EphemeralBotCallbackQuery { flags, query_id, user_id, peer, msg_id, data, chat_instance, message })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let peer = if flags & (1 << 0) != 0 {
+                    let peer = Peer::read_from(r)?;
+                    Some(peer)
+                } else {
+                    None
+                };
+                let msg_id = r.read_i32()?;
+                let data = r.read_bytes()?;
+                let chat_instance = if flags & (1 << 1) != 0 {
+                    let chat_instance = r.read_i64()?;
+                    Some(chat_instance)
+                } else {
+                    None
+                };
+                let message = EphemeralMessage::read_from(r)?;
+                let user_id = UserId(user_id);
+                Ok(Update::EphemeralBotCallbackQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    peer,
+                    msg_id,
+                    data,
+                    chat_instance,
+                    message,
+                })
             }
             UPDATE_EDIT_EPHEMERAL_MESSAGE_ID => {
-    let message = EphemeralMessage::read_from(r)?;
+                let message = EphemeralMessage::read_from(r)?;
                 Ok(Update::EditEphemeralMessage { message })
             }
             UPDATE_DELETE_EPHEMERAL_MESSAGES_ID => {
-    let peer = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut ids = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        ids.push(r.read_i32()?);
-    }
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut ids = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    ids.push(r.read_i32()?);
+                }
                 Ok(Update::DeleteEphemeralMessages { peer, ids })
             }
             UPDATE_NEW_EPHEMERAL_MESSAGE_ID => {
-    let message = EphemeralMessage::read_from(r)?;
+                let message = EphemeralMessage::read_from(r)?;
                 Ok(Update::NewEphemeralMessage { message })
             }
             UPDATE_WEB_BROWSER_EXCEPTION_ID => {
-    let flags = r.read_i32()?;
-    let delete = flags & (1 << 1) != 0;
-    let open_external_browser = if flags & (1 << 0) != 0 {
-        let open_external_browser = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(open_external_browser)
-    } else {
-        None
-    };
-    let exception = WebDomainException::read_from(r)?;
-                Ok(Update::WebBrowserException { flags, delete, open_external_browser, exception })
+                let flags = r.read_i32()?;
+                let delete = flags & (1 << 1) != 0;
+                let open_external_browser = if flags & (1 << 0) != 0 {
+                    let open_external_browser = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(open_external_browser)
+                } else {
+                    None
+                };
+                let exception = WebDomainException::read_from(r)?;
+                Ok(Update::WebBrowserException {
+                    flags,
+                    delete,
+                    open_external_browser,
+                    exception,
+                })
             }
             UPDATE_WEB_BROWSER_SETTINGS_ID => {
-    let flags = r.read_i32()?;
-    let open_external_browser = flags & (1 << 0) != 0;
-    let display_close_button = flags & (1 << 1) != 0;
-                Ok(Update::WebBrowserSettings { flags, open_external_browser, display_close_button })
+                let flags = r.read_i32()?;
+                let open_external_browser = flags & (1 << 0) != 0;
+                let display_close_button = flags & (1 << 1) != 0;
+                Ok(Update::WebBrowserSettings {
+                    flags,
+                    open_external_browser,
+                    display_close_button,
+                })
             }
             UPDATE_NEW_BOT_CONNECTION_ID => {
-    let flags = r.read_i32()?;
-    let confirmed = flags & (1 << 0) != 0;
-    let bot_id = r.read_i64()?;
-    let date = if flags & (1 << 1) != 0 {
-        let date = r.read_i32()?;
-        Some(date)
-    } else {
-        None
-    };
-    let device = if flags & (1 << 1) != 0 {
-        let device = String::from_utf8(r.read_bytes()?)?;
-        Some(device)
-    } else {
-        None
-    };
-    let location = if flags & (1 << 1) != 0 {
-        let location = String::from_utf8(r.read_bytes()?)?;
-        Some(location)
-    } else {
-        None
-    };
-                Ok(Update::NewBotConnection { flags, confirmed, bot_id, date, device, location })
+                let flags = r.read_i32()?;
+                let confirmed = flags & (1 << 0) != 0;
+                let bot_id = r.read_i64()?;
+                let date = if flags & (1 << 1) != 0 {
+                    let date = r.read_i32()?;
+                    Some(date)
+                } else {
+                    None
+                };
+                let device = if flags & (1 << 1) != 0 {
+                    let device = String::from_utf8(r.read_bytes()?)?;
+                    Some(device)
+                } else {
+                    None
+                };
+                let location = if flags & (1 << 1) != 0 {
+                    let location = String::from_utf8(r.read_bytes()?)?;
+                    Some(location)
+                } else {
+                    None
+                };
+                Ok(Update::NewBotConnection {
+                    flags,
+                    confirmed,
+                    bot_id,
+                    date,
+                    device,
+                    location,
+                })
             }
             UPDATE_JOIN_CHAT_WEB_VIEW_DECISION_ID => {
-    let peer = Peer::read_from(r)?;
-    let query_id = r.read_i64()?;
-    let result = JoinChatBotResult::read_from(r)?;
-                Ok(Update::JoinChatWebViewDecision { peer, query_id, result })
+                let peer = Peer::read_from(r)?;
+                let query_id = r.read_i64()?;
+                let result = JoinChatBotResult::read_from(r)?;
+                Ok(Update::JoinChatWebViewDecision {
+                    peer,
+                    query_id,
+                    result,
+                })
             }
-            UPDATE_AI_COMPOSE_TONES_ID => {
-                Ok(Update::AiComposeTones {  })
-            }
+            UPDATE_AI_COMPOSE_TONES_ID => Ok(Update::AiComposeTones {}),
             UPDATE_BOT_GUEST_CHAT_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let message = Message::read_from(r)?;
-    let reference_messages = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut reference_messages = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            reference_messages.push(Message::read_from(r)?);
-        }
-        Some(reference_messages)
-    } else {
-        None
-    };
-    let qts = r.read_i32()?;
-                Ok(Update::BotGuestChatQuery { flags, query_id, message, reference_messages, qts })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let message = Message::read_from(r)?;
+                let reference_messages = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut reference_messages = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        reference_messages.push(Message::read_from(r)?);
+                    }
+                    Some(reference_messages)
+                } else {
+                    None
+                };
+                let qts = r.read_i32()?;
+                Ok(Update::BotGuestChatQuery {
+                    flags,
+                    query_id,
+                    message,
+                    reference_messages,
+                    qts,
+                })
             }
             UPDATE_MANAGED_BOT_ID => {
-    let user_id = r.read_i64()?;
-    let bot_id = r.read_i64()?;
-    let qts = r.read_i32()?;
-    let user_id = UserId(user_id);
-                Ok(Update::ManagedBot { user_id, bot_id, qts })
+                let user_id = r.read_i64()?;
+                let bot_id = r.read_i64()?;
+                let qts = r.read_i32()?;
+                let user_id = UserId(user_id);
+                Ok(Update::ManagedBot {
+                    user_id,
+                    bot_id,
+                    qts,
+                })
             }
             UPDATE_CHAT_PARTICIPANT_RANK_ID => {
-    let chat_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let rank = String::from_utf8(r.read_bytes()?)?;
-    let version = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChatParticipantRank { chat_id, user_id, rank, version })
+                let chat_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let rank = String::from_utf8(r.read_bytes()?)?;
+                let version = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChatParticipantRank {
+                    chat_id,
+                    user_id,
+                    rank,
+                    version,
+                })
             }
-            UPDATE_STAR_GIFT_CRAFT_FAIL_ID => {
-                Ok(Update::StarGiftCraftFail {  })
-            }
+            UPDATE_STAR_GIFT_CRAFT_FAIL_ID => Ok(Update::StarGiftCraftFail {}),
             UPDATE_EMOJI_GAME_INFO_ID => {
-    let info = MessagesEmojiGameInfo::read_from(r)?;
+                let info = MessagesEmojiGameInfo::read_from(r)?;
                 Ok(Update::EmojiGameInfo { info })
             }
             UPDATE_STAR_GIFT_AUCTION_USER_STATE_ID => {
-    let gift_id = r.read_i64()?;
-    let user_state = StarGiftAuctionUserState::read_from(r)?;
-                Ok(Update::StarGiftAuctionUserState { gift_id, user_state })
+                let gift_id = r.read_i64()?;
+                let user_state = StarGiftAuctionUserState::read_from(r)?;
+                Ok(Update::StarGiftAuctionUserState {
+                    gift_id,
+                    user_state,
+                })
             }
             UPDATE_STAR_GIFT_AUCTION_STATE_ID => {
-    let gift_id = r.read_i64()?;
-    let state = StarGiftAuctionState::read_from(r)?;
+                let gift_id = r.read_i64()?;
+                let state = StarGiftAuctionState::read_from(r)?;
                 Ok(Update::StarGiftAuctionState { gift_id, state })
             }
             UPDATE_DELETE_GROUP_CALL_MESSAGES_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
+                let call = InputGroupCall::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
                 Ok(Update::DeleteGroupCallMessages { call, messages })
             }
             UPDATE_PINNED_FORUM_TOPICS_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let order = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut order = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            order.push(r.read_i32()?);
-        }
-        Some(order)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let order = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut order = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        order.push(r.read_i32()?);
+                    }
+                    Some(order)
+                } else {
+                    None
+                };
                 Ok(Update::PinnedForumTopics { flags, peer, order })
             }
             UPDATE_PINNED_FORUM_TOPIC_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 0) != 0;
-    let peer = Peer::read_from(r)?;
-    let topic_id = r.read_i32()?;
-                Ok(Update::PinnedForumTopic { flags, pinned, peer, topic_id })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 0) != 0;
+                let peer = Peer::read_from(r)?;
+                let topic_id = r.read_i32()?;
+                Ok(Update::PinnedForumTopic {
+                    flags,
+                    pinned,
+                    peer,
+                    topic_id,
+                })
             }
             UPDATE_GROUP_CALL_ENCRYPTED_MESSAGE_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let from_id = Peer::read_from(r)?;
-    let encrypted_message = r.read_bytes()?;
-                Ok(Update::GroupCallEncryptedMessage { call, from_id, encrypted_message })
+                let call = InputGroupCall::read_from(r)?;
+                let from_id = Peer::read_from(r)?;
+                let encrypted_message = r.read_bytes()?;
+                Ok(Update::GroupCallEncryptedMessage {
+                    call,
+                    from_id,
+                    encrypted_message,
+                })
             }
             UPDATE_GROUP_CALL_MESSAGE_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let message = GroupCallMessage::read_from(r)?;
+                let call = InputGroupCall::read_from(r)?;
+                let message = GroupCallMessage::read_from(r)?;
                 Ok(Update::GroupCallMessage { call, message })
             }
             UPDATE_MONO_FORUM_NO_PAID_EXCEPTION_ID => {
-    let flags = r.read_i32()?;
-    let exception = flags & (1 << 0) != 0;
-    let channel_id = r.read_i64()?;
-    let saved_peer_id = Peer::read_from(r)?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::MonoForumNoPaidException { flags, exception, channel_id, saved_peer_id })
+                let flags = r.read_i32()?;
+                let exception = flags & (1 << 0) != 0;
+                let channel_id = r.read_i64()?;
+                let saved_peer_id = Peer::read_from(r)?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::MonoForumNoPaidException {
+                    flags,
+                    exception,
+                    channel_id,
+                    saved_peer_id,
+                })
             }
             UPDATE_READ_MONO_FORUM_OUTBOX_ID => {
-    let channel_id = r.read_i64()?;
-    let saved_peer_id = Peer::read_from(r)?;
-    let read_max_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ReadMonoForumOutbox { channel_id, saved_peer_id, read_max_id })
+                let channel_id = r.read_i64()?;
+                let saved_peer_id = Peer::read_from(r)?;
+                let read_max_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ReadMonoForumOutbox {
+                    channel_id,
+                    saved_peer_id,
+                    read_max_id,
+                })
             }
             UPDATE_READ_MONO_FORUM_INBOX_ID => {
-    let channel_id = r.read_i64()?;
-    let saved_peer_id = Peer::read_from(r)?;
-    let read_max_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ReadMonoForumInbox { channel_id, saved_peer_id, read_max_id })
+                let channel_id = r.read_i64()?;
+                let saved_peer_id = Peer::read_from(r)?;
+                let read_max_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ReadMonoForumInbox {
+                    channel_id,
+                    saved_peer_id,
+                    read_max_id,
+                })
             }
             UPDATE_GROUP_CALL_CHAIN_BLOCKS_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let sub_chain_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(r.read_bytes()?);
-    }
-    let next_offset = r.read_i32()?;
-                Ok(Update::GroupCallChainBlocks { call, sub_chain_id, blocks, next_offset })
+                let call = InputGroupCall::read_from(r)?;
+                let sub_chain_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(r.read_bytes()?);
+                }
+                let next_offset = r.read_i32()?;
+                Ok(Update::GroupCallChainBlocks {
+                    call,
+                    sub_chain_id,
+                    blocks,
+                    next_offset,
+                })
             }
             UPDATE_SENT_PHONE_CODE_ID => {
-    let sent_code = AuthSentCode::read_from(r)?;
+                let sent_code = AuthSentCode::read_from(r)?;
                 Ok(Update::SentPhoneCode { sent_code })
             }
             UPDATE_PAID_REACTION_PRIVACY_ID => {
-    let private = PaidReactionPrivacy::read_from(r)?;
+                let private = PaidReactionPrivacy::read_from(r)?;
                 Ok(Update::PaidReactionPrivacy { private })
             }
             UPDATE_BOT_PURCHASED_PAID_MEDIA_ID => {
-    let user_id = r.read_i64()?;
-    let payload = String::from_utf8(r.read_bytes()?)?;
-    let qts = r.read_i32()?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotPurchasedPaidMedia { user_id, payload, qts })
+                let user_id = r.read_i64()?;
+                let payload = String::from_utf8(r.read_bytes()?)?;
+                let qts = r.read_i32()?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotPurchasedPaidMedia {
+                    user_id,
+                    payload,
+                    qts,
+                })
             }
             UPDATE_STARS_REVENUE_STATUS_ID => {
-    let peer = Peer::read_from(r)?;
-    let status = StarsRevenueStatus::read_from(r)?;
+                let peer = Peer::read_from(r)?;
+                let status = StarsRevenueStatus::read_from(r)?;
                 Ok(Update::StarsRevenueStatus { peer, status })
             }
             UPDATE_BUSINESS_BOT_CALLBACK_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let connection_id = String::from_utf8(r.read_bytes()?)?;
-    let message = Message::read_from(r)?;
-    let reply_to_message = if flags & (1 << 2) != 0 {
-        let reply_to_message = Message::read_from(r)?;
-        Some(reply_to_message)
-    } else {
-        None
-    };
-    let chat_instance = r.read_i64()?;
-    let data = if flags & (1 << 0) != 0 {
-        let data = r.read_bytes()?;
-        Some(data)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Update::BusinessBotCallbackQuery { flags, query_id, user_id, connection_id, message, reply_to_message, chat_instance, data })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let connection_id = String::from_utf8(r.read_bytes()?)?;
+                let message = Message::read_from(r)?;
+                let reply_to_message = if flags & (1 << 2) != 0 {
+                    let reply_to_message = Message::read_from(r)?;
+                    Some(reply_to_message)
+                } else {
+                    None
+                };
+                let chat_instance = r.read_i64()?;
+                let data = if flags & (1 << 0) != 0 {
+                    let data = r.read_bytes()?;
+                    Some(data)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Update::BusinessBotCallbackQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    connection_id,
+                    message,
+                    reply_to_message,
+                    chat_instance,
+                    data,
+                })
             }
             UPDATE_STARS_BALANCE_ID => {
-    let balance = StarsAmount::read_from(r)?;
+                let balance = StarsAmount::read_from(r)?;
                 Ok(Update::StarsBalance { balance })
             }
             UPDATE_NEW_STORY_REACTION_ID => {
-    let story_id = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let reaction = Reaction::read_from(r)?;
-                Ok(Update::NewStoryReaction { story_id, peer, reaction })
+                let story_id = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let reaction = Reaction::read_from(r)?;
+                Ok(Update::NewStoryReaction {
+                    story_id,
+                    peer,
+                    reaction,
+                })
             }
             UPDATE_BOT_DELETE_BUSINESS_MESSAGE_ID => {
-    let connection_id = String::from_utf8(r.read_bytes()?)?;
-    let peer = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let qts = r.read_i32()?;
-                Ok(Update::BotDeleteBusinessMessage { connection_id, peer, messages, qts })
+                let connection_id = String::from_utf8(r.read_bytes()?)?;
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let qts = r.read_i32()?;
+                Ok(Update::BotDeleteBusinessMessage {
+                    connection_id,
+                    peer,
+                    messages,
+                    qts,
+                })
             }
             UPDATE_BOT_EDIT_BUSINESS_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let connection_id = String::from_utf8(r.read_bytes()?)?;
-    let message = Message::read_from(r)?;
-    let reply_to_message = if flags & (1 << 0) != 0 {
-        let reply_to_message = Message::read_from(r)?;
-        Some(reply_to_message)
-    } else {
-        None
-    };
-    let qts = r.read_i32()?;
-                Ok(Update::BotEditBusinessMessage { flags, connection_id, message, reply_to_message, qts })
+                let flags = r.read_i32()?;
+                let connection_id = String::from_utf8(r.read_bytes()?)?;
+                let message = Message::read_from(r)?;
+                let reply_to_message = if flags & (1 << 0) != 0 {
+                    let reply_to_message = Message::read_from(r)?;
+                    Some(reply_to_message)
+                } else {
+                    None
+                };
+                let qts = r.read_i32()?;
+                Ok(Update::BotEditBusinessMessage {
+                    flags,
+                    connection_id,
+                    message,
+                    reply_to_message,
+                    qts,
+                })
             }
             UPDATE_BOT_NEW_BUSINESS_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let connection_id = String::from_utf8(r.read_bytes()?)?;
-    let message = Message::read_from(r)?;
-    let reply_to_message = if flags & (1 << 0) != 0 {
-        let reply_to_message = Message::read_from(r)?;
-        Some(reply_to_message)
-    } else {
-        None
-    };
-    let qts = r.read_i32()?;
-                Ok(Update::BotNewBusinessMessage { flags, connection_id, message, reply_to_message, qts })
+                let flags = r.read_i32()?;
+                let connection_id = String::from_utf8(r.read_bytes()?)?;
+                let message = Message::read_from(r)?;
+                let reply_to_message = if flags & (1 << 0) != 0 {
+                    let reply_to_message = Message::read_from(r)?;
+                    Some(reply_to_message)
+                } else {
+                    None
+                };
+                let qts = r.read_i32()?;
+                Ok(Update::BotNewBusinessMessage {
+                    flags,
+                    connection_id,
+                    message,
+                    reply_to_message,
+                    qts,
+                })
             }
             UPDATE_BOT_BUSINESS_CONNECT_ID => {
-    let connection = BotBusinessConnection::read_from(r)?;
-    let qts = r.read_i32()?;
+                let connection = BotBusinessConnection::read_from(r)?;
+                let qts = r.read_i32()?;
                 Ok(Update::BotBusinessConnect { connection, qts })
             }
             UPDATE_DELETE_QUICK_REPLY_MESSAGES_ID => {
-    let shortcut_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-                Ok(Update::DeleteQuickReplyMessages { shortcut_id, messages })
+                let shortcut_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                Ok(Update::DeleteQuickReplyMessages {
+                    shortcut_id,
+                    messages,
+                })
             }
             UPDATE_QUICK_REPLY_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
+                let message = Message::read_from(r)?;
                 Ok(Update::QuickReplyMessage { message })
             }
             UPDATE_DELETE_QUICK_REPLY_ID => {
-    let shortcut_id = r.read_i32()?;
+                let shortcut_id = r.read_i32()?;
                 Ok(Update::DeleteQuickReply { shortcut_id })
             }
             UPDATE_NEW_QUICK_REPLY_ID => {
-    let quick_reply = QuickReply::read_from(r)?;
+                let quick_reply = QuickReply::read_from(r)?;
                 Ok(Update::NewQuickReply { quick_reply })
             }
             UPDATE_QUICK_REPLIES_ID => {
-    let n = r.read_vector_header()?;
-    let mut quick_replies = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        quick_replies.push(QuickReply::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut quick_replies = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    quick_replies.push(QuickReply::read_from(r)?);
+                }
                 Ok(Update::QuickReplies { quick_replies })
             }
             UPDATE_SMS_JOB_ID => {
-    let job_id = String::from_utf8(r.read_bytes()?)?;
+                let job_id = String::from_utf8(r.read_bytes()?)?;
                 Ok(Update::SmsJob { job_id })
             }
-            UPDATE_SAVED_REACTION_TAGS_ID => {
-                Ok(Update::SavedReactionTags {  })
-            }
+            UPDATE_SAVED_REACTION_TAGS_ID => Ok(Update::SavedReactionTags {}),
             UPDATE_PINNED_SAVED_DIALOGS_ID => {
-    let flags = r.read_i32()?;
-    let order = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut order = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            order.push(DialogPeer::read_from(r)?);
-        }
-        Some(order)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let order = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut order = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        order.push(DialogPeer::read_from(r)?);
+                    }
+                    Some(order)
+                } else {
+                    None
+                };
                 Ok(Update::PinnedSavedDialogs { flags, order })
             }
             UPDATE_SAVED_DIALOG_PINNED_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 0) != 0;
-    let peer = DialogPeer::read_from(r)?;
-                Ok(Update::SavedDialogPinned { flags, pinned, peer })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 0) != 0;
+                let peer = DialogPeer::read_from(r)?;
+                Ok(Update::SavedDialogPinned {
+                    flags,
+                    pinned,
+                    peer,
+                })
             }
             UPDATE_BOT_MESSAGE_REACTIONS_ID => {
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut reactions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        reactions.push(ReactionCount::read_from(r)?);
-    }
-    let qts = r.read_i32()?;
-                Ok(Update::BotMessageReactions { peer, msg_id, date, reactions, qts })
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut reactions = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    reactions.push(ReactionCount::read_from(r)?);
+                }
+                let qts = r.read_i32()?;
+                Ok(Update::BotMessageReactions {
+                    peer,
+                    msg_id,
+                    date,
+                    reactions,
+                    qts,
+                })
             }
             UPDATE_BOT_MESSAGE_REACTION_ID => {
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let actor = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut old_reactions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        old_reactions.push(Reaction::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut new_reactions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        new_reactions.push(Reaction::read_from(r)?);
-    }
-    let qts = r.read_i32()?;
-                Ok(Update::BotMessageReaction { peer, msg_id, date, actor, old_reactions, new_reactions, qts })
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let actor = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut old_reactions = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    old_reactions.push(Reaction::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut new_reactions = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    new_reactions.push(Reaction::read_from(r)?);
+                }
+                let qts = r.read_i32()?;
+                Ok(Update::BotMessageReaction {
+                    peer,
+                    msg_id,
+                    date,
+                    actor,
+                    old_reactions,
+                    new_reactions,
+                    qts,
+                })
             }
             UPDATE_PEER_WALLPAPER_ID => {
-    let flags = r.read_i32()?;
-    let wallpaper_overridden = flags & (1 << 1) != 0;
-    let peer = Peer::read_from(r)?;
-    let wallpaper = if flags & (1 << 0) != 0 {
-        let wallpaper = WallPaper::read_from(r)?;
-        Some(wallpaper)
-    } else {
-        None
-    };
-                Ok(Update::PeerWallpaper { flags, wallpaper_overridden, peer, wallpaper })
+                let flags = r.read_i32()?;
+                let wallpaper_overridden = flags & (1 << 1) != 0;
+                let peer = Peer::read_from(r)?;
+                let wallpaper = if flags & (1 << 0) != 0 {
+                    let wallpaper = WallPaper::read_from(r)?;
+                    Some(wallpaper)
+                } else {
+                    None
+                };
+                Ok(Update::PeerWallpaper {
+                    flags,
+                    wallpaper_overridden,
+                    peer,
+                    wallpaper,
+                })
             }
             UPDATE_CHANNEL_VIEW_FORUM_AS_MESSAGES_ID => {
-    let channel_id = r.read_i64()?;
-    let enabled = r.read_u32()? == 0x997275b5; // boolTrue
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelViewForumAsMessages { channel_id, enabled })
+                let channel_id = r.read_i64()?;
+                let enabled = r.read_u32()? == 0x997275b5; // boolTrue
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelViewForumAsMessages {
+                    channel_id,
+                    enabled,
+                })
             }
             UPDATE_BOT_CHAT_BOOST_ID => {
-    let peer = Peer::read_from(r)?;
-    let boost = Boost::read_from(r)?;
-    let qts = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let boost = Boost::read_from(r)?;
+                let qts = r.read_i32()?;
                 Ok(Update::BotChatBoost { peer, boost, qts })
             }
             UPDATE_SENT_STORY_REACTION_ID => {
-    let peer = Peer::read_from(r)?;
-    let story_id = r.read_i32()?;
-    let reaction = Reaction::read_from(r)?;
-                Ok(Update::SentStoryReaction { peer, story_id, reaction })
+                let peer = Peer::read_from(r)?;
+                let story_id = r.read_i32()?;
+                let reaction = Reaction::read_from(r)?;
+                Ok(Update::SentStoryReaction {
+                    peer,
+                    story_id,
+                    reaction,
+                })
             }
             UPDATE_STORIES_STEALTH_MODE_ID => {
-    let stealth_mode = StoriesStealthMode::read_from(r)?;
+                let stealth_mode = StoriesStealthMode::read_from(r)?;
                 Ok(Update::StoriesStealthMode { stealth_mode })
             }
             UPDATE_STORY_ID_ID => {
-    let id = r.read_i32()?;
-    let random_id = r.read_i64()?;
+                let id = r.read_i32()?;
+                let random_id = r.read_i64()?;
                 Ok(Update::StoryID { id, random_id })
             }
             UPDATE_READ_STORIES_ID => {
-    let peer = Peer::read_from(r)?;
-    let max_id = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let max_id = r.read_i32()?;
                 Ok(Update::ReadStories { peer, max_id })
             }
             UPDATE_STORY_ID => {
-    let peer = Peer::read_from(r)?;
-    let story = StoryItem::read_from(r)?;
+                let peer = Peer::read_from(r)?;
+                let story = StoryItem::read_from(r)?;
                 Ok(Update::Story { peer, story })
             }
-            UPDATE_AUTO_SAVE_SETTINGS_ID => {
-                Ok(Update::AutoSaveSettings {  })
-            }
+            UPDATE_AUTO_SAVE_SETTINGS_ID => Ok(Update::AutoSaveSettings {}),
             UPDATE_USER_ID => {
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
                 Ok(Update::User { user_id })
             }
             UPDATE_MESSAGE_EXTENDED_MEDIA_ID => {
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut extended_media = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        extended_media.push(MessageExtendedMedia::read_from(r)?);
-    }
-                Ok(Update::MessageExtendedMedia { peer, msg_id, extended_media })
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut extended_media = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    extended_media.push(MessageExtendedMedia::read_from(r)?);
+                }
+                Ok(Update::MessageExtendedMedia {
+                    peer,
+                    msg_id,
+                    extended_media,
+                })
             }
             UPDATE_MOVE_STICKER_SET_TO_TOP_ID => {
-    let flags = r.read_i32()?;
-    let masks = flags & (1 << 0) != 0;
-    let emojis = flags & (1 << 1) != 0;
-    let stickerset = r.read_i64()?;
-                Ok(Update::MoveStickerSetToTop { flags, masks, emojis, stickerset })
+                let flags = r.read_i32()?;
+                let masks = flags & (1 << 0) != 0;
+                let emojis = flags & (1 << 1) != 0;
+                let stickerset = r.read_i64()?;
+                Ok(Update::MoveStickerSetToTop {
+                    flags,
+                    masks,
+                    emojis,
+                    stickerset,
+                })
             }
-            UPDATE_RECENT_REACTIONS_ID => {
-                Ok(Update::RecentReactions {  })
-            }
-            UPDATE_RECENT_EMOJI_STATUSES_ID => {
-                Ok(Update::RecentEmojiStatuses {  })
-            }
+            UPDATE_RECENT_REACTIONS_ID => Ok(Update::RecentReactions {}),
+            UPDATE_RECENT_EMOJI_STATUSES_ID => Ok(Update::RecentEmojiStatuses {}),
             UPDATE_USER_EMOJI_STATUS_ID => {
-    let user_id = r.read_i64()?;
-    let emoji_status = EmojiStatus::read_from(r)?;
-    let user_id = UserId(user_id);
-                Ok(Update::UserEmojiStatus { user_id, emoji_status })
+                let user_id = r.read_i64()?;
+                let emoji_status = EmojiStatus::read_from(r)?;
+                let user_id = UserId(user_id);
+                Ok(Update::UserEmojiStatus {
+                    user_id,
+                    emoji_status,
+                })
             }
-            UPDATE_READ_FEATURED_EMOJI_STICKERS_ID => {
-                Ok(Update::ReadFeaturedEmojiStickers {  })
-            }
+            UPDATE_READ_FEATURED_EMOJI_STICKERS_ID => Ok(Update::ReadFeaturedEmojiStickers {}),
             UPDATE_TRANSCRIBED_AUDIO_ID => {
-    let flags = r.read_i32()?;
-    let pending = flags & (1 << 0) != 0;
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let transcription_id = r.read_i64()?;
-    let text = String::from_utf8(r.read_bytes()?)?;
-                Ok(Update::TranscribedAudio { flags, pending, peer, msg_id, transcription_id, text })
+                let flags = r.read_i32()?;
+                let pending = flags & (1 << 0) != 0;
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let transcription_id = r.read_i64()?;
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(Update::TranscribedAudio {
+                    flags,
+                    pending,
+                    peer,
+                    msg_id,
+                    transcription_id,
+                    text,
+                })
             }
-            UPDATE_SAVED_RINGTONES_ID => {
-                Ok(Update::SavedRingtones {  })
-            }
+            UPDATE_SAVED_RINGTONES_ID => Ok(Update::SavedRingtones {}),
             UPDATE_BOT_MENU_BUTTON_ID => {
-    let bot_id = r.read_i64()?;
-    let button = BotMenuButton::read_from(r)?;
+                let bot_id = r.read_i64()?;
+                let button = BotMenuButton::read_from(r)?;
                 Ok(Update::BotMenuButton { bot_id, button })
             }
             UPDATE_WEB_VIEW_RESULT_SENT_ID => {
-    let query_id = r.read_i64()?;
+                let query_id = r.read_i64()?;
                 Ok(Update::WebViewResultSent { query_id })
             }
-            UPDATE_ATTACH_MENU_BOTS_ID => {
-                Ok(Update::AttachMenuBots {  })
-            }
+            UPDATE_ATTACH_MENU_BOTS_ID => Ok(Update::AttachMenuBots {}),
             UPDATE_MESSAGE_REACTIONS_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let saved_peer_id = if flags & (1 << 1) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-    let reactions = MessageReactions::read_from(r)?;
-                Ok(Update::MessageReactions { flags, peer, msg_id, top_msg_id, saved_peer_id, reactions })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let saved_peer_id = if flags & (1 << 1) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                let reactions = MessageReactions::read_from(r)?;
+                Ok(Update::MessageReactions {
+                    flags,
+                    peer,
+                    msg_id,
+                    top_msg_id,
+                    saved_peer_id,
+                    reactions,
+                })
             }
             UPDATE_BOT_CHAT_INVITE_REQUESTER_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let date = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let about = String::from_utf8(r.read_bytes()?)?;
-    let invite = ExportedChatInvite::read_from(r)?;
-    let qts = r.read_i32()?;
-    let query_id = if flags & (1 << 0) != 0 {
-        let query_id = r.read_i64()?;
-        Some(query_id)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Update::BotChatInviteRequester { flags, peer, date, user_id, about, invite, qts, query_id })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let date = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let about = String::from_utf8(r.read_bytes()?)?;
+                let invite = ExportedChatInvite::read_from(r)?;
+                let qts = r.read_i32()?;
+                let query_id = if flags & (1 << 0) != 0 {
+                    let query_id = r.read_i64()?;
+                    Some(query_id)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Update::BotChatInviteRequester {
+                    flags,
+                    peer,
+                    date,
+                    user_id,
+                    about,
+                    invite,
+                    qts,
+                    query_id,
+                })
             }
             UPDATE_PENDING_JOIN_REQUESTS_ID => {
-    let peer = Peer::read_from(r)?;
-    let requests_pending = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        recent_requesters.push(r.read_i64()?);
-    }
-                Ok(Update::PendingJoinRequests { peer, requests_pending, recent_requesters })
+                let peer = Peer::read_from(r)?;
+                let requests_pending = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    recent_requesters.push(r.read_i64()?);
+                }
+                Ok(Update::PendingJoinRequests {
+                    peer,
+                    requests_pending,
+                    recent_requesters,
+                })
             }
             UPDATE_BOT_COMMANDS_ID => {
-    let peer = Peer::read_from(r)?;
-    let bot_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut commands = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        commands.push(BotCommand::read_from(r)?);
-    }
-                Ok(Update::BotCommands { peer, bot_id, commands })
+                let peer = Peer::read_from(r)?;
+                let bot_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut commands = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    commands.push(BotCommand::read_from(r)?);
+                }
+                Ok(Update::BotCommands {
+                    peer,
+                    bot_id,
+                    commands,
+                })
             }
             UPDATE_GROUP_CALL_CONNECTION_ID => {
-    let flags = r.read_i32()?;
-    let presentation = flags & (1 << 0) != 0;
-    let params = DataJSON::read_from(r)?;
-                Ok(Update::GroupCallConnection { flags, presentation, params })
+                let flags = r.read_i32()?;
+                let presentation = flags & (1 << 0) != 0;
+                let params = DataJSON::read_from(r)?;
+                Ok(Update::GroupCallConnection {
+                    flags,
+                    presentation,
+                    params,
+                })
             }
             UPDATE_BOT_STOPPED_ID => {
-    let user_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let stopped = r.read_u32()? == 0x997275b5; // boolTrue
-    let qts = r.read_i32()?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotStopped { user_id, date, stopped, qts })
+                let user_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let stopped = r.read_u32()? == 0x997275b5; // boolTrue
+                let qts = r.read_i32()?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotStopped {
+                    user_id,
+                    date,
+                    stopped,
+                    qts,
+                })
             }
             UPDATE_CHANNEL_PARTICIPANT_ID => {
-    let flags = r.read_i32()?;
-    let via_chatlist = flags & (1 << 3) != 0;
-    let channel_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let actor_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let prev_participant = if flags & (1 << 0) != 0 {
-        let prev_participant = ChannelParticipant::read_from(r)?;
-        Some(prev_participant)
-    } else {
-        None
-    };
-    let new_participant = if flags & (1 << 1) != 0 {
-        let new_participant = ChannelParticipant::read_from(r)?;
-        Some(new_participant)
-    } else {
-        None
-    };
-    let invite = if flags & (1 << 2) != 0 {
-        let invite = ExportedChatInvite::read_from(r)?;
-        Some(invite)
-    } else {
-        None
-    };
-    let qts = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChannelParticipant { flags, via_chatlist, channel_id, date, actor_id, user_id, prev_participant, new_participant, invite, qts })
+                let flags = r.read_i32()?;
+                let via_chatlist = flags & (1 << 3) != 0;
+                let channel_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let actor_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let prev_participant = if flags & (1 << 0) != 0 {
+                    let prev_participant = ChannelParticipant::read_from(r)?;
+                    Some(prev_participant)
+                } else {
+                    None
+                };
+                let new_participant = if flags & (1 << 1) != 0 {
+                    let new_participant = ChannelParticipant::read_from(r)?;
+                    Some(new_participant)
+                } else {
+                    None
+                };
+                let invite = if flags & (1 << 2) != 0 {
+                    let invite = ExportedChatInvite::read_from(r)?;
+                    Some(invite)
+                } else {
+                    None
+                };
+                let qts = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChannelParticipant {
+                    flags,
+                    via_chatlist,
+                    channel_id,
+                    date,
+                    actor_id,
+                    user_id,
+                    prev_participant,
+                    new_participant,
+                    invite,
+                    qts,
+                })
             }
             UPDATE_CHAT_PARTICIPANT_ID => {
-    let flags = r.read_i32()?;
-    let chat_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let actor_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let prev_participant = if flags & (1 << 0) != 0 {
-        let prev_participant = ChatParticipant::read_from(r)?;
-        Some(prev_participant)
-    } else {
-        None
-    };
-    let new_participant = if flags & (1 << 1) != 0 {
-        let new_participant = ChatParticipant::read_from(r)?;
-        Some(new_participant)
-    } else {
-        None
-    };
-    let invite = if flags & (1 << 2) != 0 {
-        let invite = ExportedChatInvite::read_from(r)?;
-        Some(invite)
-    } else {
-        None
-    };
-    let qts = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChatParticipant { flags, chat_id, date, actor_id, user_id, prev_participant, new_participant, invite, qts })
+                let flags = r.read_i32()?;
+                let chat_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let actor_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let prev_participant = if flags & (1 << 0) != 0 {
+                    let prev_participant = ChatParticipant::read_from(r)?;
+                    Some(prev_participant)
+                } else {
+                    None
+                };
+                let new_participant = if flags & (1 << 1) != 0 {
+                    let new_participant = ChatParticipant::read_from(r)?;
+                    Some(new_participant)
+                } else {
+                    None
+                };
+                let invite = if flags & (1 << 2) != 0 {
+                    let invite = ExportedChatInvite::read_from(r)?;
+                    Some(invite)
+                } else {
+                    None
+                };
+                let qts = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChatParticipant {
+                    flags,
+                    chat_id,
+                    date,
+                    actor_id,
+                    user_id,
+                    prev_participant,
+                    new_participant,
+                    invite,
+                    qts,
+                })
             }
             UPDATE_PEER_HISTORY_TTL_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let ttl_period = if flags & (1 << 0) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-                Ok(Update::PeerHistoryTTL { flags, peer, ttl_period })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let ttl_period = if flags & (1 << 0) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                Ok(Update::PeerHistoryTTL {
+                    flags,
+                    peer,
+                    ttl_period,
+                })
             }
             UPDATE_GROUP_CALL_ID => {
-    let flags = r.read_i32()?;
-    let live_story = flags & (1 << 2) != 0;
-    let peer = if flags & (1 << 1) != 0 {
-        let peer = Peer::read_from(r)?;
-        Some(peer)
-    } else {
-        None
-    };
-    let call = GroupCall::read_from(r)?;
-                Ok(Update::GroupCall { flags, live_story, peer, call })
+                let flags = r.read_i32()?;
+                let live_story = flags & (1 << 2) != 0;
+                let peer = if flags & (1 << 1) != 0 {
+                    let peer = Peer::read_from(r)?;
+                    Some(peer)
+                } else {
+                    None
+                };
+                let call = GroupCall::read_from(r)?;
+                Ok(Update::GroupCall {
+                    flags,
+                    live_story,
+                    peer,
+                    call,
+                })
             }
             UPDATE_GROUP_CALL_PARTICIPANTS_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut participants = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        participants.push(GroupCallParticipant::read_from(r)?);
-    }
-    let version = r.read_i32()?;
-                Ok(Update::GroupCallParticipants { call, participants, version })
+                let call = InputGroupCall::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut participants = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    participants.push(GroupCallParticipant::read_from(r)?);
+                }
+                let version = r.read_i32()?;
+                Ok(Update::GroupCallParticipants {
+                    call,
+                    participants,
+                    version,
+                })
             }
             UPDATE_CHAT_ID => {
-    let chat_id = r.read_i64()?;
-    let chat_id = ChatId(chat_id);
+                let chat_id = r.read_i64()?;
+                let chat_id = ChatId(chat_id);
                 Ok(Update::Chat { chat_id })
             }
             UPDATE_PINNED_CHANNEL_MESSAGES_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 0) != 0;
-    let channel_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::PinnedChannelMessages { flags, pinned, channel_id, messages, pts, pts_count })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 0) != 0;
+                let channel_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::PinnedChannelMessages {
+                    flags,
+                    pinned,
+                    channel_id,
+                    messages,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_PINNED_MESSAGES_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 0) != 0;
-    let peer = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::PinnedMessages { flags, pinned, peer, messages, pts, pts_count })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 0) != 0;
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::PinnedMessages {
+                    flags,
+                    pinned,
+                    peer,
+                    messages,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_CHANNEL_USER_TYPING_ID => {
-    let flags = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let from_id = Peer::read_from(r)?;
-    let action = SendMessageAction::read_from(r)?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelUserTyping { flags, channel_id, top_msg_id, from_id, action })
+                let flags = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let from_id = Peer::read_from(r)?;
+                let action = SendMessageAction::read_from(r)?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelUserTyping {
+                    flags,
+                    channel_id,
+                    top_msg_id,
+                    from_id,
+                    action,
+                })
             }
             UPDATE_PEER_BLOCKED_ID => {
-    let flags = r.read_i32()?;
-    let blocked = flags & (1 << 0) != 0;
-    let blocked_my_stories_from = flags & (1 << 1) != 0;
-    let peer_id = Peer::read_from(r)?;
-                Ok(Update::PeerBlocked { flags, blocked, blocked_my_stories_from, peer_id })
+                let flags = r.read_i32()?;
+                let blocked = flags & (1 << 0) != 0;
+                let blocked_my_stories_from = flags & (1 << 1) != 0;
+                let peer_id = Peer::read_from(r)?;
+                Ok(Update::PeerBlocked {
+                    flags,
+                    blocked,
+                    blocked_my_stories_from,
+                    peer_id,
+                })
             }
             UPDATE_READ_CHANNEL_DISCUSSION_OUTBOX_ID => {
-    let channel_id = r.read_i64()?;
-    let top_msg_id = r.read_i32()?;
-    let read_max_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ReadChannelDiscussionOutbox { channel_id, top_msg_id, read_max_id })
+                let channel_id = r.read_i64()?;
+                let top_msg_id = r.read_i32()?;
+                let read_max_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ReadChannelDiscussionOutbox {
+                    channel_id,
+                    top_msg_id,
+                    read_max_id,
+                })
             }
             UPDATE_READ_CHANNEL_DISCUSSION_INBOX_ID => {
-    let flags = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let top_msg_id = r.read_i32()?;
-    let read_max_id = r.read_i32()?;
-    let broadcast_id = if flags & (1 << 0) != 0 {
-        let broadcast_id = r.read_i64()?;
-        Some(broadcast_id)
-    } else {
-        None
-    };
-    let broadcast_post = if flags & (1 << 0) != 0 {
-        let broadcast_post = r.read_i32()?;
-        Some(broadcast_post)
-    } else {
-        None
-    };
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ReadChannelDiscussionInbox { flags, channel_id, top_msg_id, read_max_id, broadcast_id, broadcast_post })
+                let flags = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let top_msg_id = r.read_i32()?;
+                let read_max_id = r.read_i32()?;
+                let broadcast_id = if flags & (1 << 0) != 0 {
+                    let broadcast_id = r.read_i64()?;
+                    Some(broadcast_id)
+                } else {
+                    None
+                };
+                let broadcast_post = if flags & (1 << 0) != 0 {
+                    let broadcast_post = r.read_i32()?;
+                    Some(broadcast_post)
+                } else {
+                    None
+                };
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ReadChannelDiscussionInbox {
+                    flags,
+                    channel_id,
+                    top_msg_id,
+                    read_max_id,
+                    broadcast_id,
+                    broadcast_post,
+                })
             }
             UPDATE_CHANNEL_MESSAGE_FORWARDS_ID => {
-    let channel_id = r.read_i64()?;
-    let id = r.read_i32()?;
-    let forwards = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelMessageForwards { channel_id, id, forwards })
+                let channel_id = r.read_i64()?;
+                let id = r.read_i32()?;
+                let forwards = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelMessageForwards {
+                    channel_id,
+                    id,
+                    forwards,
+                })
             }
             UPDATE_PHONE_CALL_SIGNALING_DATA_ID => {
-    let phone_call_id = r.read_i64()?;
-    let data = r.read_bytes()?;
-                Ok(Update::PhoneCallSignalingData { phone_call_id, data })
+                let phone_call_id = r.read_i64()?;
+                let data = r.read_bytes()?;
+                Ok(Update::PhoneCallSignalingData {
+                    phone_call_id,
+                    data,
+                })
             }
-            UPDATE_DIALOG_FILTERS_ID => {
-                Ok(Update::DialogFilters {  })
-            }
+            UPDATE_DIALOG_FILTERS_ID => Ok(Update::DialogFilters {}),
             UPDATE_DIALOG_FILTER_ORDER_ID => {
-    let n = r.read_vector_header()?;
-    let mut order = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        order.push(r.read_i32()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut order = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    order.push(r.read_i32()?);
+                }
                 Ok(Update::DialogFilterOrder { order })
             }
             UPDATE_DIALOG_FILTER_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i32()?;
-    let filter = if flags & (1 << 0) != 0 {
-        let filter = DialogFilter::read_from(r)?;
-        Some(filter)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let id = r.read_i32()?;
+                let filter = if flags & (1 << 0) != 0 {
+                    let filter = DialogFilter::read_from(r)?;
+                    Some(filter)
+                } else {
+                    None
+                };
                 Ok(Update::DialogFilter { flags, id, filter })
             }
             UPDATE_MESSAGE_POLL_VOTE_ID => {
-    let poll_id = r.read_i64()?;
-    let peer = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut options = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        options.push(r.read_bytes()?);
-    }
-    let n = r.read_vector_header()?;
-    let mut positions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        positions.push(r.read_i32()?);
-    }
-    let qts = r.read_i32()?;
-                Ok(Update::MessagePollVote { poll_id, peer, options, positions, qts })
+                let poll_id = r.read_i64()?;
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut options = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    options.push(r.read_bytes()?);
+                }
+                let n = r.read_vector_header()?;
+                let mut positions = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    positions.push(r.read_i32()?);
+                }
+                let qts = r.read_i32()?;
+                Ok(Update::MessagePollVote {
+                    poll_id,
+                    peer,
+                    options,
+                    positions,
+                    qts,
+                })
             }
-            UPDATE_LOGIN_TOKEN_ID => {
-                Ok(Update::LoginToken {  })
-            }
+            UPDATE_LOGIN_TOKEN_ID => Ok(Update::LoginToken {}),
             UPDATE_GEO_LIVE_VIEWED_ID => {
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
                 Ok(Update::GeoLiveViewed { peer, msg_id })
             }
             UPDATE_THEME_ID => {
-    let theme = Theme::read_from(r)?;
+                let theme = Theme::read_from(r)?;
                 Ok(Update::Theme { theme })
             }
             UPDATE_DELETE_SCHEDULED_MESSAGES_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let sent_messages = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut sent_messages = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            sent_messages.push(r.read_i32()?);
-        }
-        Some(sent_messages)
-    } else {
-        None
-    };
-                Ok(Update::DeleteScheduledMessages { flags, peer, messages, sent_messages })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let sent_messages = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut sent_messages = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        sent_messages.push(r.read_i32()?);
+                    }
+                    Some(sent_messages)
+                } else {
+                    None
+                };
+                Ok(Update::DeleteScheduledMessages {
+                    flags,
+                    peer,
+                    messages,
+                    sent_messages,
+                })
             }
             UPDATE_NEW_SCHEDULED_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
+                let message = Message::read_from(r)?;
                 Ok(Update::NewScheduledMessage { message })
             }
             UPDATE_PEER_LOCATED_ID => {
-    let n = r.read_vector_header()?;
-    let mut peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        peers.push(PeerLocated::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    peers.push(PeerLocated::read_from(r)?);
+                }
                 Ok(Update::PeerLocated { peers })
             }
             UPDATE_PEER_SETTINGS_ID => {
-    let peer = Peer::read_from(r)?;
-    let settings = PeerSettings::read_from(r)?;
+                let peer = Peer::read_from(r)?;
+                let settings = PeerSettings::read_from(r)?;
                 Ok(Update::PeerSettings { peer, settings })
             }
             UPDATE_FOLDER_PEERS_ID => {
-    let n = r.read_vector_header()?;
-    let mut folder_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        folder_peers.push(FolderPeer::read_from(r)?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::FolderPeers { folder_peers, pts, pts_count })
+                let n = r.read_vector_header()?;
+                let mut folder_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    folder_peers.push(FolderPeer::read_from(r)?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::FolderPeers {
+                    folder_peers,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_CHAT_DEFAULT_BANNED_RIGHTS_ID => {
-    let peer = Peer::read_from(r)?;
-    let default_banned_rights = ChatBannedRights::read_from(r)?;
-    let version = r.read_i32()?;
-                Ok(Update::ChatDefaultBannedRights { peer, default_banned_rights, version })
+                let peer = Peer::read_from(r)?;
+                let default_banned_rights = ChatBannedRights::read_from(r)?;
+                let version = r.read_i32()?;
+                Ok(Update::ChatDefaultBannedRights {
+                    peer,
+                    default_banned_rights,
+                    version,
+                })
             }
             UPDATE_MESSAGE_POLL_ID => {
-    let flags = r.read_i32()?;
-    let peer = if flags & (1 << 1) != 0 {
-        let peer = Peer::read_from(r)?;
-        Some(peer)
-    } else {
-        None
-    };
-    let msg_id = if flags & (1 << 1) != 0 {
-        let msg_id = r.read_i32()?;
-        Some(msg_id)
-    } else {
-        None
-    };
-    let top_msg_id = if flags & (1 << 2) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let poll_id = r.read_i64()?;
-    let poll = if flags & (1 << 0) != 0 {
-        let poll = Poll::read_from(r)?;
-        Some(poll)
-    } else {
-        None
-    };
-    let results = PollResults::read_from(r)?;
-                Ok(Update::MessagePoll { flags, peer, msg_id, top_msg_id, poll_id, poll, results })
+                let flags = r.read_i32()?;
+                let peer = if flags & (1 << 1) != 0 {
+                    let peer = Peer::read_from(r)?;
+                    Some(peer)
+                } else {
+                    None
+                };
+                let msg_id = if flags & (1 << 1) != 0 {
+                    let msg_id = r.read_i32()?;
+                    Some(msg_id)
+                } else {
+                    None
+                };
+                let top_msg_id = if flags & (1 << 2) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let poll_id = r.read_i64()?;
+                let poll = if flags & (1 << 0) != 0 {
+                    let poll = Poll::read_from(r)?;
+                    Some(poll)
+                } else {
+                    None
+                };
+                let results = PollResults::read_from(r)?;
+                Ok(Update::MessagePoll {
+                    flags,
+                    peer,
+                    msg_id,
+                    top_msg_id,
+                    poll_id,
+                    poll,
+                    results,
+                })
             }
             UPDATE_DIALOG_UNREAD_MARK_ID => {
-    let flags = r.read_i32()?;
-    let unread = flags & (1 << 0) != 0;
-    let peer = DialogPeer::read_from(r)?;
-    let saved_peer_id = if flags & (1 << 1) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-                Ok(Update::DialogUnreadMark { flags, unread, peer, saved_peer_id })
+                let flags = r.read_i32()?;
+                let unread = flags & (1 << 0) != 0;
+                let peer = DialogPeer::read_from(r)?;
+                let saved_peer_id = if flags & (1 << 1) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                Ok(Update::DialogUnreadMark {
+                    flags,
+                    unread,
+                    peer,
+                    saved_peer_id,
+                })
             }
             UPDATE_CHANNEL_AVAILABLE_MESSAGES_ID => {
-    let channel_id = r.read_i64()?;
-    let available_min_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelAvailableMessages { channel_id, available_min_id })
+                let channel_id = r.read_i64()?;
+                let available_min_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelAvailableMessages {
+                    channel_id,
+                    available_min_id,
+                })
             }
-            UPDATE_CONTACTS_RESET_ID => {
-                Ok(Update::ContactsReset {  })
-            }
+            UPDATE_CONTACTS_RESET_ID => Ok(Update::ContactsReset {}),
             UPDATE_CHANNEL_READ_MESSAGES_CONTENTS_ID => {
-    let flags = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let saved_peer_id = if flags & (1 << 1) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelReadMessagesContents { flags, channel_id, top_msg_id, saved_peer_id, messages })
+                let flags = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let saved_peer_id = if flags & (1 << 1) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelReadMessagesContents {
+                    flags,
+                    channel_id,
+                    top_msg_id,
+                    saved_peer_id,
+                    messages,
+                })
             }
-            UPDATE_FAVED_STICKERS_ID => {
-                Ok(Update::FavedStickers {  })
-            }
+            UPDATE_FAVED_STICKERS_ID => Ok(Update::FavedStickers {}),
             UPDATE_LANG_PACK_ID => {
-    let difference = LangPackDifference::read_from(r)?;
+                let difference = LangPackDifference::read_from(r)?;
                 Ok(Update::LangPack { difference })
             }
             UPDATE_LANG_PACK_TOO_LONG_ID => {
-    let lang_code = String::from_utf8(r.read_bytes()?)?;
+                let lang_code = String::from_utf8(r.read_bytes()?)?;
                 Ok(Update::LangPackTooLong { lang_code })
             }
             UPDATE_PHONE_CALL_ID => {
-    let phone_call = PhoneCall::read_from(r)?;
+                let phone_call = PhoneCall::read_from(r)?;
                 Ok(Update::PhoneCall { phone_call })
             }
             UPDATE_BOT_PRECHECKOUT_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let payload = r.read_bytes()?;
-    let info = if flags & (1 << 0) != 0 {
-        let info = PaymentRequestedInfo::read_from(r)?;
-        Some(info)
-    } else {
-        None
-    };
-    let shipping_option_id = if flags & (1 << 1) != 0 {
-        let shipping_option_id = String::from_utf8(r.read_bytes()?)?;
-        Some(shipping_option_id)
-    } else {
-        None
-    };
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let total_amount = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotPrecheckoutQuery { flags, query_id, user_id, payload, info, shipping_option_id, currency, total_amount })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let payload = r.read_bytes()?;
+                let info = if flags & (1 << 0) != 0 {
+                    let info = PaymentRequestedInfo::read_from(r)?;
+                    Some(info)
+                } else {
+                    None
+                };
+                let shipping_option_id = if flags & (1 << 1) != 0 {
+                    let shipping_option_id = String::from_utf8(r.read_bytes()?)?;
+                    Some(shipping_option_id)
+                } else {
+                    None
+                };
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let total_amount = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotPrecheckoutQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    payload,
+                    info,
+                    shipping_option_id,
+                    currency,
+                    total_amount,
+                })
             }
             UPDATE_BOT_SHIPPING_QUERY_ID => {
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let payload = r.read_bytes()?;
-    let shipping_address = PostAddress::read_from(r)?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotShippingQuery { query_id, user_id, payload, shipping_address })
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let payload = r.read_bytes()?;
+                let shipping_address = PostAddress::read_from(r)?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotShippingQuery {
+                    query_id,
+                    user_id,
+                    payload,
+                    shipping_address,
+                })
             }
             UPDATE_BOT_WEBHOOK_JSON_QUERY_ID => {
-    let query_id = r.read_i64()?;
-    let data = DataJSON::read_from(r)?;
-    let timeout = r.read_i32()?;
-                Ok(Update::BotWebhookJSONQuery { query_id, data, timeout })
+                let query_id = r.read_i64()?;
+                let data = DataJSON::read_from(r)?;
+                let timeout = r.read_i32()?;
+                Ok(Update::BotWebhookJSONQuery {
+                    query_id,
+                    data,
+                    timeout,
+                })
             }
             UPDATE_BOT_WEBHOOK_JSON_ID => {
-    let data = DataJSON::read_from(r)?;
+                let data = DataJSON::read_from(r)?;
                 Ok(Update::BotWebhookJSON { data })
             }
             UPDATE_PINNED_DIALOGS_ID => {
-    let flags = r.read_i32()?;
-    let folder_id = if flags & (1 << 1) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let order = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut order = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            order.push(DialogPeer::read_from(r)?);
-        }
-        Some(order)
-    } else {
-        None
-    };
-                Ok(Update::PinnedDialogs { flags, folder_id, order })
+                let flags = r.read_i32()?;
+                let folder_id = if flags & (1 << 1) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let order = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut order = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        order.push(DialogPeer::read_from(r)?);
+                    }
+                    Some(order)
+                } else {
+                    None
+                };
+                Ok(Update::PinnedDialogs {
+                    flags,
+                    folder_id,
+                    order,
+                })
             }
             UPDATE_DIALOG_PINNED_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 0) != 0;
-    let folder_id = if flags & (1 << 1) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let peer = DialogPeer::read_from(r)?;
-                Ok(Update::DialogPinned { flags, pinned, folder_id, peer })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 0) != 0;
+                let folder_id = if flags & (1 << 1) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let peer = DialogPeer::read_from(r)?;
+                Ok(Update::DialogPinned {
+                    flags,
+                    pinned,
+                    folder_id,
+                    peer,
+                })
             }
             UPDATE_CHANNEL_WEB_PAGE_ID => {
-    let channel_id = r.read_i64()?;
-    let webpage = WebPage::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelWebPage { channel_id, webpage, pts, pts_count })
+                let channel_id = r.read_i64()?;
+                let webpage = WebPage::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelWebPage {
+                    channel_id,
+                    webpage,
+                    pts,
+                    pts_count,
+                })
             }
-            UPDATE_PTS_CHANGED_ID => {
-                Ok(Update::PtsChanged {  })
-            }
-            UPDATE_CONFIG_ID => {
-                Ok(Update::Config {  })
-            }
-            UPDATE_RECENT_STICKERS_ID => {
-                Ok(Update::RecentStickers {  })
-            }
-            UPDATE_READ_FEATURED_STICKERS_ID => {
-                Ok(Update::ReadFeaturedStickers {  })
-            }
+            UPDATE_PTS_CHANGED_ID => Ok(Update::PtsChanged {}),
+            UPDATE_CONFIG_ID => Ok(Update::Config {}),
+            UPDATE_RECENT_STICKERS_ID => Ok(Update::RecentStickers {}),
+            UPDATE_READ_FEATURED_STICKERS_ID => Ok(Update::ReadFeaturedStickers {}),
             UPDATE_DRAFT_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let saved_peer_id = if flags & (1 << 1) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-    let draft = DraftMessage::read_from(r)?;
-                Ok(Update::DraftMessage { flags, peer, top_msg_id, saved_peer_id, draft })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let saved_peer_id = if flags & (1 << 1) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                let draft = DraftMessage::read_from(r)?;
+                Ok(Update::DraftMessage {
+                    flags,
+                    peer,
+                    top_msg_id,
+                    saved_peer_id,
+                    draft,
+                })
             }
             UPDATE_READ_CHANNEL_OUTBOX_ID => {
-    let channel_id = r.read_i64()?;
-    let max_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
+                let channel_id = r.read_i64()?;
+                let max_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
                 Ok(Update::ReadChannelOutbox { channel_id, max_id })
             }
             UPDATE_INLINE_BOT_CALLBACK_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let msg_id = InputBotInlineMessageID::read_from(r)?;
-    let chat_instance = r.read_i64()?;
-    let data = if flags & (1 << 0) != 0 {
-        let data = r.read_bytes()?;
-        Some(data)
-    } else {
-        None
-    };
-    let game_short_name = if flags & (1 << 1) != 0 {
-        let game_short_name = String::from_utf8(r.read_bytes()?)?;
-        Some(game_short_name)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Update::InlineBotCallbackQuery { flags, query_id, user_id, msg_id, chat_instance, data, game_short_name })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let msg_id = InputBotInlineMessageID::read_from(r)?;
+                let chat_instance = r.read_i64()?;
+                let data = if flags & (1 << 0) != 0 {
+                    let data = r.read_bytes()?;
+                    Some(data)
+                } else {
+                    None
+                };
+                let game_short_name = if flags & (1 << 1) != 0 {
+                    let game_short_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(game_short_name)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Update::InlineBotCallbackQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    msg_id,
+                    chat_instance,
+                    data,
+                    game_short_name,
+                })
             }
             UPDATE_EDIT_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::EditMessage { message, pts, pts_count })
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::EditMessage {
+                    message,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_BOT_CALLBACK_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let peer = Peer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let chat_instance = r.read_i64()?;
-    let data = if flags & (1 << 0) != 0 {
-        let data = r.read_bytes()?;
-        Some(data)
-    } else {
-        None
-    };
-    let game_short_name = if flags & (1 << 1) != 0 {
-        let game_short_name = String::from_utf8(r.read_bytes()?)?;
-        Some(game_short_name)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Update::BotCallbackQuery { flags, query_id, user_id, peer, msg_id, chat_instance, data, game_short_name })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let peer = Peer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let chat_instance = r.read_i64()?;
+                let data = if flags & (1 << 0) != 0 {
+                    let data = r.read_bytes()?;
+                    Some(data)
+                } else {
+                    None
+                };
+                let game_short_name = if flags & (1 << 1) != 0 {
+                    let game_short_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(game_short_name)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Update::BotCallbackQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    peer,
+                    msg_id,
+                    chat_instance,
+                    data,
+                    game_short_name,
+                })
             }
             UPDATE_EDIT_CHANNEL_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::EditChannelMessage { message, pts, pts_count })
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::EditChannelMessage {
+                    message,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_BOT_INLINE_SEND_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let query = String::from_utf8(r.read_bytes()?)?;
-    let geo = if flags & (1 << 0) != 0 {
-        let geo = GeoPoint::read_from(r)?;
-        Some(geo)
-    } else {
-        None
-    };
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let msg_id = if flags & (1 << 1) != 0 {
-        let msg_id = InputBotInlineMessageID::read_from(r)?;
-        Some(msg_id)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Update::BotInlineSend { flags, user_id, query, geo, id, msg_id })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let query = String::from_utf8(r.read_bytes()?)?;
+                let geo = if flags & (1 << 0) != 0 {
+                    let geo = GeoPoint::read_from(r)?;
+                    Some(geo)
+                } else {
+                    None
+                };
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let msg_id = if flags & (1 << 1) != 0 {
+                    let msg_id = InputBotInlineMessageID::read_from(r)?;
+                    Some(msg_id)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Update::BotInlineSend {
+                    flags,
+                    user_id,
+                    query,
+                    geo,
+                    id,
+                    msg_id,
+                })
             }
             UPDATE_BOT_INLINE_QUERY_ID => {
-    let flags = r.read_i32()?;
-    let query_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let query = String::from_utf8(r.read_bytes()?)?;
-    let geo = if flags & (1 << 0) != 0 {
-        let geo = GeoPoint::read_from(r)?;
-        Some(geo)
-    } else {
-        None
-    };
-    let peer_type = if flags & (1 << 1) != 0 {
-        let peer_type = InlineQueryPeerType::read_from(r)?;
-        Some(peer_type)
-    } else {
-        None
-    };
-    let offset = String::from_utf8(r.read_bytes()?)?;
-    let user_id = UserId(user_id);
-                Ok(Update::BotInlineQuery { flags, query_id, user_id, query, geo, peer_type, offset })
+                let flags = r.read_i32()?;
+                let query_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let query = String::from_utf8(r.read_bytes()?)?;
+                let geo = if flags & (1 << 0) != 0 {
+                    let geo = GeoPoint::read_from(r)?;
+                    Some(geo)
+                } else {
+                    None
+                };
+                let peer_type = if flags & (1 << 1) != 0 {
+                    let peer_type = InlineQueryPeerType::read_from(r)?;
+                    Some(peer_type)
+                } else {
+                    None
+                };
+                let offset = String::from_utf8(r.read_bytes()?)?;
+                let user_id = UserId(user_id);
+                Ok(Update::BotInlineQuery {
+                    flags,
+                    query_id,
+                    user_id,
+                    query,
+                    geo,
+                    peer_type,
+                    offset,
+                })
             }
-            UPDATE_SAVED_GIFS_ID => {
-                Ok(Update::SavedGifs {  })
-            }
+            UPDATE_SAVED_GIFS_ID => Ok(Update::SavedGifs {}),
             UPDATE_STICKER_SETS_ID => {
-    let flags = r.read_i32()?;
-    let masks = flags & (1 << 0) != 0;
-    let emojis = flags & (1 << 1) != 0;
-                Ok(Update::StickerSets { flags, masks, emojis })
+                let flags = r.read_i32()?;
+                let masks = flags & (1 << 0) != 0;
+                let emojis = flags & (1 << 1) != 0;
+                Ok(Update::StickerSets {
+                    flags,
+                    masks,
+                    emojis,
+                })
             }
             UPDATE_STICKER_SETS_ORDER_ID => {
-    let flags = r.read_i32()?;
-    let masks = flags & (1 << 0) != 0;
-    let emojis = flags & (1 << 1) != 0;
-    let n = r.read_vector_header()?;
-    let mut order = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        order.push(r.read_i64()?);
-    }
-                Ok(Update::StickerSetsOrder { flags, masks, emojis, order })
+                let flags = r.read_i32()?;
+                let masks = flags & (1 << 0) != 0;
+                let emojis = flags & (1 << 1) != 0;
+                let n = r.read_vector_header()?;
+                let mut order = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    order.push(r.read_i64()?);
+                }
+                Ok(Update::StickerSetsOrder {
+                    flags,
+                    masks,
+                    emojis,
+                    order,
+                })
             }
             UPDATE_NEW_STICKER_SET_ID => {
-    let stickerset = MessagesStickerSet::read_from(r)?;
+                let stickerset = MessagesStickerSet::read_from(r)?;
                 Ok(Update::NewStickerSet { stickerset })
             }
             UPDATE_CHAT_PARTICIPANT_ADMIN_ID => {
-    let chat_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let is_admin = r.read_u32()? == 0x997275b5; // boolTrue
-    let version = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChatParticipantAdmin { chat_id, user_id, is_admin, version })
+                let chat_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let is_admin = r.read_u32()? == 0x997275b5; // boolTrue
+                let version = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChatParticipantAdmin {
+                    chat_id,
+                    user_id,
+                    is_admin,
+                    version,
+                })
             }
             UPDATE_CHANNEL_MESSAGE_VIEWS_ID => {
-    let channel_id = r.read_i64()?;
-    let id = r.read_i32()?;
-    let views = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelMessageViews { channel_id, id, views })
+                let channel_id = r.read_i64()?;
+                let id = r.read_i32()?;
+                let views = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelMessageViews {
+                    channel_id,
+                    id,
+                    views,
+                })
             }
             UPDATE_DELETE_CHANNEL_MESSAGES_ID => {
-    let channel_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::DeleteChannelMessages { channel_id, messages, pts, pts_count })
+                let channel_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::DeleteChannelMessages {
+                    channel_id,
+                    messages,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_READ_CHANNEL_INBOX_ID => {
-    let flags = r.read_i32()?;
-    let folder_id = if flags & (1 << 0) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let channel_id = r.read_i64()?;
-    let max_id = r.read_i32()?;
-    let still_unread_count = r.read_i32()?;
-    let pts = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ReadChannelInbox { flags, folder_id, channel_id, max_id, still_unread_count, pts })
+                let flags = r.read_i32()?;
+                let folder_id = if flags & (1 << 0) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let channel_id = r.read_i64()?;
+                let max_id = r.read_i32()?;
+                let still_unread_count = r.read_i32()?;
+                let pts = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ReadChannelInbox {
+                    flags,
+                    folder_id,
+                    channel_id,
+                    max_id,
+                    still_unread_count,
+                    pts,
+                })
             }
             UPDATE_NEW_CHANNEL_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::NewChannelMessage { message, pts, pts_count })
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::NewChannelMessage {
+                    message,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
                 Ok(Update::Channel { channel_id })
             }
             UPDATE_CHANNEL_TOO_LONG_ID => {
-    let flags = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let pts = if flags & (1 << 0) != 0 {
-        let pts = r.read_i32()?;
-        Some(pts)
-    } else {
-        None
-    };
-    let channel_id = ChannelId(channel_id);
-                Ok(Update::ChannelTooLong { flags, channel_id, pts })
+                let flags = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let pts = if flags & (1 << 0) != 0 {
+                    let pts = r.read_i32()?;
+                    Some(pts)
+                } else {
+                    None
+                };
+                let channel_id = ChannelId(channel_id);
+                Ok(Update::ChannelTooLong {
+                    flags,
+                    channel_id,
+                    pts,
+                })
             }
             UPDATE_READ_MESSAGES_CONTENTS_ID => {
-    let flags = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let date = if flags & (1 << 0) != 0 {
-        let date = r.read_i32()?;
-        Some(date)
-    } else {
-        None
-    };
-                Ok(Update::ReadMessagesContents { flags, messages, pts, pts_count, date })
+                let flags = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let date = if flags & (1 << 0) != 0 {
+                    let date = r.read_i32()?;
+                    Some(date)
+                } else {
+                    None
+                };
+                Ok(Update::ReadMessagesContents {
+                    flags,
+                    messages,
+                    pts,
+                    pts_count,
+                    date,
+                })
             }
             UPDATE_WEB_PAGE_ID => {
-    let webpage = WebPage::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::WebPage { webpage, pts, pts_count })
+                let webpage = WebPage::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::WebPage {
+                    webpage,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_READ_HISTORY_OUTBOX_ID => {
-    let peer = Peer::read_from(r)?;
-    let max_id = r.read_i32()?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::ReadHistoryOutbox { peer, max_id, pts, pts_count })
+                let peer = Peer::read_from(r)?;
+                let max_id = r.read_i32()?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::ReadHistoryOutbox {
+                    peer,
+                    max_id,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_READ_HISTORY_INBOX_ID => {
-    let flags = r.read_i32()?;
-    let folder_id = if flags & (1 << 0) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let peer = Peer::read_from(r)?;
-    let top_msg_id = if flags & (1 << 1) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let max_id = r.read_i32()?;
-    let still_unread_count = r.read_i32()?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::ReadHistoryInbox { flags, folder_id, peer, top_msg_id, max_id, still_unread_count, pts, pts_count })
+                let flags = r.read_i32()?;
+                let folder_id = if flags & (1 << 0) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let peer = Peer::read_from(r)?;
+                let top_msg_id = if flags & (1 << 1) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let max_id = r.read_i32()?;
+                let still_unread_count = r.read_i32()?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::ReadHistoryInbox {
+                    flags,
+                    folder_id,
+                    peer,
+                    top_msg_id,
+                    max_id,
+                    still_unread_count,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_USER_PHONE_ID => {
-    let user_id = r.read_i64()?;
-    let phone = String::from_utf8(r.read_bytes()?)?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let phone = String::from_utf8(r.read_bytes()?)?;
+                let user_id = UserId(user_id);
                 Ok(Update::UserPhone { user_id, phone })
             }
             UPDATE_PRIVACY_ID => {
-    let key = PrivacyKey::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut rules = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rules.push(PrivacyRule::read_from(r)?);
-    }
+                let key = PrivacyKey::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut rules = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rules.push(PrivacyRule::read_from(r)?);
+                }
                 Ok(Update::Privacy { key, rules })
             }
             UPDATE_SERVICE_NOTIFICATION_ID => {
-    let flags = r.read_i32()?;
-    let popup = flags & (1 << 0) != 0;
-    let invert_media = flags & (1 << 2) != 0;
-    let inbox_date = if flags & (1 << 1) != 0 {
-        let inbox_date = r.read_i32()?;
-        Some(inbox_date)
-    } else {
-        None
-    };
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let media = MessageMedia::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut entities = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        entities.push(MessageEntity::read_from(r)?);
-    }
-                Ok(Update::ServiceNotification { flags, popup, invert_media, inbox_date, r#type, message, media, entities })
+                let flags = r.read_i32()?;
+                let popup = flags & (1 << 0) != 0;
+                let invert_media = flags & (1 << 2) != 0;
+                let inbox_date = if flags & (1 << 1) != 0 {
+                    let inbox_date = r.read_i32()?;
+                    Some(inbox_date)
+                } else {
+                    None
+                };
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let media = MessageMedia::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut entities = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    entities.push(MessageEntity::read_from(r)?);
+                }
+                Ok(Update::ServiceNotification {
+                    flags,
+                    popup,
+                    invert_media,
+                    inbox_date,
+                    r#type,
+                    message,
+                    media,
+                    entities,
+                })
             }
             UPDATE_NOTIFY_SETTINGS_ID => {
-    let peer = NotifyPeer::read_from(r)?;
-    let notify_settings = PeerNotifySettings::read_from(r)?;
-                Ok(Update::NotifySettings { peer, notify_settings })
+                let peer = NotifyPeer::read_from(r)?;
+                let notify_settings = PeerNotifySettings::read_from(r)?;
+                Ok(Update::NotifySettings {
+                    peer,
+                    notify_settings,
+                })
             }
             UPDATE_DC_OPTIONS_ID => {
-    let n = r.read_vector_header()?;
-    let mut dc_options = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        dc_options.push(DcOption::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut dc_options = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    dc_options.push(DcOption::read_from(r)?);
+                }
                 Ok(Update::DcOptions { dc_options })
             }
             UPDATE_CHAT_PARTICIPANT_DELETE_ID => {
-    let chat_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let version = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChatParticipantDelete { chat_id, user_id, version })
+                let chat_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let version = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChatParticipantDelete {
+                    chat_id,
+                    user_id,
+                    version,
+                })
             }
             UPDATE_CHAT_PARTICIPANT_ADD_ID => {
-    let chat_id = r.read_i64()?;
-    let user_id = r.read_i64()?;
-    let inviter_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let version = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-    let user_id = UserId(user_id);
-                Ok(Update::ChatParticipantAdd { chat_id, user_id, inviter_id, date, version })
+                let chat_id = r.read_i64()?;
+                let user_id = r.read_i64()?;
+                let inviter_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let version = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                let user_id = UserId(user_id);
+                Ok(Update::ChatParticipantAdd {
+                    chat_id,
+                    user_id,
+                    inviter_id,
+                    date,
+                    version,
+                })
             }
             UPDATE_ENCRYPTED_MESSAGES_READ_ID => {
-    let chat_id = r.read_i32()?;
-    let max_date = r.read_i32()?;
-    let date = r.read_i32()?;
-                Ok(Update::EncryptedMessagesRead { chat_id, max_date, date })
+                let chat_id = r.read_i32()?;
+                let max_date = r.read_i32()?;
+                let date = r.read_i32()?;
+                Ok(Update::EncryptedMessagesRead {
+                    chat_id,
+                    max_date,
+                    date,
+                })
             }
             UPDATE_ENCRYPTION_ID => {
-    let chat = EncryptedChat::read_from(r)?;
-    let date = r.read_i32()?;
+                let chat = EncryptedChat::read_from(r)?;
+                let date = r.read_i32()?;
                 Ok(Update::Encryption { chat, date })
             }
             UPDATE_ENCRYPTED_CHAT_TYPING_ID => {
-    let chat_id = r.read_i32()?;
+                let chat_id = r.read_i32()?;
                 Ok(Update::EncryptedChatTyping { chat_id })
             }
             UPDATE_NEW_ENCRYPTED_MESSAGE_ID => {
-    let message = EncryptedMessage::read_from(r)?;
-    let qts = r.read_i32()?;
+                let message = EncryptedMessage::read_from(r)?;
+                let qts = r.read_i32()?;
                 Ok(Update::NewEncryptedMessage { message, qts })
             }
             UPDATE_NEW_AUTHORIZATION_ID => {
-    let flags = r.read_i32()?;
-    let unconfirmed = flags & (1 << 0) != 0;
-    let hash = r.read_i64()?;
-    let date = if flags & (1 << 0) != 0 {
-        let date = r.read_i32()?;
-        Some(date)
-    } else {
-        None
-    };
-    let device = if flags & (1 << 0) != 0 {
-        let device = String::from_utf8(r.read_bytes()?)?;
-        Some(device)
-    } else {
-        None
-    };
-    let location = if flags & (1 << 0) != 0 {
-        let location = String::from_utf8(r.read_bytes()?)?;
-        Some(location)
-    } else {
-        None
-    };
-                Ok(Update::NewAuthorization { flags, unconfirmed, hash, date, device, location })
+                let flags = r.read_i32()?;
+                let unconfirmed = flags & (1 << 0) != 0;
+                let hash = r.read_i64()?;
+                let date = if flags & (1 << 0) != 0 {
+                    let date = r.read_i32()?;
+                    Some(date)
+                } else {
+                    None
+                };
+                let device = if flags & (1 << 0) != 0 {
+                    let device = String::from_utf8(r.read_bytes()?)?;
+                    Some(device)
+                } else {
+                    None
+                };
+                let location = if flags & (1 << 0) != 0 {
+                    let location = String::from_utf8(r.read_bytes()?)?;
+                    Some(location)
+                } else {
+                    None
+                };
+                Ok(Update::NewAuthorization {
+                    flags,
+                    unconfirmed,
+                    hash,
+                    date,
+                    device,
+                    location,
+                })
             }
             UPDATE_USER_NAME_ID => {
-    let user_id = r.read_i64()?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut usernames = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        usernames.push(Username::read_from(r)?);
-    }
-    let user_id = UserId(user_id);
-                Ok(Update::UserName { user_id, first_name, last_name, usernames })
+                let user_id = r.read_i64()?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut usernames = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    usernames.push(Username::read_from(r)?);
+                }
+                let user_id = UserId(user_id);
+                Ok(Update::UserName {
+                    user_id,
+                    first_name,
+                    last_name,
+                    usernames,
+                })
             }
             UPDATE_USER_STATUS_ID => {
-    let user_id = r.read_i64()?;
-    let status = UserStatus::read_from(r)?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let status = UserStatus::read_from(r)?;
+                let user_id = UserId(user_id);
                 Ok(Update::UserStatus { user_id, status })
             }
             UPDATE_CHAT_PARTICIPANTS_ID => {
-    let participants = ChatParticipants::read_from(r)?;
+                let participants = ChatParticipants::read_from(r)?;
                 Ok(Update::ChatParticipants { participants })
             }
             UPDATE_CHAT_USER_TYPING_ID => {
-    let chat_id = r.read_i64()?;
-    let from_id = Peer::read_from(r)?;
-    let action = SendMessageAction::read_from(r)?;
-    let chat_id = ChatId(chat_id);
-                Ok(Update::ChatUserTyping { chat_id, from_id, action })
+                let chat_id = r.read_i64()?;
+                let from_id = Peer::read_from(r)?;
+                let action = SendMessageAction::read_from(r)?;
+                let chat_id = ChatId(chat_id);
+                Ok(Update::ChatUserTyping {
+                    chat_id,
+                    from_id,
+                    action,
+                })
             }
             UPDATE_USER_TYPING_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let action = SendMessageAction::read_from(r)?;
-    let user_id = UserId(user_id);
-                Ok(Update::UserTyping { flags, user_id, top_msg_id, action })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let action = SendMessageAction::read_from(r)?;
+                let user_id = UserId(user_id);
+                Ok(Update::UserTyping {
+                    flags,
+                    user_id,
+                    top_msg_id,
+                    action,
+                })
             }
             UPDATE_DELETE_MESSAGES_ID => {
-    let n = r.read_vector_header()?;
-    let mut messages = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        messages.push(r.read_i32()?);
-    }
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::DeleteMessages { messages, pts, pts_count })
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    messages.push(r.read_i32()?);
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::DeleteMessages {
+                    messages,
+                    pts,
+                    pts_count,
+                })
             }
             UPDATE_MESSAGE_ID_ID => {
-    let id = r.read_i32()?;
-    let random_id = r.read_i64()?;
-    let id = MsgId(id as i64);
+                let id = r.read_i32()?;
+                let random_id = r.read_i64()?;
+                let id = MsgId(id as i64);
                 Ok(Update::MessageID { id, random_id })
             }
             UPDATE_NEW_MESSAGE_ID => {
-    let message = Message::read_from(r)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-                Ok(Update::NewMessage { message, pts, pts_count })
+                let message = Message::read_from(r)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Update::NewMessage {
+                    message,
+                    pts,
+                    pts_count,
+                })
             }
             other => Ok(Update::Other { constructor: other }),
         }
@@ -2034,17 +3100,75 @@ impl Update {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Updates {
     /// `updateShortSentMessage#9015e101`
-    UpdateShortSentMessage { flags: i32, out: bool, id: i32, pts: i32, pts_count: i32, date: i32, media: Option<MessageMedia>, entities: Option<Vec<MessageEntity>>, ttl_period: Option<i32> },
+    UpdateShortSentMessage {
+        flags: i32,
+        out: bool,
+        id: i32,
+        pts: i32,
+        pts_count: i32,
+        date: i32,
+        media: Option<MessageMedia>,
+        entities: Option<Vec<MessageEntity>>,
+        ttl_period: Option<i32>,
+    },
     /// `updates#74ae4240`
-    Updates { updates: Vec<Update>, users: Vec<User>, chats: Vec<Chat>, date: i32, seq: i32 },
+    Updates {
+        updates: Vec<Update>,
+        users: Vec<User>,
+        chats: Vec<Chat>,
+        date: i32,
+        seq: i32,
+    },
     /// `updatesCombined#725b04c3`
-    UpdatesCombined { updates: Vec<Update>, users: Vec<User>, chats: Vec<Chat>, date: i32, seq_start: i32, seq: i32 },
+    UpdatesCombined {
+        updates: Vec<Update>,
+        users: Vec<User>,
+        chats: Vec<Chat>,
+        date: i32,
+        seq_start: i32,
+        seq: i32,
+    },
     /// `updateShort#78d4dec1`
     UpdateShort { update: Update, date: i32 },
     /// `updateShortChatMessage#4d6deea5`
-    UpdateShortChatMessage { flags: i32, out: bool, mentioned: bool, media_unread: bool, silent: bool, id: i32, from_id: i64, chat_id: ChatId, message: String, pts: i32, pts_count: i32, date: i32, fwd_from: Option<MessageFwdHeader>, via_bot_id: Option<i64>, reply_to: Option<MessageReplyHeader>, entities: Option<Vec<MessageEntity>>, ttl_period: Option<i32> },
+    UpdateShortChatMessage {
+        flags: i32,
+        out: bool,
+        mentioned: bool,
+        media_unread: bool,
+        silent: bool,
+        id: i32,
+        from_id: i64,
+        chat_id: ChatId,
+        message: String,
+        pts: i32,
+        pts_count: i32,
+        date: i32,
+        fwd_from: Option<MessageFwdHeader>,
+        via_bot_id: Option<i64>,
+        reply_to: Option<MessageReplyHeader>,
+        entities: Option<Vec<MessageEntity>>,
+        ttl_period: Option<i32>,
+    },
     /// `updateShortMessage#313bc7f8`
-    UpdateShortMessage { flags: i32, out: bool, mentioned: bool, media_unread: bool, silent: bool, id: i32, user_id: UserId, message: String, pts: i32, pts_count: i32, date: i32, fwd_from: Option<MessageFwdHeader>, via_bot_id: Option<i64>, reply_to: Option<MessageReplyHeader>, entities: Option<Vec<MessageEntity>>, ttl_period: Option<i32> },
+    UpdateShortMessage {
+        flags: i32,
+        out: bool,
+        mentioned: bool,
+        media_unread: bool,
+        silent: bool,
+        id: i32,
+        user_id: UserId,
+        message: String,
+        pts: i32,
+        pts_count: i32,
+        date: i32,
+        fwd_from: Option<MessageFwdHeader>,
+        via_bot_id: Option<i64>,
+        reply_to: Option<MessageReplyHeader>,
+        entities: Option<Vec<MessageEntity>>,
+        ttl_period: Option<i32>,
+    },
     /// `updatesTooLong#e317af7e`
     UpdatesTooLong,
 }
@@ -2054,184 +3178,240 @@ impl Updates {
         let ctor = r.read_u32()?;
         match ctor {
             UPDATE_SHORT_SENT_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let out = flags & (1 << 1) != 0;
-    let id = r.read_i32()?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let date = r.read_i32()?;
-    let media = if flags & (1 << 9) != 0 {
-        let media = MessageMedia::read_from(r)?;
-        Some(media)
-    } else {
-        None
-    };
-    let entities = if flags & (1 << 7) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 25) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-                Ok(Updates::UpdateShortSentMessage { flags, out, id, pts, pts_count, date, media, entities, ttl_period })
+                let flags = r.read_i32()?;
+                let out = flags & (1 << 1) != 0;
+                let id = r.read_i32()?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let date = r.read_i32()?;
+                let media = if flags & (1 << 9) != 0 {
+                    let media = MessageMedia::read_from(r)?;
+                    Some(media)
+                } else {
+                    None
+                };
+                let entities = if flags & (1 << 7) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 25) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                Ok(Updates::UpdateShortSentMessage {
+                    flags,
+                    out,
+                    id,
+                    pts,
+                    pts_count,
+                    date,
+                    media,
+                    entities,
+                    ttl_period,
+                })
             }
             UPDATES_ID => {
-    let n = r.read_vector_header()?;
-    let mut updates = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        updates.push(Update::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(User::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(Chat::read_from(r)?);
-    }
-    let date = r.read_i32()?;
-    let seq = r.read_i32()?;
-                Ok(Updates::Updates { updates, users, chats, date, seq })
+                let n = r.read_vector_header()?;
+                let mut updates = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    updates.push(Update::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(User::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(Chat::read_from(r)?);
+                }
+                let date = r.read_i32()?;
+                let seq = r.read_i32()?;
+                Ok(Updates::Updates {
+                    updates,
+                    users,
+                    chats,
+                    date,
+                    seq,
+                })
             }
             UPDATES_COMBINED_ID => {
-    let n = r.read_vector_header()?;
-    let mut updates = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        updates.push(Update::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(User::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(Chat::read_from(r)?);
-    }
-    let date = r.read_i32()?;
-    let seq_start = r.read_i32()?;
-    let seq = r.read_i32()?;
-                Ok(Updates::UpdatesCombined { updates, users, chats, date, seq_start, seq })
+                let n = r.read_vector_header()?;
+                let mut updates = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    updates.push(Update::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(User::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(Chat::read_from(r)?);
+                }
+                let date = r.read_i32()?;
+                let seq_start = r.read_i32()?;
+                let seq = r.read_i32()?;
+                Ok(Updates::UpdatesCombined {
+                    updates,
+                    users,
+                    chats,
+                    date,
+                    seq_start,
+                    seq,
+                })
             }
             UPDATE_SHORT_ID => {
-    let update = Update::read_from(r)?;
-    let date = r.read_i32()?;
+                let update = Update::read_from(r)?;
+                let date = r.read_i32()?;
                 Ok(Updates::UpdateShort { update, date })
             }
             UPDATE_SHORT_CHAT_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let out = flags & (1 << 1) != 0;
-    let mentioned = flags & (1 << 4) != 0;
-    let media_unread = flags & (1 << 5) != 0;
-    let silent = flags & (1 << 13) != 0;
-    let id = r.read_i32()?;
-    let from_id = r.read_i64()?;
-    let chat_id = r.read_i64()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let date = r.read_i32()?;
-    let fwd_from = if flags & (1 << 2) != 0 {
-        let fwd_from = MessageFwdHeader::read_from(r)?;
-        Some(fwd_from)
-    } else {
-        None
-    };
-    let via_bot_id = if flags & (1 << 11) != 0 {
-        let via_bot_id = r.read_i64()?;
-        Some(via_bot_id)
-    } else {
-        None
-    };
-    let reply_to = if flags & (1 << 3) != 0 {
-        let reply_to = MessageReplyHeader::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let entities = if flags & (1 << 7) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 25) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-    let chat_id = ChatId(chat_id);
-                Ok(Updates::UpdateShortChatMessage { flags, out, mentioned, media_unread, silent, id, from_id, chat_id, message, pts, pts_count, date, fwd_from, via_bot_id, reply_to, entities, ttl_period })
+                let flags = r.read_i32()?;
+                let out = flags & (1 << 1) != 0;
+                let mentioned = flags & (1 << 4) != 0;
+                let media_unread = flags & (1 << 5) != 0;
+                let silent = flags & (1 << 13) != 0;
+                let id = r.read_i32()?;
+                let from_id = r.read_i64()?;
+                let chat_id = r.read_i64()?;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let date = r.read_i32()?;
+                let fwd_from = if flags & (1 << 2) != 0 {
+                    let fwd_from = MessageFwdHeader::read_from(r)?;
+                    Some(fwd_from)
+                } else {
+                    None
+                };
+                let via_bot_id = if flags & (1 << 11) != 0 {
+                    let via_bot_id = r.read_i64()?;
+                    Some(via_bot_id)
+                } else {
+                    None
+                };
+                let reply_to = if flags & (1 << 3) != 0 {
+                    let reply_to = MessageReplyHeader::read_from(r)?;
+                    Some(reply_to)
+                } else {
+                    None
+                };
+                let entities = if flags & (1 << 7) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 25) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                let chat_id = ChatId(chat_id);
+                Ok(Updates::UpdateShortChatMessage {
+                    flags,
+                    out,
+                    mentioned,
+                    media_unread,
+                    silent,
+                    id,
+                    from_id,
+                    chat_id,
+                    message,
+                    pts,
+                    pts_count,
+                    date,
+                    fwd_from,
+                    via_bot_id,
+                    reply_to,
+                    entities,
+                    ttl_period,
+                })
             }
             UPDATE_SHORT_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let out = flags & (1 << 1) != 0;
-    let mentioned = flags & (1 << 4) != 0;
-    let media_unread = flags & (1 << 5) != 0;
-    let silent = flags & (1 << 13) != 0;
-    let id = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let pts = r.read_i32()?;
-    let pts_count = r.read_i32()?;
-    let date = r.read_i32()?;
-    let fwd_from = if flags & (1 << 2) != 0 {
-        let fwd_from = MessageFwdHeader::read_from(r)?;
-        Some(fwd_from)
-    } else {
-        None
-    };
-    let via_bot_id = if flags & (1 << 11) != 0 {
-        let via_bot_id = r.read_i64()?;
-        Some(via_bot_id)
-    } else {
-        None
-    };
-    let reply_to = if flags & (1 << 3) != 0 {
-        let reply_to = MessageReplyHeader::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let entities = if flags & (1 << 7) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 25) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(Updates::UpdateShortMessage { flags, out, mentioned, media_unread, silent, id, user_id, message, pts, pts_count, date, fwd_from, via_bot_id, reply_to, entities, ttl_period })
+                let flags = r.read_i32()?;
+                let out = flags & (1 << 1) != 0;
+                let mentioned = flags & (1 << 4) != 0;
+                let media_unread = flags & (1 << 5) != 0;
+                let silent = flags & (1 << 13) != 0;
+                let id = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                let date = r.read_i32()?;
+                let fwd_from = if flags & (1 << 2) != 0 {
+                    let fwd_from = MessageFwdHeader::read_from(r)?;
+                    Some(fwd_from)
+                } else {
+                    None
+                };
+                let via_bot_id = if flags & (1 << 11) != 0 {
+                    let via_bot_id = r.read_i64()?;
+                    Some(via_bot_id)
+                } else {
+                    None
+                };
+                let reply_to = if flags & (1 << 3) != 0 {
+                    let reply_to = MessageReplyHeader::read_from(r)?;
+                    Some(reply_to)
+                } else {
+                    None
+                };
+                let entities = if flags & (1 << 7) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 25) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(Updates::UpdateShortMessage {
+                    flags,
+                    out,
+                    mentioned,
+                    media_unread,
+                    silent,
+                    id,
+                    user_id,
+                    message,
+                    pts,
+                    pts_count,
+                    date,
+                    fwd_from,
+                    via_bot_id,
+                    reply_to,
+                    entities,
+                    ttl_period,
+                })
             }
-            UPDATES_TOO_LONG_ID => {
-                Ok(Updates::UpdatesTooLong {  })
-            }
+            UPDATES_TOO_LONG_ID => Ok(Updates::UpdatesTooLong {}),
             other => Err(Error::Serialization(format!(
                 "unknown Updates constructor {other:#x}"
             ))),

@@ -2,25 +2,38 @@
 //!
 //! Upload: `upload.saveFilePart` for files ≤ 10 MiB, `upload.saveBigFilePart`
 //! for larger ones (512 KiB parts, ≤ 4000 parts per doc, split here across
-//! parallel workers per SPEC §11.3 PartPlan).
+//! parallel workers per SPEC §11.3 `PartPlan`).
 //!
 //! Download: `upload.getFile` in 1 MiB chunks (server max), iterating offsets
 //! until a short read ends the stream.
+//!
+//! Chunk sizes are fixed by Telegram (`SMALL_PART_SIZE`, `BIG_PART_SIZE`,
+//! `DOWNLOAD_CHUNK`); part counts are checked against Telegram's limits
+//! before any spawn, and file sizes come from `stat`/the caller's metadata.
+
+// Upload/download split their work over fixed-size parts whose counts
+// are validated against Telegram's caps before any spawn; the slicing
+// and offset arithmetic below are bounded by those checks.
+#![allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 
 use crate::error::{Error, Result};
 use crate::rpc;
 use crate::types::{FileLocation, InputFile};
 use std::io::Read;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 /// `upload.saveFilePart` part size (512 KiB is the only allowed value).
+#[allow(clippy::unreadable_literal)] // wire constants quoted verbatim from the TL schema
 pub const SMALL_PART_SIZE: usize = 512 * 1024;
 /// `upload.saveBigFilePart` part size (512 KiB).
+#[allow(clippy::unreadable_literal)] // wire constants quoted verbatim from the TL schema
 pub const BIG_PART_SIZE: usize = 512 * 1024;
 /// Files at or below this size use `saveFilePart`; above use `saveBigFilePart`.
+#[allow(clippy::unreadable_literal)] // wire constants quoted verbatim from the TL schema
 pub const BIG_FILE_THRESHOLD: u64 = 10 * 1024 * 1024;
-/// Server cap on getFile responses; request this much per chunk.
+/// Server cap on `getFile` responses; request this much per chunk.
+#[allow(clippy::unreadable_literal)] // wire constants quoted verbatim from the TL schema
 pub const DOWNLOAD_CHUNK: usize = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
@@ -30,6 +43,11 @@ pub const DOWNLOAD_CHUNK: usize = 1024 * 1024;
 /// Upload reader contents as a single-file `InputFile`, chunking with
 /// `saveFilePart`/`saveBigFilePart` and uploading parts round-robin through
 /// the pool with `worker_count` concurrent tasks.
+///
+/// # Errors
+///
+/// Returns an error when the file is empty or exceeds Telegram's 4000-part
+/// limit, when reading the source fails, or when any part upload fails.
 pub async fn upload<R: Read + Send>(
     pool: Arc<crate::pool::SenderPool>,
     name: String,
@@ -43,7 +61,8 @@ pub async fn upload<R: Read + Send>(
 
     let big = size > BIG_FILE_THRESHOLD;
     let part_size = if big { BIG_PART_SIZE } else { SMALL_PART_SIZE };
-    let total_parts = size.div_ceil(part_size as u64) as usize;
+    let total_parts = usize::try_from(size.div_ceil(u64::try_from(part_size).unwrap_or(u64::MAX)))
+        .unwrap_or(usize::MAX);
     if big && total_parts > 4000 {
         return Err(Error::Other(format!(
             "file too large: {size} bytes needs {total_parts} parts (max 4000)"
@@ -82,16 +101,22 @@ pub async fn upload<R: Read + Send>(
                 let payload = if big {
                     rpc::build_save_big_file_part(
                         file_id,
-                        part_index as i32,
-                        total_parts as i32,
+                        // Telegram caps documents at 4000 parts (checked
+                        // above), so the index fits i32.
+                        i32::try_from(part_index).unwrap_or(i32::MAX),
+                        i32::try_from(total_parts).unwrap_or(i32::MAX),
                         data,
                     )
                 } else {
-                    rpc::build_save_file_part(file_id, part_index as i32, data)
+                    rpc::build_save_file_part(
+                        file_id,
+                        i32::try_from(part_index).unwrap_or(i32::MAX),
+                        data,
+                    )
                 };
-                pool.send_rpc(&payload).await.map_err(|e| {
-                    Error::Other(format!("part {part_index} upload failed: {e}"))
-                })?;
+                pool.send_rpc(&payload)
+                    .await
+                    .map_err(|e| Error::Other(format!("part {part_index} upload failed: {e}")))?;
             }
             Ok::<(), Error>(())
         }));
@@ -105,13 +130,13 @@ pub async fn upload<R: Read + Send>(
     Ok(if big {
         InputFile::Big {
             id: file_id,
-            parts: total_parts as i32,
+            parts: i32::try_from(total_parts).unwrap_or(i32::MAX),
             name: name.clone(),
         }
     } else {
         InputFile::Id {
             id: file_id,
-            parts: total_parts as i32,
+            parts: i32::try_from(total_parts).unwrap_or(i32::MAX),
             name,
             md5_checksum: String::new(),
         }
@@ -119,6 +144,11 @@ pub async fn upload<R: Read + Send>(
 }
 
 /// Convenience: upload a file from disk.
+///
+/// # Errors
+///
+/// Returns an error when the path cannot be stat-ed or opened, or when the
+/// underlying [`upload`] fails.
 pub async fn upload_file(
     pool: Arc<crate::pool::SenderPool>,
     path: &Path,
@@ -155,6 +185,7 @@ pub struct DownloadConfig {
 impl Default for DownloadConfig {
     fn default() -> Self {
         Self {
+            #[allow(clippy::unreadable_literal)] // wire constants quoted verbatim from the TL schema
             parallel_threshold: 8 * 1024 * 1024,
             parallel_count: 4,
         }
@@ -177,11 +208,16 @@ pub enum GetFile {
 }
 
 /// Parse an `upload.getFile` response: `upload.file` or `fileCdnRedirect`.
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for an unknown constructor and
+/// [`Error::Serialization`] when the payload is truncated.
 pub fn parse_get_file(data: &[u8]) -> Result<GetFile> {
     use crate::serialize::{TLReader, UPLOAD_FILE, UPLOAD_FILE_CDN_REDIRECT};
-    // upload.file was re-issued between layers: 0x096a18d5 (published
-    // layer 223) vs 0x96a18f23 (layer 225+). Both decode identically.
-    const UPLOAD_FILE_L223: u32 = 0x096a18d5;
+    // upload.file was re-issued between layers: 0x096a_18d5 (published
+    // layer 223) vs 0x96a1_8f23 (layer 225+). Both decode identically.
+    const UPLOAD_FILE_L223: u32 = 0x096a_18d5;
     let mut r = TLReader::new(data);
     let ctor = r.read_u32()?;
     match ctor {
@@ -207,13 +243,19 @@ pub fn parse_get_file(data: &[u8]) -> Result<GetFile> {
 }
 
 /// Fetch one `getFile` chunk and unwrap the `upload.file` envelope.
+///
+/// # Errors
+///
+/// Returns transport/RPC errors from the pool, [`Error::UnexpectedResponse`]
+/// for unknown constructors, and [`Error::Other`] for CDN redirects (not
+/// yet supported).
 async fn get_file_chunk(
     pool: &crate::pool::SenderPool,
     location: &FileLocation,
     offset: i64,
     limit: usize,
 ) -> Result<Vec<u8>> {
-    let payload = rpc::build_get_file(location, offset, limit as i32);
+    let payload = rpc::build_get_file(location, offset, i32::try_from(limit).unwrap_or(i32::MAX));
     let raw = pool.send_rpc(&payload).await?;
     match parse_get_file(&raw)? {
         GetFile::File { bytes, .. } => Ok(bytes),
@@ -224,6 +266,10 @@ async fn get_file_chunk(
 }
 
 /// Download the whole file into memory (convenience wrapper). Serial.
+///
+/// # Errors
+///
+/// Propagates errors from [`get_file_chunk`]; a short read ends the loop.
 pub async fn download(
     pool: Arc<crate::pool::SenderPool>,
     location: &FileLocation,
@@ -237,7 +283,7 @@ pub async fn download(
         if n < DOWNLOAD_CHUNK {
             break;
         }
-        offset = offset.saturating_add(n as i64);
+        offset = offset.saturating_add(i64::try_from(n).unwrap_or(i64::MAX));
     }
     Ok(out)
 }
@@ -245,6 +291,11 @@ pub async fn download(
 /// Download a file of known `size` in parallel contiguous ranges when the
 /// size meets the threshold (SPEC BS-5), otherwise serial. Reassembled
 /// in-order; the first chunk error aborts.
+///
+/// # Errors
+///
+/// Propagates errors from [`get_file_chunk`]; the first failing range
+/// aborts the whole download.
 pub async fn download_parallel(
     pool: Arc<crate::pool::SenderPool>,
     location: &FileLocation,
@@ -262,32 +313,44 @@ pub async fn download_parallel(
     // needs no special handling.
     let workers = config
         .parallel_count
-        .min(size.div_ceil(DOWNLOAD_CHUNK as u64) as usize)
+        .min(
+            usize::try_from(size.div_ceil(u64::try_from(DOWNLOAD_CHUNK).unwrap_or(u64::MAX)))
+                .unwrap_or(usize::MAX),
+        )
         .max(1);
-    let range = size.div_ceil(workers as u64);
+    let range = size.div_ceil(u64::try_from(workers).unwrap_or(u64::MAX));
     let location = std::sync::Arc::new(clone_location(location));
     let mut handles = Vec::with_capacity(workers);
     for w in 0..workers {
-        let start = (w as u64) * range;
-        let end = ((w as u64 + 1) * range).min(size);
+        let start = u64::try_from(w).unwrap_or(u64::MAX).saturating_mul(range);
+        let end = u64::try_from(w)
+            .unwrap_or(u64::MAX)
+            .saturating_add(1)
+            .saturating_mul(range)
+            .min(size);
         if start >= end {
             break;
         }
         let pool = std::sync::Arc::clone(&pool);
         let location = std::sync::Arc::clone(&location);
         handles.push(tokio::spawn(async move {
-            let mut buf = Vec::with_capacity((end - start) as usize);
+            let mut buf = Vec::with_capacity(usize::try_from(end - start).unwrap_or(usize::MAX));
             let mut offset = start;
             while offset < end {
-                let chunk =
-                    get_file_chunk(&pool, &location, offset as i64, DOWNLOAD_CHUNK).await?;
+                let chunk = get_file_chunk(
+                    &pool,
+                    &location,
+                    i64::try_from(offset).unwrap_or(i64::MAX),
+                    DOWNLOAD_CHUNK,
+                )
+                .await?;
                 if chunk.is_empty() {
                     return Err(Error::Other(format!(
                         "download ended early at offset {offset} (expected end {end})"
                     )));
                 }
                 buf.extend_from_slice(&chunk);
-                offset += chunk.len() as u64;
+                offset = offset.saturating_add(u64::try_from(chunk.len()).unwrap_or(u64::MAX));
             }
             Ok::<(u64, Vec<u8>), Error>((start, buf))
         }));
@@ -305,6 +368,10 @@ pub async fn download_parallel(
 }
 
 /// Collect chunks with a callback instead of a stream. Serial.
+///
+/// # Errors
+///
+/// Propagates errors from [`get_file_chunk`] and from the callback `f`.
 pub async fn for_each_chunk(
     pool: Arc<crate::pool::SenderPool>,
     location: &FileLocation,
@@ -314,11 +381,11 @@ pub async fn for_each_chunk(
     loop {
         let chunk = get_file_chunk(&pool, location, offset, DOWNLOAD_CHUNK).await?;
         let n = chunk.len();
-        f(offset as usize, &chunk)?;
+        f(usize::try_from(offset).unwrap_or(usize::MAX), &chunk)?;
         if n < DOWNLOAD_CHUNK {
             break;
         }
-        offset = offset.saturating_add(n as i64);
+        offset = offset.saturating_add(i64::try_from(n).unwrap_or(i64::MAX));
     }
     Ok(())
 }
@@ -330,6 +397,16 @@ fn clone_location(loc: &FileLocation) -> FileLocation {
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap is the idiomatic failure mode here; wire ctors
+    // and timestamps are quoted verbatim.
+    // Test code: unwrap/panic/match-wildcard are idiomatic here.
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::match_wildcard_for_single_variants,
+        clippy::unreadable_literal
+    )]
     use super::*;
     use crate::serialize::TLWriter;
 
@@ -387,4 +464,3 @@ mod tests {
         assert_eq!(cfg.parallel_count, 4);
     }
 }
-

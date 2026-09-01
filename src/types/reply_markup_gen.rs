@@ -7,13 +7,23 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
 use super::chat_gen::{ChatAdminRights, InlineButtonType, InlineQueryPeerType};
 use super::input_gen::{InputPeer, InputUser};
-use super::message_gen::{ButtonType, KeyboardButtonRow, KeyboardButtonStyle, KeyboardInlineButton, KeyboardInlineButtonRow, RequestPeerType};
+use super::message_gen::{
+    ButtonType, KeyboardButtonRow, KeyboardButtonStyle, KeyboardInlineButton,
+    KeyboardInlineButtonRow, RequestPeerType,
+};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const KEYBOARD_BUTTON_ID: u32 = 0x2f67a72f;
 pub const REPLY_INLINE_MARKUP_ID: u32 = 0xb2b15770;
@@ -39,15 +49,15 @@ impl KeyboardButton {
                 "expected keyboardButton, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let r#type = ButtonType::read_from(r)?;
+        let flags = r.read_i32()?;
+        let style = if flags & (1 << 10) != 0 {
+            let style = KeyboardButtonStyle::read_from(r)?;
+            Some(style)
+        } else {
+            None
+        };
+        let text = String::from_utf8(r.read_bytes()?)?;
+        let r#type = ButtonType::read_from(r)?;
         Ok(KeyboardButton {
             flags,
             style,
@@ -55,18 +65,35 @@ impl KeyboardButton {
             r#type,
         })
     }
-
 }
 
 /// Union `ReplyMarkup` (4 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReplyMarkup {
     /// `replyInlineMarkup#b2b15770`
-    InlineKeyboard { flags: i32, force_reply: bool, rows: Vec<KeyboardInlineButtonRow> },
+    InlineKeyboard {
+        flags: i32,
+        force_reply: bool,
+        rows: Vec<KeyboardInlineButtonRow>,
+    },
     /// `replyKeyboardMarkup#85dd99d1`
-    ReplyKeyboard { flags: i32, resize: bool, single_use: bool, selective: bool, persistent: bool, force_reply: bool, rows: Vec<KeyboardButtonRow>, placeholder: Option<String> },
+    ReplyKeyboard {
+        flags: i32,
+        resize: bool,
+        single_use: bool,
+        selective: bool,
+        persistent: bool,
+        force_reply: bool,
+        rows: Vec<KeyboardButtonRow>,
+        placeholder: Option<String>,
+    },
     /// `replyKeyboardForceReply#86b40b08`
-    ForceReply { flags: i32, single_use: bool, selective: bool, placeholder: Option<String> },
+    ForceReply {
+        flags: i32,
+        single_use: bool,
+        selective: bool,
+        placeholder: Option<String>,
+    },
     /// `replyKeyboardHide#a03e5b85`
     None { flags: i32, selective: bool },
 }
@@ -76,50 +103,68 @@ impl ReplyMarkup {
         let ctor = r.read_u32()?;
         match ctor {
             0x48a30254 | REPLY_INLINE_MARKUP_ID => {
-    let flags = r.read_i32()?;
-    let force_reply = flags & (1 << 5) != 0;
-    let n = r.read_vector_header()?;
-    let mut rows = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rows.push(KeyboardInlineButtonRow::read_from(r)?);
-    }
-                Ok(ReplyMarkup::InlineKeyboard { flags, force_reply, rows })
+                let flags = r.read_i32()?;
+                let force_reply = flags & (1 << 5) != 0;
+                let n = r.read_vector_header()?;
+                let mut rows = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rows.push(KeyboardInlineButtonRow::read_from(r)?);
+                }
+                Ok(ReplyMarkup::InlineKeyboard {
+                    flags,
+                    force_reply,
+                    rows,
+                })
             }
             REPLY_KEYBOARD_MARKUP_ID => {
-    let flags = r.read_i32()?;
-    let resize = flags & (1 << 0) != 0;
-    let single_use = flags & (1 << 1) != 0;
-    let selective = flags & (1 << 2) != 0;
-    let persistent = flags & (1 << 4) != 0;
-    let force_reply = flags & (1 << 5) != 0;
-    let n = r.read_vector_header()?;
-    let mut rows = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rows.push(KeyboardButtonRow::read_from(r)?);
-    }
-    let placeholder = if flags & (1 << 3) != 0 {
-        let placeholder = String::from_utf8(r.read_bytes()?)?;
-        Some(placeholder)
-    } else {
-        None
-    };
-                Ok(ReplyMarkup::ReplyKeyboard { flags, resize, single_use, selective, persistent, force_reply, rows, placeholder })
+                let flags = r.read_i32()?;
+                let resize = flags & (1 << 0) != 0;
+                let single_use = flags & (1 << 1) != 0;
+                let selective = flags & (1 << 2) != 0;
+                let persistent = flags & (1 << 4) != 0;
+                let force_reply = flags & (1 << 5) != 0;
+                let n = r.read_vector_header()?;
+                let mut rows = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rows.push(KeyboardButtonRow::read_from(r)?);
+                }
+                let placeholder = if flags & (1 << 3) != 0 {
+                    let placeholder = String::from_utf8(r.read_bytes()?)?;
+                    Some(placeholder)
+                } else {
+                    None
+                };
+                Ok(ReplyMarkup::ReplyKeyboard {
+                    flags,
+                    resize,
+                    single_use,
+                    selective,
+                    persistent,
+                    force_reply,
+                    rows,
+                    placeholder,
+                })
             }
             REPLY_KEYBOARD_FORCE_REPLY_ID => {
-    let flags = r.read_i32()?;
-    let single_use = flags & (1 << 1) != 0;
-    let selective = flags & (1 << 2) != 0;
-    let placeholder = if flags & (1 << 3) != 0 {
-        let placeholder = String::from_utf8(r.read_bytes()?)?;
-        Some(placeholder)
-    } else {
-        None
-    };
-                Ok(ReplyMarkup::ForceReply { flags, single_use, selective, placeholder })
+                let flags = r.read_i32()?;
+                let single_use = flags & (1 << 1) != 0;
+                let selective = flags & (1 << 2) != 0;
+                let placeholder = if flags & (1 << 3) != 0 {
+                    let placeholder = String::from_utf8(r.read_bytes()?)?;
+                    Some(placeholder)
+                } else {
+                    None
+                };
+                Ok(ReplyMarkup::ForceReply {
+                    flags,
+                    single_use,
+                    selective,
+                    placeholder,
+                })
             }
             REPLY_KEYBOARD_HIDE_ID => {
-    let flags = r.read_i32()?;
-    let selective = flags & (1 << 2) != 0;
+                let flags = r.read_i32()?;
+                let selective = flags & (1 << 2) != 0;
                 Ok(ReplyMarkup::None { flags, selective })
             }
             other => Err(Error::Serialization(format!(

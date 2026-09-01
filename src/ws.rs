@@ -11,11 +11,11 @@
 use crate::error::{Error, Result};
 use crate::transport::{Obfuscated2Transport, TransportProtocol, obfuscated2_keys};
 
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::Connector;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::HOST;
-use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::Connector;
 
 /// A live Obfuscated2-over-WebSocket connection.
 pub struct WsTransport {
@@ -26,9 +26,8 @@ pub struct WsTransport {
     pending: Vec<u8>,
 }
 
-pub type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
->;
+pub type WsStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 impl WsTransport {
     /// Raw write of already-framed bytes: one WS binary message.
@@ -122,7 +121,9 @@ pub async fn connect_obfuscated2_ws(
         request,
         None,
         false,
-        Some(Connector::Rustls(std::sync::Arc::new(rustls_client_config()))),
+        Some(Connector::Rustls(std::sync::Arc::new(
+            rustls_client_config(),
+        ))),
     )
     .await
     .map_err(ws_err)?;

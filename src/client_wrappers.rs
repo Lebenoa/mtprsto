@@ -1,4 +1,5 @@
-//! Typed Client wrappers over the `rpc::build_*` payload builders
+//! Typed `Client` wrappers over the `rpc::build_*` payload builders.
+//!
 //! (SPEC §7 surface, P0 wrapper gap). Split from `client.rs` so the
 //! connection/session logic stays in one file and the RPC surface can
 //! grow without churn.
@@ -8,14 +9,19 @@
 //! 2. `invoke_raw` through the pool,
 //! 3. decode the typed response.
 
-use crate::types;
+use crate::types::{
+    AccessHash, CHANNELS_CHANNEL_PARTICIPANTS, CONTACTS_FOUND, CONTACTS_RESOLVED_PEER, ChannelId,
+    Chat, ChatId, InputChannel, InputPeer, InputUser, MESSAGES_AFFECTED_HISTORY,
+    MESSAGES_AFFECTED_MESSAGES, MESSAGES_BOT_CALLBACK_ANSWER, MESSAGES_CHANNEL_MESSAGES,
+    MESSAGES_MESSAGES, MESSAGES_MESSAGES_NOT_MODIFIED, MESSAGES_MESSAGES_SLICE, Message, MsgId,
+    PHOTOS_UPLOAD_PROFILE_PHOTO, Peer, User,
+};
 
 use crate::client::Client;
+use crate::ergonomics::TlResult;
 use crate::error::{Error, Result};
 use crate::rpc;
 use crate::serialize::TLReader;
-use crate::ergonomics::TlResult;
-use crate::types::*;
 
 // ===========================================================================
 // Response types
@@ -40,6 +46,11 @@ pub struct BotCallbackAnswer {
 
 impl BotCallbackAnswer {
     /// Decode from a `messages.botCallbackAnswer` payload (ctor included).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] for a foreign constructor and
+    /// serialization errors for truncated payloads.
     pub fn parse(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
@@ -80,6 +91,11 @@ pub struct AffectedMessages {
 
 impl AffectedMessages {
     /// Decode from an `messages.affectedMessages` payload (ctor included).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] for a foreign constructor and
+    /// serialization errors for truncated payloads.
     pub fn parse(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
@@ -123,8 +139,7 @@ fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
             }
             if flags & (1 << 3) != 0 {
                 return Err(Error::Protocol(
-                    "messagesSlice carries search_flood (SearchPostsFlood) — not supported"
-                        .into(),
+                    "messagesSlice carries search_flood (SearchPostsFlood) — not supported".into(),
                 ));
             }
             read_messages_body(&mut r)
@@ -150,7 +165,10 @@ fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
 /// messages/topics vectors plus the chats/users tail of messages.Messages*.
 fn read_messages_body(r: &mut TLReader) -> Result<Vec<Message>> {
     let count = r.read_vector_header()?;
-    let mut out = Vec::with_capacity(count as usize);
+    // vector counts from the server are small; the clamp only satisfies
+    // the type system without changing behavior for valid counts
+    let count = usize::try_from(count).unwrap_or(0);
+    let mut out = Vec::with_capacity(count);
     for _ in 0..count {
         out.push(Message::read_from(r)?);
     }
@@ -158,7 +176,7 @@ fn read_messages_body(r: &mut TLReader) -> Result<Vec<Message>> {
     let topic_count = r.read_vector_header()?;
     for _ in 0..topic_count {
         let tctor = r.read_u32()?;
-        if tctor == types::FORUM_TOPIC_DELETED {
+        if tctor == crate::types::FORUM_TOPIC_DELETED {
             let _id = r.read_i32()?;
         } else {
             return Err(Error::Protocol(format!(
@@ -191,18 +209,18 @@ impl Client {
     /// Transport or RPC failure; an unresolvable channel access hash
     /// surfaces as `CHANNEL_INVALID`/`CHANNEL_PRIVATE`.
     #[tracing::instrument(name = "mtprsto::get_messages", skip(self, msg_ids), err)]
-    pub async fn get_messages(
-        &self,
-        peer: &InputPeer,
-        msg_ids: &[MsgId],
-    ) -> Result<Vec<Message>> {
+    pub async fn get_messages(&self, peer: &InputPeer, msg_ids: &[MsgId]) -> Result<Vec<Message>> {
         let payload = match peer {
-            InputPeer::Channel { channel_id, access_hash } => {
-                rpc::build_channels_get_messages(
-                    &InputChannel::Channel { channel_id: *channel_id, access_hash: *access_hash },
-                    msg_ids,
-                )
-            }
+            InputPeer::Channel {
+                channel_id,
+                access_hash,
+            } => rpc::build_channels_get_messages(
+                &InputChannel::Channel {
+                    channel_id: *channel_id,
+                    access_hash: *access_hash,
+                },
+                msg_ids,
+            ),
             _ => rpc::build_get_messages(msg_ids),
         };
         let result = self.invoke_raw(payload).await?;
@@ -222,11 +240,7 @@ impl Client {
     ///
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::get_recent_messages", skip(self), err)]
-    pub async fn get_recent_messages(
-        &self,
-        peer: &InputPeer,
-        limit: i32,
-    ) -> Result<Vec<Message>> {
+    pub async fn get_recent_messages(&self, peer: &InputPeer, limit: i32) -> Result<Vec<Message>> {
         let payload = rpc::build_get_history(peer, 0, 0, 0, limit, 0, 0);
         let result = self.invoke_raw(payload).await?;
         messages_from_container(&result)
@@ -259,12 +273,7 @@ impl Client {
     ///
     /// Transport or RPC failure (e.g. `MESSAGE_ID_INVALID`).
     #[tracing::instrument(name = "mtprsto::edit_message", skip(self), err)]
-    pub async fn edit_message(
-        &self,
-        peer: &str,
-        msg_id: i32,
-        text: &str,
-    ) -> Result<()> {
+    pub async fn edit_message(&self, peer: &str, msg_id: i32, text: &str) -> Result<()> {
         let input_peer = self.resolve_peer(peer).await?;
         let payload = rpc::build_edit_message(&input_peer, msg_id, Some(text));
         self.invoke_raw(payload).await?;
@@ -273,7 +282,7 @@ impl Client {
 
     /// Delete the entire chat history with `peer`.
     ///
-    /// Returns pts/pts_count so callers can advance update state.
+    /// Returns `pts`/`pts_count` so callers can advance update state.
     ///
     /// # Errors
     ///
@@ -294,13 +303,11 @@ impl Client {
         let mut r = TLReader::new(&result);
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGES_AFFECTED_HISTORY => Ok(AffectedMessages {
+            // Both payloads are the same (pts, pts_count) pair.
+            MESSAGES_AFFECTED_HISTORY | MESSAGES_AFFECTED_MESSAGES => Ok(AffectedMessages {
                 pts: r.read_i32()?,
                 pts_count: r.read_i32()?,
             }),
-            MESSAGES_AFFECTED_MESSAGES => {
-                Ok(AffectedMessages { pts: r.read_i32()?, pts_count: r.read_i32()? })
-            }
             other => Err(Error::Protocol(format!(
                 "expected messages.affectedHistory, got {other:#x}"
             ))),
@@ -348,7 +355,12 @@ impl Client {
         data: &[u8],
     ) -> Result<BotCallbackAnswer> {
         let input_peer = self.resolve_peer(peer).await?;
-        let payload = rpc::build_get_bot_callback_answer(&input_peer, msg_id.0 as i32, data);
+        let payload = rpc::build_get_bot_callback_answer(
+            &input_peer,
+            // Telegram msg ids are 32-bit counters carried in i64
+            i32::try_from(msg_id.0).unwrap_or(i32::MAX),
+            data,
+        );
         let result = self.invoke_raw(payload).await?;
         BotCallbackAnswer::parse(&result)
     }
@@ -408,7 +420,8 @@ impl Client {
             let _ = Chat::read_from(&mut r)?;
         }
         let user_n = r.read_vector_header()?;
-        let mut users = Vec::with_capacity(user_n as usize);
+        let user_n = usize::try_from(user_n).unwrap_or(0);
+        let mut users = Vec::with_capacity(user_n);
         for _ in 0..user_n {
             users.push(User::read_from(&mut r)?);
         }
@@ -425,8 +438,8 @@ impl Client {
         let result = self.invoke_raw(payload).await?;
         // Vector<User>
         let mut r = TLReader::new(&result);
-        let n = r.read_vector_header()?;
-        let mut out = Vec::with_capacity(n as usize);
+        let n = usize::try_from(r.read_vector_header()?).unwrap_or(0);
+        let mut out = Vec::with_capacity(n);
         for _ in 0..n {
             out.push(User::read_from(&mut r)?);
         }
@@ -455,7 +468,12 @@ impl Client {
         // Persist the fresh channel's access hash: it is what later
         // `-100…` id resolution (resolve_peer) resolves against.
         for chat in &chats {
-            if let Chat::Channel { id: ChatId(cid), access_hash: Some(hash), .. } = chat {
+            if let Chat::Channel {
+                id: ChatId(cid),
+                access_hash: Some(hash),
+                ..
+            } = chat
+            {
                 self.persist_peer_hash(&InputPeer::Channel {
                     channel_id: ChannelId(*cid),
                     access_hash: *hash,
@@ -538,7 +556,8 @@ impl Client {
         let count = r.read_i32()?;
         // Copy the raw vector bytes (ctor..end) for later typed parsing.
         let start = r.position();
-        Ok((count, result[start..].to_vec()))
+        let tail = result.get(start..).unwrap_or_default();
+        Ok((count, tail.to_vec()))
     }
 
     /// Leave a channel/supergroup.
@@ -581,7 +600,7 @@ impl Client {
         path: impl Into<std::path::PathBuf>,
     ) -> Result<Vec<u8>> {
         let path = path.into();
-        let pool = self.pool().clone();
+        let pool = self.pool();
         let input_file = crate::file::upload_file(pool, &path, 4).await?;
 
         // photos.uploadProfilePhoto#388a3b5 flags:# fallback:flags.3?true
@@ -593,7 +612,6 @@ impl Client {
         input_file.write_to(&mut w);
         self.invoke_raw(w.into_bytes()).await
     }
-
     /// Delete profile photos by reference.
     ///
     /// Returns the deleted photo ids (`Vector<long>`).
@@ -605,8 +623,8 @@ impl Client {
         let payload = rpc::build_delete_photos(photos);
         let result = self.invoke_raw(payload).await?;
         let mut r = TLReader::new(&result);
-        let n = r.read_vector_header()?;
-        let mut out = Vec::with_capacity(n as usize);
+        let n = usize::try_from(r.read_vector_header()?).unwrap_or(0);
+        let mut out = Vec::with_capacity(n);
         for _ in 0..n {
             out.push(r.read_i64()?);
         }
@@ -642,26 +660,29 @@ impl Client {
     /// Channels/users need an access hash which a bare `Peer` does not
     /// carry, so only basic-group chats map cleanly; the rest fall back to
     /// the hash-less legacy forms the server accepts in some flows.
+    #[allow(clippy::missing_const_for_fn)] // match over &Peer with owned construction is not const-evaluable today
     pub(crate) fn peer_to_input_peer(peer: &Peer) -> Option<InputPeer> {
         match peer {
-            Peer::User { user_id } => Some(InputPeer::User { user_id: *user_id, access_hash: AccessHash(0) }),
+            Peer::User { user_id } => Some(InputPeer::User {
+                user_id: *user_id,
+                access_hash: AccessHash(0),
+            }),
             Peer::Chat { chat_id } => Some(InputPeer::Chat { chat_id: *chat_id }),
-            Peer::Channel { channel_id } => {
-                Some(InputPeer::Channel { channel_id: *channel_id, access_hash: AccessHash(0) })
-            }
+            Peer::Channel { channel_id } => Some(InputPeer::Channel {
+                channel_id: *channel_id,
+                access_hash: AccessHash(0),
+            }),
             Peer::None => None,
         }
     }
 
     /// Extract the `chats` vector from an `Updates*` response.
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from the spawned parser (spawn failure, parse panic
+    /// bridge, or the underlying serialization/protocol errors).
     pub(crate) fn chats_from_updates(data: &[u8], method_ctor: u32) -> Result<Vec<Chat>> {
-        if std::env::var("MTPRSTO_DEBUG").is_ok() {
-            println!(
-                "DEBUG chats_from_updates body ({}b): {:02x?}",
-                data.len(),
-                &data[..data.len().min(160)]
-            );
-        }
         // The generated TL parsers (e.g. `MessagesInvitedUsers` ->
         // `Updates` -> `Update` -> `Message` -> `MessageAction`) match
         // over hundreds of constructors; in debug builds every arm's
@@ -671,17 +692,30 @@ impl Client {
         // a dedicated thread with a generous stack — the same mitigation
         // recursive-descent parsers (incl. rustc) use. Release builds
         // collapse the frames, but the headroom is cheap either way.
+        //
+        // The debug hex-dump constants live below, hoisted for the
+        // items-after-statements lint.
+        const DEBUG_SHOW: usize = 160;
         const PARSE_STACK: usize = 64 * 1024 * 1024;
+        if std::env::var("MTPRSTO_DEBUG").is_ok() {
+            let end = data.len().min(DEBUG_SHOW);
+            let Some(head) = data.get(..end) else {
+                return Err(Error::Other("debug slice out of range".into()));
+            };
+            println!(
+                "DEBUG chats_from_updates body ({}b): {:02x?}",
+                data.len(),
+                head
+            );
+        }
         std::thread::scope(|scope| {
             let handle = std::thread::Builder::new()
                 .stack_size(PARSE_STACK)
                 .spawn_scoped(scope, move || Self::parse_chats_response(data, method_ctor))
-                .map_err(|e| {
-                    Error::Other(format!("failed to spawn parse thread: {e}"))
-                })?;
-            handle.join().map_err(|p| {
-                Error::Other(format!("response parse panicked: {p:?}"))
-            })?
+                .map_err(|e| Error::Other(format!("failed to spawn parse thread: {e}")))?;
+            handle
+                .join()
+                .map_err(|p| Error::Other(format!("response parse panicked: {p:?}")))?
         })
     }
 
@@ -691,35 +725,36 @@ impl Client {
     /// generator. Handles the three wire shapes chat-returning methods
     /// produce: `messages.chats`, `messages.invitedUsers` (chats nested
     /// in its Updates payload), and Updates containers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] for a foreign response
+    /// constructor and the underlying parse errors otherwise.
     pub(crate) fn parse_chats_response(data: &[u8], method_ctor: u32) -> Result<Vec<Chat>> {
+        // Updates ctor ids: production answers channels.inviteToChannel
+        // (declared messages.InvitedUsers) with a bare Updates# container
+        // for megagroups/bots. Updates ctors are therefore always
+        // acceptable; the map only adds method-specific expectations.
+        const UPDATES_ID: u32 = 0x74ae_4240;
+        const UPDATES_COMBINED_ID: u32 = 0x725b_04c3;
+        const UPDATE_SHORT_ID: u32 = 0x78d4_dec1;
+        const UPDATES_TOO_LONG_ID: u32 = 0xe317_af7e;
         let expected = crate::types::gen_fns::expected_response_ctors(method_ctor);
         let mut r = crate::serialize::TLReader::new(data);
         let ctor = r.read_u32()?;
-        // The schema understates reality for some methods: production
-        // answers channels.inviteToChannel (declared messages.InvitedUsers)
-        // with a bare Updates# container for megagroups/bots. Updates
-        // ctor ids are therefore always acceptable; the map only adds
-        // method-specific expectations.
-        const UPDATES_ID: u32 = 0x74ae4240;
-        const UPDATES_COMBINED_ID: u32 = 0x725b04c3;
-        const UPDATE_SHORT_ID: u32 = 0x78d4dec1;
-        const UPDATES_TOO_LONG_ID: u32 = 0xe317af7e;
         let is_updates_shape = matches!(
             ctor,
             UPDATES_ID | UPDATES_COMBINED_ID | UPDATE_SHORT_ID | UPDATES_TOO_LONG_ID
         );
-        if !expected.is_empty()
-            && !expected.contains(&ctor)
-            && !is_updates_shape
-        {
+        if !expected.is_empty() && !expected.contains(&ctor) && !is_updates_shape {
             return Err(crate::error::Error::Serialization(format!(
                 "unexpected response ctor {ctor:#x} for method {method_ctor:#x}"
             )));
         }
         match ctor {
             crate::types::MESSAGES_CHATS => {
-                let n = r.read_vector_header()?;
-                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                let n = usize::try_from(r.read_vector_header()?).unwrap_or(0);
+                let mut chats = Vec::with_capacity(n);
                 for _ in 0..n {
                     chats.push(Chat::read_from(&mut r)?);
                 }

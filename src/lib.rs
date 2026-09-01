@@ -1,8 +1,8 @@
-//! # mtprsto — Telegram MTProto 2.0 for Rust
+//! # mtprsto — Telegram `MTProto` 2.0 for Rust
 //!
-//! A high-performance MTProto 2.0 client library supporting both
-//! user and bot authorization. Designed as a successor to grammers
-//! with better DX, typed errors, and a builder API.
+//! A high-performance `MTProto` 2.0 client library supporting both
+//! user and bot authorization. Designed as a successor to `grammers`
+//! with better `DX`, typed errors, and a builder API.
 //!
 //! ## Quick start
 //!
@@ -29,30 +29,26 @@
 
 pub mod api;
 pub mod client;
+pub mod client_wrappers;
 pub mod crypto;
+pub mod ergonomics;
 pub mod error;
 pub mod file;
 pub mod mtproto;
 pub mod pool;
+pub mod resilience;
 pub mod rpc;
 pub mod serialize;
 pub mod session;
 pub mod transport;
 pub mod types;
 pub mod updates;
-pub mod ergonomics;
-pub mod resilience;
-pub mod client_wrappers;
 #[cfg(feature = "ws")]
 pub mod ws;
 
 // Re-exports for convenience
-pub use error::{Error, Result};
-pub use types::{
-    UserId, ChatId, ChannelId, AccessHash, MsgId,
-    InputPeer, InputUser, InputChannel,
-};
 pub use client::Client;
+pub use error::{Error, Result};
 pub use session::SessionStore;
-pub use updates::{UpdateDispatcher, DispatchMode};
-
+pub use types::{AccessHash, ChannelId, ChatId, InputChannel, InputPeer, InputUser, MsgId, UserId};
+pub use updates::{DispatchMode, UpdateDispatcher};

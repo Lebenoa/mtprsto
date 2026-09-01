@@ -1,6 +1,6 @@
-//! API reply types (SendMessageResult, SentCode, Authorization, ...).
+//! API reply types (`SendMessageResult`, `SentCode`, `Authorization`, ...).
 
-use super::*;
+use super::{MsgId, Updates, User};
 #[allow(unused_imports)]
 use std::fmt;
 
@@ -13,11 +13,7 @@ pub enum SendMessageResult {
     /// Updates containing the sent message.
     Updates(Box<Updates>),
     /// Short sent message response (newer layers).
-    ShortSentMessage {
-        id: MsgId,
-        pts: i32,
-        pts_count: i32,
-    },
+    ShortSentMessage { id: MsgId, pts: i32, pts_count: i32 },
 }
 
 /// Response to auth.sentCode.

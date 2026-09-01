@@ -7,11 +7,18 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
+use super::message_gen::MessageEntity;
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
-use super::message_gen::{MessageEntity};
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const INPUT_WEB_FILE_AUDIO_ALBUM_THUMB_LOCATION_ID: u32 = 0xf46fe924;
 pub const INPUT_WEB_FILE_GEO_POINT_LOCATION_ID: u32 = 0x9f2221c9;
@@ -72,11 +79,27 @@ pub const INPUT_PEER_EMPTY_ID: u32 = 0x7f3b18ea;
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputWebFileLocation {
     /// `inputWebFileAudioAlbumThumbLocation#f46fe924`
-    InputWebFileAudioAlbumThumbLocation { flags: i32, small: bool, document: Option<InputDocument>, title: Option<String>, performer: Option<String> },
+    InputWebFileAudioAlbumThumbLocation {
+        flags: i32,
+        small: bool,
+        document: Option<InputDocument>,
+        title: Option<String>,
+        performer: Option<String>,
+    },
     /// `inputWebFileGeoPointLocation#9f2221c9`
-    InputWebFileGeoPointLocation { geo_point: InputGeoPoint, access_hash: AccessHash, w: i32, h: i32, zoom: i32, scale: i32 },
+    InputWebFileGeoPointLocation {
+        geo_point: InputGeoPoint,
+        access_hash: AccessHash,
+        w: i32,
+        h: i32,
+        zoom: i32,
+        scale: i32,
+    },
     /// `inputWebFileLocation#c239d686`
-    InputWebFileLocation { url: String, access_hash: AccessHash },
+    InputWebFileLocation {
+        url: String,
+        access_hash: AccessHash,
+    },
 }
 
 impl InputWebFileLocation {
@@ -84,42 +107,55 @@ impl InputWebFileLocation {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_WEB_FILE_AUDIO_ALBUM_THUMB_LOCATION_ID => {
-    let flags = r.read_i32()?;
-    let small = flags & (1 << 2) != 0;
-    let document = if flags & (1 << 0) != 0 {
-        let document = InputDocument::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let title = if flags & (1 << 1) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let performer = if flags & (1 << 1) != 0 {
-        let performer = String::from_utf8(r.read_bytes()?)?;
-        Some(performer)
-    } else {
-        None
-    };
-                Ok(InputWebFileLocation::InputWebFileAudioAlbumThumbLocation { flags, small, document, title, performer })
+                let flags = r.read_i32()?;
+                let small = flags & (1 << 2) != 0;
+                let document = if flags & (1 << 0) != 0 {
+                    let document = InputDocument::read_from(r)?;
+                    Some(document)
+                } else {
+                    None
+                };
+                let title = if flags & (1 << 1) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let performer = if flags & (1 << 1) != 0 {
+                    let performer = String::from_utf8(r.read_bytes()?)?;
+                    Some(performer)
+                } else {
+                    None
+                };
+                Ok(InputWebFileLocation::InputWebFileAudioAlbumThumbLocation {
+                    flags,
+                    small,
+                    document,
+                    title,
+                    performer,
+                })
             }
             INPUT_WEB_FILE_GEO_POINT_LOCATION_ID => {
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let access_hash = r.read_i64()?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let zoom = r.read_i32()?;
-    let scale = r.read_i32()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputWebFileLocation::InputWebFileGeoPointLocation { geo_point, access_hash, w, h, zoom, scale })
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let access_hash = r.read_i64()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let zoom = r.read_i32()?;
+                let scale = r.read_i32()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputWebFileLocation::InputWebFileGeoPointLocation {
+                    geo_point,
+                    access_hash,
+                    w,
+                    h,
+                    zoom,
+                    scale,
+                })
             }
             INPUT_WEB_FILE_LOCATION_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputWebFileLocation::InputWebFileLocation { url, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -133,21 +169,81 @@ impl InputWebFileLocation {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputStorePaymentPurpose {
     /// `inputStorePaymentAuthCode#3fc18057`
-    InputStorePaymentAuthCode { flags: i32, restore: bool, phone_number: String, phone_code_hash: String, premium_days: i32, currency: String, amount: i64 },
+    InputStorePaymentAuthCode {
+        flags: i32,
+        restore: bool,
+        phone_number: String,
+        phone_code_hash: String,
+        premium_days: i32,
+        currency: String,
+        amount: i64,
+    },
     /// `inputStorePaymentStarsGiveaway#751f08fa`
-    InputStorePaymentStarsGiveaway { flags: i32, only_new_subscribers: bool, winners_are_visible: bool, stars: i64, boost_peer: InputPeer, additional_peers: Option<Vec<InputPeer>>, countries_iso2: Option<Vec<Vec<u8>>>, prize_description: Option<String>, random_id: i64, until_date: i32, currency: String, amount: i64, users: i32 },
+    InputStorePaymentStarsGiveaway {
+        flags: i32,
+        only_new_subscribers: bool,
+        winners_are_visible: bool,
+        stars: i64,
+        boost_peer: InputPeer,
+        additional_peers: Option<Vec<InputPeer>>,
+        countries_iso2: Option<Vec<Vec<u8>>>,
+        prize_description: Option<String>,
+        random_id: i64,
+        until_date: i32,
+        currency: String,
+        amount: i64,
+        users: i32,
+    },
     /// `inputStorePaymentStarsGift#1d741ef7`
-    InputStorePaymentStarsGift { user_id: InputUser, stars: i64, currency: String, amount: i64 },
+    InputStorePaymentStarsGift {
+        user_id: InputUser,
+        stars: i64,
+        currency: String,
+        amount: i64,
+    },
     /// `inputStorePaymentStarsTopup#f9a2a6cb`
-    InputStorePaymentStarsTopup { flags: i32, stars: i64, currency: String, amount: i64, spend_purpose_peer: Option<InputPeer> },
+    InputStorePaymentStarsTopup {
+        flags: i32,
+        stars: i64,
+        currency: String,
+        amount: i64,
+        spend_purpose_peer: Option<InputPeer>,
+    },
     /// `inputStorePaymentPremiumGiveaway#160544ca`
-    InputStorePaymentPremiumGiveaway { flags: i32, only_new_subscribers: bool, winners_are_visible: bool, boost_peer: InputPeer, additional_peers: Option<Vec<InputPeer>>, countries_iso2: Option<Vec<Vec<u8>>>, prize_description: Option<String>, random_id: i64, until_date: i32, currency: String, amount: i64 },
+    InputStorePaymentPremiumGiveaway {
+        flags: i32,
+        only_new_subscribers: bool,
+        winners_are_visible: bool,
+        boost_peer: InputPeer,
+        additional_peers: Option<Vec<InputPeer>>,
+        countries_iso2: Option<Vec<Vec<u8>>>,
+        prize_description: Option<String>,
+        random_id: i64,
+        until_date: i32,
+        currency: String,
+        amount: i64,
+    },
     /// `inputStorePaymentPremiumGiftCode#fb790393`
-    InputStorePaymentPremiumGiftCode { flags: i32, users: Vec<InputUser>, boost_peer: Option<InputPeer>, currency: String, amount: i64, message: Option<TextWithEntities> },
+    InputStorePaymentPremiumGiftCode {
+        flags: i32,
+        users: Vec<InputUser>,
+        boost_peer: Option<InputPeer>,
+        currency: String,
+        amount: i64,
+        message: Option<TextWithEntities>,
+    },
     /// `inputStorePaymentGiftPremium#616f7fe8`
-    InputStorePaymentGiftPremium { user_id: InputUser, currency: String, amount: i64 },
+    InputStorePaymentGiftPremium {
+        user_id: InputUser,
+        currency: String,
+        amount: i64,
+    },
     /// `inputStorePaymentPremiumSubscription#a6751e66`
-    InputStorePaymentPremiumSubscription { flags: i32, restore: bool, upgrade: bool },
+    InputStorePaymentPremiumSubscription {
+        flags: i32,
+        restore: bool,
+        upgrade: bool,
+    },
 }
 
 impl InputStorePaymentPurpose {
@@ -155,145 +251,207 @@ impl InputStorePaymentPurpose {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_STORE_PAYMENT_AUTH_CODE_ID => {
-    let flags = r.read_i32()?;
-    let restore = flags & (1 << 0) != 0;
-    let phone_number = String::from_utf8(r.read_bytes()?)?;
-    let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
-    let premium_days = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-                Ok(InputStorePaymentPurpose::InputStorePaymentAuthCode { flags, restore, phone_number, phone_code_hash, premium_days, currency, amount })
+                let flags = r.read_i32()?;
+                let restore = flags & (1 << 0) != 0;
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
+                let premium_days = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                Ok(InputStorePaymentPurpose::InputStorePaymentAuthCode {
+                    flags,
+                    restore,
+                    phone_number,
+                    phone_code_hash,
+                    premium_days,
+                    currency,
+                    amount,
+                })
             }
             INPUT_STORE_PAYMENT_STARS_GIVEAWAY_ID => {
-    let flags = r.read_i32()?;
-    let only_new_subscribers = flags & (1 << 0) != 0;
-    let winners_are_visible = flags & (1 << 3) != 0;
-    let stars = r.read_i64()?;
-    let boost_peer = InputPeer::read_from(r)?;
-    let additional_peers = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut additional_peers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            additional_peers.push(InputPeer::read_from(r)?);
-        }
-        Some(additional_peers)
-    } else {
-        None
-    };
-    let countries_iso2 = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            countries_iso2.push(r.read_bytes()?);
-        }
-        Some(countries_iso2)
-    } else {
-        None
-    };
-    let prize_description = if flags & (1 << 4) != 0 {
-        let prize_description = String::from_utf8(r.read_bytes()?)?;
-        Some(prize_description)
-    } else {
-        None
-    };
-    let random_id = r.read_i64()?;
-    let until_date = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let users = r.read_i32()?;
-                Ok(InputStorePaymentPurpose::InputStorePaymentStarsGiveaway { flags, only_new_subscribers, winners_are_visible, stars, boost_peer, additional_peers, countries_iso2, prize_description, random_id, until_date, currency, amount, users })
+                let flags = r.read_i32()?;
+                let only_new_subscribers = flags & (1 << 0) != 0;
+                let winners_are_visible = flags & (1 << 3) != 0;
+                let stars = r.read_i64()?;
+                let boost_peer = InputPeer::read_from(r)?;
+                let additional_peers = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut additional_peers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        additional_peers.push(InputPeer::read_from(r)?);
+                    }
+                    Some(additional_peers)
+                } else {
+                    None
+                };
+                let countries_iso2 = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        countries_iso2.push(r.read_bytes()?);
+                    }
+                    Some(countries_iso2)
+                } else {
+                    None
+                };
+                let prize_description = if flags & (1 << 4) != 0 {
+                    let prize_description = String::from_utf8(r.read_bytes()?)?;
+                    Some(prize_description)
+                } else {
+                    None
+                };
+                let random_id = r.read_i64()?;
+                let until_date = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let users = r.read_i32()?;
+                Ok(InputStorePaymentPurpose::InputStorePaymentStarsGiveaway {
+                    flags,
+                    only_new_subscribers,
+                    winners_are_visible,
+                    stars,
+                    boost_peer,
+                    additional_peers,
+                    countries_iso2,
+                    prize_description,
+                    random_id,
+                    until_date,
+                    currency,
+                    amount,
+                    users,
+                })
             }
             INPUT_STORE_PAYMENT_STARS_GIFT_ID => {
-    let user_id = InputUser::read_from(r)?;
-    let stars = r.read_i64()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-                Ok(InputStorePaymentPurpose::InputStorePaymentStarsGift { user_id, stars, currency, amount })
+                let user_id = InputUser::read_from(r)?;
+                let stars = r.read_i64()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                Ok(InputStorePaymentPurpose::InputStorePaymentStarsGift {
+                    user_id,
+                    stars,
+                    currency,
+                    amount,
+                })
             }
             INPUT_STORE_PAYMENT_STARS_TOPUP_ID => {
-    let flags = r.read_i32()?;
-    let stars = r.read_i64()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let spend_purpose_peer = if flags & (1 << 0) != 0 {
-        let spend_purpose_peer = InputPeer::read_from(r)?;
-        Some(spend_purpose_peer)
-    } else {
-        None
-    };
-                Ok(InputStorePaymentPurpose::InputStorePaymentStarsTopup { flags, stars, currency, amount, spend_purpose_peer })
+                let flags = r.read_i32()?;
+                let stars = r.read_i64()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let spend_purpose_peer = if flags & (1 << 0) != 0 {
+                    let spend_purpose_peer = InputPeer::read_from(r)?;
+                    Some(spend_purpose_peer)
+                } else {
+                    None
+                };
+                Ok(InputStorePaymentPurpose::InputStorePaymentStarsTopup {
+                    flags,
+                    stars,
+                    currency,
+                    amount,
+                    spend_purpose_peer,
+                })
             }
             INPUT_STORE_PAYMENT_PREMIUM_GIVEAWAY_ID => {
-    let flags = r.read_i32()?;
-    let only_new_subscribers = flags & (1 << 0) != 0;
-    let winners_are_visible = flags & (1 << 3) != 0;
-    let boost_peer = InputPeer::read_from(r)?;
-    let additional_peers = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut additional_peers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            additional_peers.push(InputPeer::read_from(r)?);
-        }
-        Some(additional_peers)
-    } else {
-        None
-    };
-    let countries_iso2 = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            countries_iso2.push(r.read_bytes()?);
-        }
-        Some(countries_iso2)
-    } else {
-        None
-    };
-    let prize_description = if flags & (1 << 4) != 0 {
-        let prize_description = String::from_utf8(r.read_bytes()?)?;
-        Some(prize_description)
-    } else {
-        None
-    };
-    let random_id = r.read_i64()?;
-    let until_date = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-                Ok(InputStorePaymentPurpose::InputStorePaymentPremiumGiveaway { flags, only_new_subscribers, winners_are_visible, boost_peer, additional_peers, countries_iso2, prize_description, random_id, until_date, currency, amount })
+                let flags = r.read_i32()?;
+                let only_new_subscribers = flags & (1 << 0) != 0;
+                let winners_are_visible = flags & (1 << 3) != 0;
+                let boost_peer = InputPeer::read_from(r)?;
+                let additional_peers = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut additional_peers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        additional_peers.push(InputPeer::read_from(r)?);
+                    }
+                    Some(additional_peers)
+                } else {
+                    None
+                };
+                let countries_iso2 = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        countries_iso2.push(r.read_bytes()?);
+                    }
+                    Some(countries_iso2)
+                } else {
+                    None
+                };
+                let prize_description = if flags & (1 << 4) != 0 {
+                    let prize_description = String::from_utf8(r.read_bytes()?)?;
+                    Some(prize_description)
+                } else {
+                    None
+                };
+                let random_id = r.read_i64()?;
+                let until_date = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                Ok(InputStorePaymentPurpose::InputStorePaymentPremiumGiveaway {
+                    flags,
+                    only_new_subscribers,
+                    winners_are_visible,
+                    boost_peer,
+                    additional_peers,
+                    countries_iso2,
+                    prize_description,
+                    random_id,
+                    until_date,
+                    currency,
+                    amount,
+                })
             }
             INPUT_STORE_PAYMENT_PREMIUM_GIFT_CODE_ID => {
-    let flags = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(InputUser::read_from(r)?);
-    }
-    let boost_peer = if flags & (1 << 0) != 0 {
-        let boost_peer = InputPeer::read_from(r)?;
-        Some(boost_peer)
-    } else {
-        None
-    };
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let message = if flags & (1 << 1) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-                Ok(InputStorePaymentPurpose::InputStorePaymentPremiumGiftCode { flags, users, boost_peer, currency, amount, message })
+                let flags = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(InputUser::read_from(r)?);
+                }
+                let boost_peer = if flags & (1 << 0) != 0 {
+                    let boost_peer = InputPeer::read_from(r)?;
+                    Some(boost_peer)
+                } else {
+                    None
+                };
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let message = if flags & (1 << 1) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                Ok(InputStorePaymentPurpose::InputStorePaymentPremiumGiftCode {
+                    flags,
+                    users,
+                    boost_peer,
+                    currency,
+                    amount,
+                    message,
+                })
             }
             INPUT_STORE_PAYMENT_GIFT_PREMIUM_ID => {
-    let user_id = InputUser::read_from(r)?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-                Ok(InputStorePaymentPurpose::InputStorePaymentGiftPremium { user_id, currency, amount })
+                let user_id = InputUser::read_from(r)?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                Ok(InputStorePaymentPurpose::InputStorePaymentGiftPremium {
+                    user_id,
+                    currency,
+                    amount,
+                })
             }
             INPUT_STORE_PAYMENT_PREMIUM_SUBSCRIPTION_ID => {
-    let flags = r.read_i32()?;
-    let restore = flags & (1 << 0) != 0;
-    let upgrade = flags & (1 << 1) != 0;
-                Ok(InputStorePaymentPurpose::InputStorePaymentPremiumSubscription { flags, restore, upgrade })
+                let flags = r.read_i32()?;
+                let restore = flags & (1 << 0) != 0;
+                let upgrade = flags & (1 << 1) != 0;
+                Ok(
+                    InputStorePaymentPurpose::InputStorePaymentPremiumSubscription {
+                        flags,
+                        restore,
+                        upgrade,
+                    },
+                )
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputStorePaymentPurpose constructor {other:#x}"
@@ -317,18 +475,14 @@ impl TextWithEntities {
                 "expected textWithEntities, got {ctor:#x}"
             )));
         }
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut entities = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        entities.push(MessageEntity::read_from(r)?);
+        let text = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut entities = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            entities.push(MessageEntity::read_from(r)?);
+        }
+        Ok(TextWithEntities { text, entities })
     }
-        Ok(TextWithEntities {
-            text,
-            entities,
-        })
-    }
-
 }
 
 /// Union `InputDialogPeer` (3 constructors).
@@ -347,15 +501,15 @@ impl InputDialogPeer {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_DIALOG_PEER_COMMUNITY_ID => {
-    let community = InputChannel::read_from(r)?;
+                let community = InputChannel::read_from(r)?;
                 Ok(InputDialogPeer::InputDialogPeerCommunity { community })
             }
             INPUT_DIALOG_PEER_FOLDER_ID => {
-    let folder_id = r.read_i32()?;
+                let folder_id = r.read_i32()?;
                 Ok(InputDialogPeer::InputDialogPeerFolder { folder_id })
             }
             INPUT_DIALOG_PEER_ID => {
-    let peer = InputPeer::read_from(r)?;
+                let peer = InputPeer::read_from(r)?;
                 Ok(InputDialogPeer::InputDialogPeer { peer })
             }
             other => Err(Error::Serialization(format!(
@@ -383,21 +537,21 @@ impl InputStickerSetItem {
                 "expected inputStickerSetItem, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let document = InputDocument::read_from(r)?;
-    let emoji = String::from_utf8(r.read_bytes()?)?;
-    let mask_coords = if flags & (1 << 0) != 0 {
-        let mask_coords = MaskCoords::read_from(r)?;
-        Some(mask_coords)
-    } else {
-        None
-    };
-    let keywords = if flags & (1 << 1) != 0 {
-        let keywords = String::from_utf8(r.read_bytes()?)?;
-        Some(keywords)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let document = InputDocument::read_from(r)?;
+        let emoji = String::from_utf8(r.read_bytes()?)?;
+        let mask_coords = if flags & (1 << 0) != 0 {
+            let mask_coords = MaskCoords::read_from(r)?;
+            Some(mask_coords)
+        } else {
+            None
+        };
+        let keywords = if flags & (1 << 1) != 0 {
+            let keywords = String::from_utf8(r.read_bytes()?)?;
+            Some(keywords)
+        } else {
+            None
+        };
         Ok(InputStickerSetItem {
             flags,
             document,
@@ -406,7 +560,6 @@ impl InputStickerSetItem {
             keywords,
         })
     }
-
 }
 
 /// `maskCoords#aed6dbb2 = MaskCoords`
@@ -426,25 +579,20 @@ impl MaskCoords {
                 "expected maskCoords, got {ctor:#x}"
             )));
         }
-    let n = r.read_i32()?;
-    let x = f64::from_bits(r.read_u64()?);
-    let y = f64::from_bits(r.read_u64()?);
-    let zoom = f64::from_bits(r.read_u64()?);
-        Ok(MaskCoords {
-            n,
-            x,
-            y,
-            zoom,
-        })
+        let n = r.read_i32()?;
+        let x = f64::from_bits(r.read_u64()?);
+        let y = f64::from_bits(r.read_u64()?);
+        let zoom = f64::from_bits(r.read_u64()?);
+        Ok(MaskCoords { n, x, y, zoom })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MASK_COORDS_ID);
-    w.write_i32(self.n);
-    w.write_double(self.x);
-    w.write_double(self.y);
-    w.write_double(self.zoom);
+        w.write_u32(MASK_COORDS_ID);
+        w.write_i32(self.n);
+        w.write_double(self.x);
+        w.write_double(self.y);
+        w.write_double(self.zoom);
     }
 }
 
@@ -481,47 +629,43 @@ impl InputStickerSet {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_STICKER_SET_TON_GIFTS_ID => {
-                Ok(InputStickerSet::InputStickerSetTonGifts {  })
-            }
+            INPUT_STICKER_SET_TON_GIFTS_ID => Ok(InputStickerSet::InputStickerSetTonGifts {}),
             INPUT_STICKER_SET_EMOJI_CHANNEL_DEFAULT_STATUSES_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiChannelDefaultStatuses {  })
+                Ok(InputStickerSet::InputStickerSetEmojiChannelDefaultStatuses {})
             }
             INPUT_STICKER_SET_EMOJI_DEFAULT_TOPIC_ICONS_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiDefaultTopicIcons {  })
+                Ok(InputStickerSet::InputStickerSetEmojiDefaultTopicIcons {})
             }
             INPUT_STICKER_SET_EMOJI_DEFAULT_STATUSES_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiDefaultStatuses {  })
+                Ok(InputStickerSet::InputStickerSetEmojiDefaultStatuses {})
             }
             INPUT_STICKER_SET_EMOJI_GENERIC_ANIMATIONS_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiGenericAnimations {  })
+                Ok(InputStickerSet::InputStickerSetEmojiGenericAnimations {})
             }
             INPUT_STICKER_SET_PREMIUM_GIFTS_ID => {
-                Ok(InputStickerSet::InputStickerSetPremiumGifts {  })
+                Ok(InputStickerSet::InputStickerSetPremiumGifts {})
             }
             INPUT_STICKER_SET_ANIMATED_EMOJI_ANIMATIONS_ID => {
-                Ok(InputStickerSet::InputStickerSetAnimatedEmojiAnimations {  })
+                Ok(InputStickerSet::InputStickerSetAnimatedEmojiAnimations {})
             }
             INPUT_STICKER_SET_DICE_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputStickerSet::InputStickerSetDice { emoticon })
             }
             INPUT_STICKER_SET_ANIMATED_EMOJI_ID => {
-                Ok(InputStickerSet::InputStickerSetAnimatedEmoji {  })
+                Ok(InputStickerSet::InputStickerSetAnimatedEmoji {})
             }
             INPUT_STICKER_SET_SHORT_NAME_ID => {
-    let short_name = String::from_utf8(r.read_bytes()?)?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputStickerSet::InputStickerSetShortName { short_name })
             }
             INPUT_STICKER_SET_ID_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputStickerSet::InputStickerSetID { id, access_hash })
             }
-            INPUT_STICKER_SET_EMPTY_ID => {
-                Ok(InputStickerSet::InputStickerSetEmpty {  })
-            }
+            INPUT_STICKER_SET_EMPTY_ID => Ok(InputStickerSet::InputStickerSetEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputStickerSet constructor {other:#x}"
             ))),
@@ -548,17 +692,17 @@ impl InputContact {
                 "expected inputPhoneContact, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let client_id = r.read_i64()?;
-    let phone = String::from_utf8(r.read_bytes()?)?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let note = if flags & (1 << 0) != 0 {
-        let note = TextWithEntities::read_from(r)?;
-        Some(note)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let client_id = r.read_i64()?;
+        let phone = String::from_utf8(r.read_bytes()?)?;
+        let first_name = String::from_utf8(r.read_bytes()?)?;
+        let last_name = String::from_utf8(r.read_bytes()?)?;
+        let note = if flags & (1 << 0) != 0 {
+            let note = TextWithEntities::read_from(r)?;
+            Some(note)
+        } else {
+            None
+        };
         Ok(InputContact {
             flags,
             client_id,
@@ -568,14 +712,18 @@ impl InputContact {
             note,
         })
     }
-
 }
 
 /// Union `InputGeoPoint` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputGeoPoint {
     /// `inputGeoPoint#48222faf`
-    InputGeoPoint { flags: i32, lat: f64, long: f64, accuracy_radius: Option<i32> },
+    InputGeoPoint {
+        flags: i32,
+        lat: f64,
+        long: f64,
+        accuracy_radius: Option<i32>,
+    },
     /// `inputGeoPointEmpty#e4c123d6`
     InputGeoPointEmpty,
 }
@@ -585,20 +733,23 @@ impl InputGeoPoint {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_GEO_POINT_ID => {
-    let flags = r.read_i32()?;
-    let lat = f64::from_bits(r.read_u64()?);
-    let long = f64::from_bits(r.read_u64()?);
-    let accuracy_radius = if flags & (1 << 0) != 0 {
-        let accuracy_radius = r.read_i32()?;
-        Some(accuracy_radius)
-    } else {
-        None
-    };
-                Ok(InputGeoPoint::InputGeoPoint { flags, lat, long, accuracy_radius })
+                let flags = r.read_i32()?;
+                let lat = f64::from_bits(r.read_u64()?);
+                let long = f64::from_bits(r.read_u64()?);
+                let accuracy_radius = if flags & (1 << 0) != 0 {
+                    let accuracy_radius = r.read_i32()?;
+                    Some(accuracy_radius)
+                } else {
+                    None
+                };
+                Ok(InputGeoPoint::InputGeoPoint {
+                    flags,
+                    lat,
+                    long,
+                    accuracy_radius,
+                })
             }
-            INPUT_GEO_POINT_EMPTY_ID => {
-                Ok(InputGeoPoint::InputGeoPointEmpty {  })
-            }
+            INPUT_GEO_POINT_EMPTY_ID => Ok(InputGeoPoint::InputGeoPointEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputGeoPoint constructor {other:#x}"
             ))),
@@ -610,7 +761,11 @@ impl InputGeoPoint {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPhoto {
     /// `inputPhoto#3bb3b94a`
-    InputPhoto { id: i64, access_hash: AccessHash, file_reference: Vec<u8> },
+    InputPhoto {
+        id: i64,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+    },
     /// `inputPhotoEmpty#1cd7bf0d`
     InputPhotoEmpty,
 }
@@ -620,15 +775,17 @@ impl InputPhoto {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PHOTO_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPhoto::InputPhoto { id, access_hash, file_reference })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPhoto::InputPhoto {
+                    id,
+                    access_hash,
+                    file_reference,
+                })
             }
-            INPUT_PHOTO_EMPTY_ID => {
-                Ok(InputPhoto::InputPhotoEmpty {  })
-            }
+            INPUT_PHOTO_EMPTY_ID => Ok(InputPhoto::InputPhotoEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputPhoto constructor {other:#x}"
             ))),
@@ -640,7 +797,11 @@ impl InputPhoto {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputDocument {
     /// `inputDocument#1abfb575`
-    Document { id: i64, access_hash: AccessHash, file_reference: Vec<u8> },
+    Document {
+        id: i64,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+    },
     /// `inputDocumentEmpty#72f0eaae`
     Empty,
 }
@@ -650,15 +811,17 @@ impl InputDocument {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_DOCUMENT_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputDocument::Document { id, access_hash, file_reference })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputDocument::Document {
+                    id,
+                    access_hash,
+                    file_reference,
+                })
             }
-            INPUT_DOCUMENT_EMPTY_ID => {
-                Ok(InputDocument::Empty {  })
-            }
+            INPUT_DOCUMENT_EMPTY_ID => Ok(InputDocument::Empty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputDocument constructor {other:#x}"
             ))),
@@ -674,7 +837,12 @@ pub enum InputFile {
     /// `inputFileBig#fa4f0bb5`
     Big { id: i64, parts: i32, name: String },
     /// `inputFile#f52ff27f`
-    Id { id: i64, parts: i32, name: String, md5_checksum: String },
+    Id {
+        id: i64,
+        parts: i32,
+        name: String,
+        md5_checksum: String,
+    },
 }
 
 impl InputFile {
@@ -682,21 +850,26 @@ impl InputFile {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_FILE_STORY_DOCUMENT_ID => {
-    let id = InputDocument::read_from(r)?;
+                let id = InputDocument::read_from(r)?;
                 Ok(InputFile::InputFileStoryDocument { id })
             }
             INPUT_FILE_BIG_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let name = String::from_utf8(r.read_bytes()?)?;
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputFile::Big { id, parts, name })
             }
             INPUT_FILE_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let name = String::from_utf8(r.read_bytes()?)?;
-    let md5_checksum = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputFile::Id { id, parts, name, md5_checksum })
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let name = String::from_utf8(r.read_bytes()?)?;
+                let md5_checksum = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputFile::Id {
+                    id,
+                    parts,
+                    name,
+                    md5_checksum,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputFile constructor {other:#x}"
@@ -709,9 +882,16 @@ impl InputFile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputChannel {
     /// `inputChannelFromMessage#5b934f9d`
-    InputChannelFromMessage { peer: InputPeer, msg_id: i32, channel_id: ChannelId },
+    InputChannelFromMessage {
+        peer: InputPeer,
+        msg_id: i32,
+        channel_id: ChannelId,
+    },
     /// `inputChannel#f35aec28`
-    Channel { channel_id: ChannelId, access_hash: AccessHash },
+    Channel {
+        channel_id: ChannelId,
+        access_hash: AccessHash,
+    },
     /// `inputChannelEmpty#ee8c1e86`
     InputChannelEmpty,
 }
@@ -721,22 +901,27 @@ impl InputChannel {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_CHANNEL_FROM_MESSAGE_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(InputChannel::InputChannelFromMessage { peer, msg_id, channel_id })
+                let peer = InputPeer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(InputChannel::InputChannelFromMessage {
+                    peer,
+                    msg_id,
+                    channel_id,
+                })
             }
             INPUT_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputChannel::Channel { channel_id, access_hash })
+                let channel_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputChannel::Channel {
+                    channel_id,
+                    access_hash,
+                })
             }
-            INPUT_CHANNEL_EMPTY_ID => {
-                Ok(InputChannel::InputChannelEmpty {  })
-            }
+            INPUT_CHANNEL_EMPTY_ID => Ok(InputChannel::InputChannelEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputChannel constructor {other:#x}"
             ))),
@@ -748,9 +933,16 @@ impl InputChannel {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputUser {
     /// `inputUserFromMessage#1da448e2`
-    InputUserFromMessage { peer: InputPeer, msg_id: i32, user_id: UserId },
+    InputUserFromMessage {
+        peer: InputPeer,
+        msg_id: i32,
+        user_id: UserId,
+    },
     /// `inputUser#f21158c6`
-    User { user_id: UserId, access_hash: AccessHash },
+    User {
+        user_id: UserId,
+        access_hash: AccessHash,
+    },
     /// `inputUserSelf#f7c1b13f`
     Self_,
     /// `inputUserEmpty#b98886cf`
@@ -762,25 +954,28 @@ impl InputUser {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_USER_FROM_MESSAGE_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(InputUser::InputUserFromMessage { peer, msg_id, user_id })
+                let peer = InputPeer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(InputUser::InputUserFromMessage {
+                    peer,
+                    msg_id,
+                    user_id,
+                })
             }
             INPUT_USER_ID => {
-    let user_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let user_id = UserId(user_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputUser::User { user_id, access_hash })
+                let user_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let user_id = UserId(user_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputUser::User {
+                    user_id,
+                    access_hash,
+                })
             }
-            INPUT_USER_SELF_ID => {
-                Ok(InputUser::Self_ {  })
-            }
-            INPUT_USER_EMPTY_ID => {
-                Ok(InputUser::InputUserEmpty {  })
-            }
+            INPUT_USER_SELF_ID => Ok(InputUser::Self_ {}),
+            INPUT_USER_EMPTY_ID => Ok(InputUser::InputUserEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputUser constructor {other:#x}"
             ))),
@@ -792,13 +987,27 @@ impl InputUser {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPeer {
     /// `inputPeerChannelFromMessage#bd2a0840`
-    ChannelFromMessage { peer: Box<InputPeer>, msg_id: i32, channel_id: ChannelId },
+    ChannelFromMessage {
+        peer: Box<InputPeer>,
+        msg_id: i32,
+        channel_id: ChannelId,
+    },
     /// `inputPeerUserFromMessage#a87b0a1c`
-    UserFromMessage { peer: Box<InputPeer>, msg_id: i32, user_id: UserId },
+    UserFromMessage {
+        peer: Box<InputPeer>,
+        msg_id: i32,
+        user_id: UserId,
+    },
     /// `inputPeerChannel#27bcbbfc`
-    Channel { channel_id: ChannelId, access_hash: AccessHash },
+    Channel {
+        channel_id: ChannelId,
+        access_hash: AccessHash,
+    },
     /// `inputPeerUser#dde8a54c`
-    User { user_id: UserId, access_hash: AccessHash },
+    User {
+        user_id: UserId,
+        access_hash: AccessHash,
+    },
     /// `inputPeerChat#35a95cb9`
     Chat { chat_id: ChatId },
     /// `inputPeerSelf#7da07ec9`
@@ -812,44 +1021,54 @@ impl InputPeer {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PEER_CHANNEL_FROM_MESSAGE_ID => {
-    let peer = Box::new(InputPeer::read_from(r)?);
-    let msg_id = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(InputPeer::ChannelFromMessage { peer, msg_id, channel_id })
+                let peer = Box::new(InputPeer::read_from(r)?);
+                let msg_id = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(InputPeer::ChannelFromMessage {
+                    peer,
+                    msg_id,
+                    channel_id,
+                })
             }
             INPUT_PEER_USER_FROM_MESSAGE_ID => {
-    let peer = Box::new(InputPeer::read_from(r)?);
-    let msg_id = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(InputPeer::UserFromMessage { peer, msg_id, user_id })
+                let peer = Box::new(InputPeer::read_from(r)?);
+                let msg_id = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(InputPeer::UserFromMessage {
+                    peer,
+                    msg_id,
+                    user_id,
+                })
             }
             INPUT_PEER_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPeer::Channel { channel_id, access_hash })
+                let channel_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPeer::Channel {
+                    channel_id,
+                    access_hash,
+                })
             }
             INPUT_PEER_USER_ID => {
-    let user_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let user_id = UserId(user_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPeer::User { user_id, access_hash })
+                let user_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let user_id = UserId(user_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPeer::User {
+                    user_id,
+                    access_hash,
+                })
             }
             INPUT_PEER_CHAT_ID => {
-    let chat_id = r.read_i64()?;
-    let chat_id = ChatId(chat_id);
+                let chat_id = r.read_i64()?;
+                let chat_id = ChatId(chat_id);
                 Ok(InputPeer::Chat { chat_id })
             }
-            INPUT_PEER_SELF_ID => {
-                Ok(InputPeer::Self_ {  })
-            }
-            INPUT_PEER_EMPTY_ID => {
-                Ok(InputPeer::InputPeerEmpty {  })
-            }
+            INPUT_PEER_SELF_ID => Ok(InputPeer::Self_ {}),
+            INPUT_PEER_EMPTY_ID => Ok(InputPeer::InputPeerEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputPeer constructor {other:#x}"
             ))),

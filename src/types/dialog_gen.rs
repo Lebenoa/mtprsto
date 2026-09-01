@@ -7,16 +7,39 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
-use super::chat_gen::{BaseTheme, Chat, ChatAdminRights, ChatBannedRights, ChatPhoto, DataJSON, DocumentAttribute, Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText, StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings, TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage, WebPageAttribute};
-use super::input_gen::{InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet, InputUser, MaskCoords, TextWithEntities};
-use super::message_gen::{DraftMessage, InputReplyTo, MessageEntity, MessageMedia, RichMessage, SuggestedPost};
-use super::peer_gen::{Peer};
+use super::chat_gen::{
+    BaseTheme, Chat, ChatAdminRights, ChatBannedRights, ChatPhoto, DataJSON, DocumentAttribute,
+    Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall,
+    InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice,
+    MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome,
+    NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem,
+    PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer,
+    PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText,
+    StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
+    StoryFwdHeader, StoryItem, StoryViews, ThemeSettings, TodoCompletion, TodoItem, TodoList,
+    VideoSize, WallPaper, WallPaperSettings, WebPage, WebPageAttribute,
+};
+use super::input_gen::{
+    InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet,
+    InputUser, MaskCoords, TextWithEntities,
+};
+use super::message_gen::{
+    DraftMessage, InputReplyTo, MessageEntity, MessageMedia, RichMessage, SuggestedPost,
+};
+use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
 use super::user_gen::{EmojiStatus, PeerColor, RecentStory, RestrictionReason, Username};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const TOP_PEER_CATEGORY_PEERS_ID: u32 = 0xfb834291;
 pub const TOP_PEER_CATEGORY_BOTS_GUEST_CHAT_ID: u32 = 0x6c24f3dd;
@@ -51,20 +74,19 @@ impl TopPeerCategoryPeers {
                 "expected topPeerCategoryPeers, got {ctor:#x}"
             )));
         }
-    let category = TopPeerCategory::read_from(r)?;
-    let count = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        peers.push(TopPeer::read_from(r)?);
-    }
+        let category = TopPeerCategory::read_from(r)?;
+        let count = r.read_i32()?;
+        let n = r.read_vector_header()?;
+        let mut peers = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            peers.push(TopPeer::read_from(r)?);
+        }
         Ok(TopPeerCategoryPeers {
             category,
             count,
             peers,
         })
     }
-
 }
 
 /// Union `TopPeerCategory` (10 constructors).
@@ -97,35 +119,23 @@ impl TopPeerCategory {
         let ctor = r.read_u32()?;
         match ctor {
             TOP_PEER_CATEGORY_BOTS_GUEST_CHAT_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryBotsGuestChat {  })
+                Ok(TopPeerCategory::TopPeerCategoryBotsGuestChat {})
             }
-            TOP_PEER_CATEGORY_BOTS_APP_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryBotsApp {  })
-            }
+            TOP_PEER_CATEGORY_BOTS_APP_ID => Ok(TopPeerCategory::TopPeerCategoryBotsApp {}),
             TOP_PEER_CATEGORY_FORWARD_CHATS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryForwardChats {  })
+                Ok(TopPeerCategory::TopPeerCategoryForwardChats {})
             }
             TOP_PEER_CATEGORY_FORWARD_USERS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryForwardUsers {  })
+                Ok(TopPeerCategory::TopPeerCategoryForwardUsers {})
             }
-            TOP_PEER_CATEGORY_PHONE_CALLS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryPhoneCalls {  })
-            }
-            TOP_PEER_CATEGORY_CHANNELS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryChannels {  })
-            }
-            TOP_PEER_CATEGORY_GROUPS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryGroups {  })
-            }
+            TOP_PEER_CATEGORY_PHONE_CALLS_ID => Ok(TopPeerCategory::TopPeerCategoryPhoneCalls {}),
+            TOP_PEER_CATEGORY_CHANNELS_ID => Ok(TopPeerCategory::TopPeerCategoryChannels {}),
+            TOP_PEER_CATEGORY_GROUPS_ID => Ok(TopPeerCategory::TopPeerCategoryGroups {}),
             TOP_PEER_CATEGORY_CORRESPONDENTS_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryCorrespondents {  })
+                Ok(TopPeerCategory::TopPeerCategoryCorrespondents {})
             }
-            TOP_PEER_CATEGORY_BOTS_INLINE_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryBotsInline {  })
-            }
-            TOP_PEER_CATEGORY_BOTS_PM_ID => {
-                Ok(TopPeerCategory::TopPeerCategoryBotsPM {  })
-            }
+            TOP_PEER_CATEGORY_BOTS_INLINE_ID => Ok(TopPeerCategory::TopPeerCategoryBotsInline {}),
+            TOP_PEER_CATEGORY_BOTS_PM_ID => Ok(TopPeerCategory::TopPeerCategoryBotsPM {}),
             other => Err(Error::Serialization(format!(
                 "unknown TopPeerCategory constructor {other:#x}"
             ))),
@@ -148,25 +158,54 @@ impl TopPeer {
                 "expected topPeer, got {ctor:#x}"
             )));
         }
-    let peer = Peer::read_from(r)?;
-    let rating = f64::from_bits(r.read_u64()?);
-        Ok(TopPeer {
-            peer,
-            rating,
-        })
+        let peer = Peer::read_from(r)?;
+        let rating = f64::from_bits(r.read_u64()?);
+        Ok(TopPeer { peer, rating })
     }
-
 }
 
 /// Union `Dialog` (3 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
     /// `dialogCommunity#f78a0973`
-    DialogCommunity { flags: i32, pinned: bool, community_id: i64, notify_settings: PeerNotifySettings },
+    DialogCommunity {
+        flags: i32,
+        pinned: bool,
+        community_id: i64,
+        notify_settings: PeerNotifySettings,
+    },
     /// `dialogFolder#71bd134c`
-    DialogFolder { flags: i32, pinned: bool, folder: Folder, peer: Peer, top_message: i32, unread_muted_peers_count: i32, unread_unmuted_peers_count: i32, unread_muted_messages_count: i32, unread_unmuted_messages_count: i32 },
+    DialogFolder {
+        flags: i32,
+        pinned: bool,
+        folder: Folder,
+        peer: Peer,
+        top_message: i32,
+        unread_muted_peers_count: i32,
+        unread_unmuted_peers_count: i32,
+        unread_muted_messages_count: i32,
+        unread_unmuted_messages_count: i32,
+    },
     /// `dialog#fc89f7f3`
-    Dialog { flags: i32, pinned: bool, unread_mark: bool, view_forum_as_messages: bool, peer: Peer, top_message: i32, read_inbox_max_id: i32, read_outbox_max_id: i32, unread_count: i32, unread_mentions_count: i32, unread_reactions_count: i32, unread_poll_votes_count: i32, notify_settings: PeerNotifySettings, pts: Option<i32>, draft: Option<DraftMessage>, folder_id: Option<i32>, ttl_period: Option<i32> },
+    Dialog {
+        flags: i32,
+        pinned: bool,
+        unread_mark: bool,
+        view_forum_as_messages: bool,
+        peer: Peer,
+        top_message: i32,
+        read_inbox_max_id: i32,
+        read_outbox_max_id: i32,
+        unread_count: i32,
+        unread_mentions_count: i32,
+        unread_reactions_count: i32,
+        unread_poll_votes_count: i32,
+        notify_settings: PeerNotifySettings,
+        pts: Option<i32>,
+        draft: Option<DraftMessage>,
+        folder_id: Option<i32>,
+        ttl_period: Option<i32>,
+    },
 }
 
 impl Dialog {
@@ -174,63 +213,96 @@ impl Dialog {
         let ctor = r.read_u32()?;
         match ctor {
             DIALOG_COMMUNITY_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 2) != 0;
-    let community_id = r.read_i64()?;
-    let notify_settings = PeerNotifySettings::read_from(r)?;
-                Ok(Dialog::DialogCommunity { flags, pinned, community_id, notify_settings })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 2) != 0;
+                let community_id = r.read_i64()?;
+                let notify_settings = PeerNotifySettings::read_from(r)?;
+                Ok(Dialog::DialogCommunity {
+                    flags,
+                    pinned,
+                    community_id,
+                    notify_settings,
+                })
             }
             DIALOG_FOLDER_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 2) != 0;
-    let folder = Folder::read_from(r)?;
-    let peer = Peer::read_from(r)?;
-    let top_message = r.read_i32()?;
-    let unread_muted_peers_count = r.read_i32()?;
-    let unread_unmuted_peers_count = r.read_i32()?;
-    let unread_muted_messages_count = r.read_i32()?;
-    let unread_unmuted_messages_count = r.read_i32()?;
-                Ok(Dialog::DialogFolder { flags, pinned, folder, peer, top_message, unread_muted_peers_count, unread_unmuted_peers_count, unread_muted_messages_count, unread_unmuted_messages_count })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 2) != 0;
+                let folder = Folder::read_from(r)?;
+                let peer = Peer::read_from(r)?;
+                let top_message = r.read_i32()?;
+                let unread_muted_peers_count = r.read_i32()?;
+                let unread_unmuted_peers_count = r.read_i32()?;
+                let unread_muted_messages_count = r.read_i32()?;
+                let unread_unmuted_messages_count = r.read_i32()?;
+                Ok(Dialog::DialogFolder {
+                    flags,
+                    pinned,
+                    folder,
+                    peer,
+                    top_message,
+                    unread_muted_peers_count,
+                    unread_unmuted_peers_count,
+                    unread_muted_messages_count,
+                    unread_unmuted_messages_count,
+                })
             }
             0xd58a08c6 | DIALOG_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 2) != 0;
-    let unread_mark = flags & (1 << 3) != 0;
-    let view_forum_as_messages = flags & (1 << 6) != 0;
-    let peer = Peer::read_from(r)?;
-    let top_message = r.read_i32()?;
-    let read_inbox_max_id = r.read_i32()?;
-    let read_outbox_max_id = r.read_i32()?;
-    let unread_count = r.read_i32()?;
-    let unread_mentions_count = r.read_i32()?;
-    let unread_reactions_count = r.read_i32()?;
-    let unread_poll_votes_count = r.read_i32()?;
-    let notify_settings = PeerNotifySettings::read_from(r)?;
-    let pts = if flags & (1 << 0) != 0 {
-        let pts = r.read_i32()?;
-        Some(pts)
-    } else {
-        None
-    };
-    let draft = if flags & (1 << 1) != 0 {
-        let draft = DraftMessage::read_from(r)?;
-        Some(draft)
-    } else {
-        None
-    };
-    let folder_id = if flags & (1 << 4) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 5) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-                Ok(Dialog::Dialog { flags, pinned, unread_mark, view_forum_as_messages, peer, top_message, read_inbox_max_id, read_outbox_max_id, unread_count, unread_mentions_count, unread_reactions_count, unread_poll_votes_count, notify_settings, pts, draft, folder_id, ttl_period })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 2) != 0;
+                let unread_mark = flags & (1 << 3) != 0;
+                let view_forum_as_messages = flags & (1 << 6) != 0;
+                let peer = Peer::read_from(r)?;
+                let top_message = r.read_i32()?;
+                let read_inbox_max_id = r.read_i32()?;
+                let read_outbox_max_id = r.read_i32()?;
+                let unread_count = r.read_i32()?;
+                let unread_mentions_count = r.read_i32()?;
+                let unread_reactions_count = r.read_i32()?;
+                let unread_poll_votes_count = r.read_i32()?;
+                let notify_settings = PeerNotifySettings::read_from(r)?;
+                let pts = if flags & (1 << 0) != 0 {
+                    let pts = r.read_i32()?;
+                    Some(pts)
+                } else {
+                    None
+                };
+                let draft = if flags & (1 << 1) != 0 {
+                    let draft = DraftMessage::read_from(r)?;
+                    Some(draft)
+                } else {
+                    None
+                };
+                let folder_id = if flags & (1 << 4) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 5) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                Ok(Dialog::Dialog {
+                    flags,
+                    pinned,
+                    unread_mark,
+                    view_forum_as_messages,
+                    peer,
+                    top_message,
+                    read_inbox_max_id,
+                    read_outbox_max_id,
+                    unread_count,
+                    unread_mentions_count,
+                    unread_reactions_count,
+                    unread_poll_votes_count,
+                    notify_settings,
+                    pts,
+                    draft,
+                    folder_id,
+                    ttl_period,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown Dialog constructor {other:#x}"
@@ -259,18 +331,18 @@ impl Folder {
                 "expected folder, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let autofill_new_broadcasts = flags & (1 << 0) != 0;
-    let autofill_public_groups = flags & (1 << 1) != 0;
-    let autofill_new_correspondents = flags & (1 << 2) != 0;
-    let id = r.read_i32()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let photo = if flags & (1 << 3) != 0 {
-        let photo = ChatPhoto::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let autofill_new_broadcasts = flags & (1 << 0) != 0;
+        let autofill_public_groups = flags & (1 << 1) != 0;
+        let autofill_new_correspondents = flags & (1 << 2) != 0;
+        let id = r.read_i32()?;
+        let title = String::from_utf8(r.read_bytes()?)?;
+        let photo = if flags & (1 << 3) != 0 {
+            let photo = ChatPhoto::read_from(r)?;
+            Some(photo)
+        } else {
+            None
+        };
         Ok(Folder {
             flags,
             autofill_new_broadcasts,
@@ -281,5 +353,4 @@ impl Folder {
             photo,
         })
     }
-
 }

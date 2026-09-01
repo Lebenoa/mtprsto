@@ -16,7 +16,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("connecting to DC 2 with full Obfuscated2 + DH handshake...");
     let client = Client::builder()
         .session(&session)
-        .pool_config(PoolConfig { min_connections: 1, ..PoolConfig::default() })
+        .pool_config(PoolConfig {
+            min_connections: 1,
+            ..PoolConfig::default()
+        })
         .build()?;
     client.connect().await?;
     println!("OK: connect() — auth key created, pool open");
@@ -28,7 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     w.write_u32(0x1fb33026); // help.getNearestDc
     match client.invoke_raw(w.into_bytes()).await {
         Ok(result) => {
-            println!("OK: send_rpc returned {} bytes: {:02x?}", result.len(), &result[..result.len().min(24)]);
+            println!(
+                "OK: send_rpc returned {} bytes: {:02x?}",
+                result.len(),
+                &result[..result.len().min(24)]
+            );
         }
         Err(e) => {
             // An RPC_ERROR (e.g. FLOOD_WAIT or AUTH_KEY_UNREGISTERED) is

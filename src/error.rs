@@ -1,19 +1,18 @@
-//! Typed errors for the MTProto library.
+//! Typed errors for the `MTProto` library.
 //!
 //! Every error variant corresponds to a specific failure mode in the
-//! Telegram MTProto stack. The `Display` implementation follows
+//! Telegram `MTProto` stack. The `Display` implementation follows
 //! `{kind}: {detail} [dc=N key=0x{short}]` so logs are searchable.
 //!
-//! `is_transient()` returns `true` for errors that a retry loop can
-//! safely swallow and back off from.
-
+//! [`Error::is_transient`] returns `true` for errors that a retry loop
+//! can safely swallow and back off from.
 use std::fmt;
 use std::time::Instant;
 
-/// Result type alias for the MTProto library.
+/// Result type alias for the `MTProto` library.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Errors that can occur in the MTProto library.
+/// Errors that can occur in the `MTProto` library.
 #[derive(Debug)]
 pub enum Error {
     // --- Transport layer ---
@@ -24,10 +23,7 @@ pub enum Error {
     Migration { dc_id: i32 },
 
     /// Flood wait: the server is rate-limiting this method on this DC.
-    FloodWait {
-        seconds: i32,
-        retry_after: Instant,
-    },
+    FloodWait { seconds: i32, retry_after: Instant },
 
     // --- Auth ---
     /// The auth key is not yet created.
@@ -74,12 +70,12 @@ pub enum Error {
     /// Transport layer error (connection, framing).
     Transport(String),
 
-    /// MTProto protocol error (bad msg_key, nonce mismatch, etc.).
+    /// `MTProto` protocol error (bad `msg_key`, nonce mismatch, etc.).
     Protocol(String),
 
     /// The server rejected a message with `bad_msg_notification`. `code`
-    /// is Telegram's bad_msg_code (16 msg_id too low, 17 too high, 18
-    /// bad msg_key, 20 salt invalidated, 32-48 sequence issues, 64
+    /// is Telegram's bad-msg code (16 `msg_id` too low, 17 too high, 18
+    /// bad `msg_key`, 20 salt invalidated, 32-48 sequence issues, 64
     /// invalid container, 65 not authorised, 96 flood/ban).
     BadMessage { code: i32, description: String },
 
@@ -105,66 +101,71 @@ impl Error {
     ///
     /// Covers: `FloodWait`, `Network`, `FileReferenceExpired`,
     /// `AuthKeyUnregistered`, and some `Rpc` codes.
-    pub fn is_transient(&self) -> bool {
+    #[must_use]
+    pub const fn is_transient(&self) -> bool {
         match self {
-            Error::Network(_) => true,
-            Error::FloodWait { .. } => true,
-            Error::FileReferenceExpired { .. } => true,
-            Error::AuthKeyUnregistered { .. } => true,
-            Error::Rpc { error_code, .. } => {
+            Self::Network(_)
+            | Self::FloodWait { .. }
+            | Self::FileReferenceExpired { .. }
+            | Self::AuthKeyUnregistered { .. }
+            | Self::RpcDropped { .. }
+            | Self::Transport(_) => true,
+            Self::Rpc { error_code, .. } => {
                 // Transient RPC codes: 420 (FLOOD), 500-599 (server errors),
                 // 401 (unauthorized — key may be expired)
                 matches!(error_code, 401 | 420 | 500..=599)
             }
-            Error::RpcDropped { .. } => true,
-            Error::Transport(_) => true,
             _ => false,
         }
     }
 
     /// Returns `true` if this error represents an auth failure that
     /// requires re-authentication (not just a retry).
-    pub fn is_auth_error(&self) -> bool {
+    #[must_use]
+    pub const fn is_auth_error(&self) -> bool {
         matches!(
             self,
-            Error::AuthKeyInvalid { .. }
-                | Error::AuthKeyUnregistered { .. }
-                | Error::InvalidPassword { .. }
-                | Error::SignUpRequired
+            Self::AuthKeyInvalid { .. }
+                | Self::AuthKeyUnregistered { .. }
+                | Self::InvalidPassword { .. }
+                | Self::SignUpRequired
         )
     }
 
     /// True when an RPC failure means the session's auth key is dead
     /// (stale/partial login, revoked or expired session, deactivated
     /// account): the only way forward is a fresh sign-in. Also scans
-    /// the [`Display`](fmt::Display) text, because auth markers can
+    /// the [`fmt::Display`](fmt::Display) text, because auth markers can
     /// surface through layers that no longer carry the typed variants
     /// (connection setup, wrapped messages).
     ///
     /// Unlike [`Error::is_auth_error`], this does NOT cover interactive
     /// login failures (`InvalidPassword`, `SignUpRequired`) — those are
     /// part of signing in, not a dead session.
+    #[must_use]
     pub fn is_session_dead(&self) -> bool {
         matches!(
             self,
-            Error::AuthKeyInvalid { .. } | Error::AuthKeyUnregistered { .. }
+            Self::AuthKeyInvalid { .. } | Self::AuthKeyUnregistered { .. }
         ) || is_auth_error_message(&self.to_string())
     }
 
     /// True when the error is a file-reference failure that a refetch
     /// of the owning message fixes (`FILE_REFERENCE_EXPIRED` /
     /// `FILE_REFERENCE_INVALID`, typed or string-carried).
+    #[must_use]
     pub fn is_file_reference(&self) -> bool {
-        matches!(self, Error::FileReferenceExpired { .. })
+        matches!(self, Self::FileReferenceExpired { .. })
             || is_file_reference_message(&self.to_string())
     }
 
     /// Returns the DC ID associated with the error, if any.
-    pub fn dc_id(&self) -> Option<i32> {
+    #[must_use]
+    pub const fn dc_id(&self) -> Option<i32> {
         match self {
-            Error::Migration { dc_id } => Some(*dc_id),
-            Error::AuthKeyInvalid { dc_id, .. } => Some(*dc_id),
-            Error::AuthKeyUnregistered { dc_id, .. } => Some(*dc_id),
+            Self::Migration { dc_id }
+            | Self::AuthKeyInvalid { dc_id, .. }
+            | Self::AuthKeyUnregistered { dc_id, .. } => Some(*dc_id),
             _ => None,
         }
     }
@@ -173,41 +174,41 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Network(e) => write!(f, "Network: {e}"),
-            Error::Migration { dc_id } => write!(f, "Migration: move to DC {dc_id}"),
-            Error::FloodWait { seconds, .. } => write!(f, "FloodWait: wait {seconds}s"),
-            Error::NoAuthKey => write!(f, "NoAuthKey: no authorization key available"),
-            Error::AuthKeyInvalid { dc_id, key_short } => {
+            Self::Network(e) => write!(f, "Network: {e}"),
+            Self::Migration { dc_id } => write!(f, "Migration: move to DC {dc_id}"),
+            Self::FloodWait { seconds, .. } => write!(f, "FloodWait: wait {seconds}s"),
+            Self::NoAuthKey => write!(f, "NoAuthKey: no authorization key available"),
+            Self::AuthKeyInvalid { dc_id, key_short } => {
                 write!(f, "AuthKeyInvalid [dc={dc_id} key=0x{key_short}]")
             }
-            Error::AuthKeyUnregistered { dc_id, key_short } => {
+            Self::AuthKeyUnregistered { dc_id, key_short } => {
                 write!(f, "AuthKeyUnregistered [dc={dc_id} key=0x{key_short}]")
             }
-            Error::Rpc {
+            Self::Rpc {
                 error_code,
                 error_message,
             } => write!(f, "Rpc: {error_message} [code={error_code}]"),
-            Error::InvalidCode { detail } => write!(f, "InvalidCode: {detail}"),
-            Error::InvalidPassword { detail } => write!(f, "InvalidPassword: {detail}"),
-            Error::SignUpRequired => write!(f, "SignUpRequired: new account"),
-            Error::CodeResent { .. } => {
+            Self::InvalidCode { detail } => write!(f, "InvalidCode: {detail}"),
+            Self::InvalidPassword { detail } => write!(f, "InvalidPassword: {detail}"),
+            Self::SignUpRequired => write!(f, "SignUpRequired: new account"),
+            Self::CodeResent { .. } => {
                 write!(f, "CodeResent: a new verification code was sent")
             }
-            Error::FileReferenceExpired { detail } => {
+            Self::FileReferenceExpired { detail } => {
                 write!(f, "FileReferenceExpired: {detail}")
             }
-            Error::Crypto(msg) => write!(f, "Crypto: {msg}"),
-            Error::Serialization(msg) => write!(f, "Serialization: {msg}"),
-            Error::Transport(msg) => write!(f, "Transport: {msg}"),
-            Error::Protocol(msg) => write!(f, "Protocol: {msg}"),
-            Error::BadMessage { code, description } => {
+            Self::Crypto(msg) => write!(f, "Crypto: {msg}"),
+            Self::Serialization(msg) => write!(f, "Serialization: {msg}"),
+            Self::Transport(msg) => write!(f, "Transport: {msg}"),
+            Self::Protocol(msg) => write!(f, "Protocol: {msg}"),
+            Self::BadMessage { code, description } => {
                 write!(f, "BadMessage: {description} [code={code}]")
             }
-            Error::RpcDropped { detail } => write!(f, "RpcDropped: {detail}"),
-            Error::DhVerification(msg) => write!(f, "DhVerification: {msg}"),
-            Error::UnexpectedResponse(msg) => write!(f, "UnexpectedResponse: {msg}"),
-            Error::PaddingError(msg) => write!(f, "PaddingError: {msg}"),
-            Error::Other(msg) => write!(f, "Other: {msg}"),
+            Self::RpcDropped { detail } => write!(f, "RpcDropped: {detail}"),
+            Self::DhVerification(msg) => write!(f, "DhVerification: {msg}"),
+            Self::UnexpectedResponse(msg) => write!(f, "UnexpectedResponse: {msg}"),
+            Self::PaddingError(msg) => write!(f, "PaddingError: {msg}"),
+            Self::Other(msg) => write!(f, "Other: {msg}"),
         }
     }
 }
@@ -215,7 +216,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Network(e) => Some(e),
+            Self::Network(e) => Some(e),
             _ => None,
         }
     }
@@ -223,57 +224,71 @@ impl std::error::Error for Error {
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Error::Network(e)
+        Self::Network(e)
     }
 }
 
 impl From<std::string::FromUtf8Error> for Error {
     fn from(e: std::string::FromUtf8Error) -> Self {
-        Error::Serialization(e.to_string())
+        Self::Serialization(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
-        Error::Serialization(format!("JSON: {e}"))
+        Self::Serialization(format!("JSON: {e}"))
     }
 }
 
 impl From<base64::DecodeSliceError> for Error {
     fn from(e: base64::DecodeSliceError) -> Self {
-        Error::Serialization(format!("base64: {e}"))
+        Self::Serialization(format!("base64: {e}"))
     }
 }
 
 /// Classify an RPC error into a typed `Error` from its code and message.
 ///
 /// The raw TL parsing lives in `mtproto::parse_rpc_error`; this performs
-/// the message-based classification (FloodWait, Migration, auth errors…).
+/// the message-based classification (`FloodWait`, `Migration`, auth errors…).
+#[must_use]
 pub fn classify_rpc_error(error_code: i32, error_message: &str) -> Error {
     // Classify known error messages
     if let Some(secs_str) = error_message.strip_prefix("FLOOD_WAIT_")
-        && let Ok(secs) = secs_str.parse::<i32>()
+        && let Ok(secs) = secs_str.parse::<u32>()
     {
+        let secs = i64::from(secs);
+        let delay = u64::try_from(secs).unwrap_or(u64::MAX);
+        let now = Instant::now();
         return Error::FloodWait {
-            seconds: secs,
-            retry_after: Instant::now() + std::time::Duration::from_secs(secs as u64),
+            seconds: i32::try_from(secs).unwrap_or(i32::MAX),
+            // `Instant` overflow is unreachable for realistic flood waits
+            retry_after: now
+                .checked_add(std::time::Duration::from_secs(delay))
+                .unwrap_or(now),
         };
     }
 
     if error_message.contains("PHONE_CODE_INVALID") || error_message.contains("PHONE_CODE_EMPTY") {
-        return Error::InvalidCode { detail: error_message.to_string() };
+        return Error::InvalidCode {
+            detail: error_message.to_string(),
+        };
     }
 
     if error_message.contains("PASSWORD_HASH_INVALID") {
-        return Error::InvalidPassword { detail: error_message.to_string() };
+        return Error::InvalidPassword {
+            detail: error_message.to_string(),
+        };
     }
 
     if error_message.contains("SIGN_UP_REQUIRED") || error_message.contains("first unoccupied") {
         return Error::SignUpRequired;
     }
 
-    if error_message.contains("FILE_REFERENCE_EXPIRED") || error_message.contains("FILE_REFERENCE") {
-        return Error::FileReferenceExpired { detail: error_message.to_string() };
+    if error_message.contains("FILE_REFERENCE_EXPIRED") || error_message.contains("FILE_REFERENCE")
+    {
+        return Error::FileReferenceExpired {
+            detail: error_message.to_string(),
+        };
     }
 
     if error_message.contains("AUTH_KEY_UNREGISTERED") {
@@ -315,16 +330,17 @@ const AUTH_ERROR_MARKERS: [&str; 5] = [
 ];
 
 /// File-reference error markers that a refetch of the owning message fixes.
-const FILE_REFERENCE_MARKERS: [&str; 2] =
-    ["FILE_REFERENCE_EXPIRED", "FILE_REFERENCE_INVALID"];
+const FILE_REFERENCE_MARKERS: [&str; 2] = ["FILE_REFERENCE_EXPIRED", "FILE_REFERENCE_INVALID"];
 
 /// String-level twin of [`Error::is_session_dead`] for errors that
 /// already left the typed world (plain text from wrapped layers).
+#[must_use]
 pub fn is_auth_error_message(msg: &str) -> bool {
     AUTH_ERROR_MARKERS.iter().any(|m| msg.contains(m))
 }
 
 /// String check for file-reference errors surfaced as plain messages.
+#[must_use]
 pub fn is_file_reference_message(msg: &str) -> bool {
     FILE_REFERENCE_MARKERS.iter().any(|m| msg.contains(m))
 }
@@ -389,7 +405,10 @@ mod tests {
 
     #[test]
     fn test_auth_key_invalid_is_auth_error() {
-        let err = Error::AuthKeyInvalid { dc_id: 2, key_short: "abcd".into() };
+        let err = Error::AuthKeyInvalid {
+            dc_id: 2,
+            key_short: "abcd".into(),
+        };
         assert!(err.is_auth_error());
         assert!(!err.is_transient());
     }
@@ -408,9 +427,19 @@ mod tests {
     #[test]
     fn test_is_session_dead() {
         // typed variants
-        assert!(Error::AuthKeyInvalid { dc_id: 1, key_short: "ab".into() }.is_session_dead());
         assert!(
-            Error::AuthKeyUnregistered { dc_id: 1, key_short: "ab".into() }.is_session_dead()
+            Error::AuthKeyInvalid {
+                dc_id: 1,
+                key_short: "ab".into()
+            }
+            .is_session_dead()
+        );
+        assert!(
+            Error::AuthKeyUnregistered {
+                dc_id: 1,
+                key_short: "ab".into()
+            }
+            .is_session_dead()
         );
         // string-carried markers on an untyped RPC error
         let err = Error::Rpc {
@@ -439,7 +468,9 @@ mod tests {
 
     #[test]
     fn test_marker_free_functions() {
-        assert!(is_auth_error_message("wrapped: AUTH_KEY_UNREGISTERED at dc2"));
+        assert!(is_auth_error_message(
+            "wrapped: AUTH_KEY_UNREGISTERED at dc2"
+        ));
         assert!(is_auth_error_message("USER_DEACTIVATED"));
         assert!(!is_auth_error_message("FLOOD_WAIT_30"));
         assert!(is_file_reference_message("FILE_REFERENCE_INVALID"));

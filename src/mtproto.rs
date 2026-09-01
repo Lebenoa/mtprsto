@@ -1,25 +1,56 @@
-//! MTProto 2.0 core protocol.
+//! `MTProto` 2.0 core protocol.
 //!
 //! Implements the full lifecycle:
 //! 1. **Auth key creation** — Diffie-Hellman key exchange with the server
-//! 2. **Message encryption/decryption** — AES-256-IGE with msg_key derivation
+//! 2. **Message encryption/decryption** — AES-256-IGE with `msg_key` derivation
 //! 3. **Session management** — salts, sequence numbers, message IDs
-//! 4. **Message containers** — msg_container, msg_copy, msgs_ack
+//! 4. **Message containers** — `msg_container`, `msg_copy`, `msgs_ack`
+
+// Wire-format engine: byte wrangling is this module's job — TL field
+// order, int32 wire ids, offset arithmetic over length-checked
+// buffers. The cast/index/arithmetic classes are inherent to that
+// job; they are relaxed once here, invariants held by hand. Every
+// other lint still applies.
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::string_slice
+)]
+#![allow(clippy::unreadable_literal)] // ids/hex quoted verbatim from the TL schema
 
 use crate::crypto::{self, RsaPublicKey};
 use crate::error::{Error, Result};
-use crate::serialize::{TLWriter, TLReader, *};
+use crate::serialize::{
+    BAD_MSG_NOTIFICATION, CLIENT_DH_INNER_DATA, DH_GEN_FAIL, DH_GEN_OK, DH_GEN_RETRY, FUTURE_SALTS,
+    FUTURE_SALTS_REQUEST, MSG_CONTAINER, MSGS_ACK, MSGS_STATE_REQ, NEW_SESSION_CREATED,
+    P_Q_INNER_DATA, PING, PING_DELAY_DISCONNECT, PONG, REQ_DH_PARAMS, REQ_PQ_MULTI, RES_PQ,
+    RPC_ERROR, RPC_RESULT, SERVER_DH_INNER_DATA, SERVER_DH_PARAMS_FAIL, SERVER_DH_PARAMS_OK,
+    SET_CLIENT_DH_PARAMS, TLReader, TLWriter, VECTOR,
+};
+use num_bigint::BigRng010 as _;
 use num_bigint::BigUint;
-use rand::rand_core::Rng as _;
 use num_traits::ToPrimitive;
+use rand::rand_core::Rng as _;
 
-/// A negotiated MTProto session.
+/// Freshly compiled from a length-checked slice — the `try_into` that
+/// calls this has just verified the length, so the conversion cannot
+/// fail. Exists so the invariant reads as a named function instead of
+/// a bare `unwrap` at every fixed-size header parse.
+#[allow(clippy::unreachable)] // the invariant is the caller's just-checked slice length
+fn unreachable_fixed_slice() -> ! {
+    unreachable!("slice length was checked immediately before the conversion")
+}
+
+/// A negotiated `MTProto` session.
+#[allow(clippy::struct_excessive_bools)] // padding/compression knobs mirror the wire protocol's toggles
 pub struct MtProtoSession {
     /// 2048-bit authorization key (256 bytes).
     pub auth_key: Vec<u8>,
-    /// 64-bit auth_key_id (lower 64 bits of SHA1(auth_key)).
+    /// 64-bit `auth_key_id` (lower 64 bits of `SHA1(auth_key)`).
     pub auth_key_id: u64,
-    /// 64-bit server salt (initially derived from new_nonce, then updated by server).
+    /// 64-bit server salt (initially derived from `new_nonce`, then updated by server).
     pub server_salt: u64,
     /// 64-bit session ID (random, chosen by client).
     pub session_id: u64,
@@ -42,6 +73,7 @@ pub struct MtProtoSession {
 
 impl MtProtoSession {
     /// Create a new session with an existing auth key.
+    #[must_use]
     pub fn new(auth_key: Vec<u8>, server_salt: u64) -> Self {
         let auth_key_id = crypto::auth_key_id(&auth_key);
         let session_id = crypto::random_session_id();
@@ -59,13 +91,13 @@ impl MtProtoSession {
     }
 
     /// Toggle randomized padding (see [`MtProtoSession::random_padding`]).
-    pub fn set_random_padding(&mut self, enabled: bool) {
+    pub const fn set_random_padding(&mut self, enabled: bool) {
         self.random_padding = enabled;
     }
 
     /// Set the outgoing gzip compression threshold in bytes (0 disables;
     /// gotd default is 1024).
-    pub fn set_compress_threshold(&mut self, threshold: usize) {
+    pub const fn set_compress_threshold(&mut self, threshold: usize) {
         self.compress_threshold = threshold;
     }
 
@@ -84,7 +116,7 @@ impl MtProtoSession {
 
     /// Increment and return the sequence number for a content-related message.
     pub fn next_seq_no(&mut self, content_related: bool) -> i32 {
-        let seq = self.seq_no * 2 + if content_related { 1 } else { 0 };
+        let seq = self.seq_no * 2 + i32::from(content_related);
         if content_related {
             self.seq_no += 1;
         }
@@ -120,7 +152,7 @@ impl MtProtoSession {
             pad_len += 16;
         }
         if self.random_padding {
-            pad_len += (rand::random::<u8>() & 0x0F) as usize * 16;
+            pad_len += usize::from(rand::random::<u8>() & 0x0F) * 16;
         }
         let mut padding = vec![0u8; pad_len];
         rng.fill_bytes(&mut padding);
@@ -129,10 +161,15 @@ impl MtProtoSession {
         plaintext
     }
 
-    /// Encrypt a message payload for transmission.
+    /// Compress an outgoing payload when it clears the threshold and gzip
+    /// actually shrinks it.
     ///
-    /// Returns the serialized encrypted message: `auth_key_id (8) + msg_key (16) + encrypted_data`.
+    /// Returns the serialized encrypted message:
+    /// `auth_key_id (8) + msg_key (16) + encrypted_data` framing is added
+    /// by the caller; this returns the TL payload (possibly
+    /// `gzip_packed`-wrapped).
     fn compress_payload(&self, payload: &[u8]) -> Vec<u8> {
+        use std::io::Write as _;
         if self.compress_threshold == 0 || payload.len() <= self.compress_threshold {
             return payload.to_vec();
         }
@@ -140,7 +177,6 @@ impl MtProtoSession {
             Vec::with_capacity(payload.len() / 2),
             flate2::Compression::default(),
         );
-        use std::io::Write;
         if encoder.write_all(payload).is_err() {
             return payload.to_vec();
         }
@@ -157,6 +193,17 @@ impl MtProtoSession {
         w.into_bytes()
     }
 
+    /// Encrypt a message payload for transmission.
+    ///
+    /// Returns the serialized encrypted message:
+    /// `auth_key_id (8) + msg_key (16) + encrypted_data`.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the AES-IGE primitive itself fails, which for a
+    /// valid 32-byte key/IV pair cannot happen.
+    #[must_use]
+    #[allow(clippy::expect_used)] // AES-IGE cannot fail for a valid key/IV pair (see # Panics)
     pub fn encrypt_message(&self, payload: &[u8], msg_id: u64, seq_no: i32) -> Vec<u8> {
         let payload = &self.compress_payload(payload);
         let plaintext = self.build_plaintext(msg_id, seq_no, payload);
@@ -168,7 +215,7 @@ impl MtProtoSession {
         let (aes_key, aes_iv) = crypto::aes_key_and_iv(&self.auth_key, &msg_key, 0);
 
         // Encrypt with AES-256-IGE
-        let mut encrypted = plaintext.clone();
+        let mut encrypted = plaintext;
         crypto::aes_ige_encrypt(&mut encrypted, &aes_key, &aes_iv)
             .expect("AES-IGE encryption failed");
 
@@ -184,6 +231,11 @@ impl MtProtoSession {
     /// Decrypt a received encrypted message (default: server→client, x=8).
     ///
     /// Input is the full message starting with `auth_key_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] for short/mismatched headers, key
+    /// mismatch, or `msg_key` verification failure.
     pub fn decrypt_message(&mut self, data: &[u8]) -> Result<(u64, Vec<u8>)> {
         self.decrypt_message_with_x(data, 8)
     }
@@ -191,13 +243,27 @@ impl MtProtoSession {
     /// Decrypt with a specific x value.
     ///
     /// x=0 for client→server messages, x=8 for server→client messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] for short/mismatched headers, key
+    /// mismatch, or `msg_key` verification failure.
+    ///
+    /// # Panics
+    ///
+    /// Never on well-formed input: the `len >= 24` guard above bounds
+    /// every slice taken from `data` below.
     pub fn decrypt_message_with_x(&mut self, data: &[u8], x: usize) -> Result<(u64, Vec<u8>)> {
         if data.len() < 24 {
             return Err(Error::Protocol("encrypted message too short".into()));
         }
 
         // Parse external header
-        let received_auth_key_id = u64::from_be_bytes(data[0..8].try_into().unwrap());
+        let received_auth_key_id = u64::from_be_bytes(
+            data[0..8]
+                .try_into()
+                .unwrap_or_else(|_| unreachable_fixed_slice()),
+        );
         if received_auth_key_id != self.auth_key_id {
             return Err(Error::Protocol(format!(
                 "auth_key_id mismatch: expected {:#x}, got {:#x}",
@@ -205,7 +271,8 @@ impl MtProtoSession {
             )));
         }
 
-        let msg_key = <[u8; 16]>::try_from(&data[8..24]).unwrap();
+        let msg_key =
+            <[u8; 16]>::try_from(&data[8..24]).unwrap_or_else(|_| unreachable_fixed_slice());
         let encrypted = &data[24..];
 
         // Derive key/iv for the given direction
@@ -242,6 +309,7 @@ impl MtProtoSession {
     }
 
     /// Build a serialized unencrypted message (used during auth key creation).
+    #[must_use]
     pub fn build_unencrypted(msg_id: u64, payload: &[u8]) -> Vec<u8> {
         let mut w = TLWriter::new();
         w.write_u64(0); // auth_key_id = 0 (no key)
@@ -270,12 +338,12 @@ pub struct AuthKeyCreation {
     pub dh_prime: Option<Vec<u8>>,
     pub g_a: Option<BigUint>,
     pub a: Option<BigUint>,
-    /// auth_key_aux_hash of the previous attempt (64 higher-order bits of
-    /// SHA1(auth_key)); becomes `retry_id` when the server asks for a retry.
+    /// `auth_key_aux_hash` of the previous attempt (64 higher-order bits of
+    /// `SHA1(auth_key)`); becomes `retry_id` when the server asks for a retry.
     pub auth_key_aux_hash: Option<u64>,
     pub temp_aes_key: Option<[u8; 32]>,
     /// `retry_id` for `client_DH_inner_data`: 0 on the first attempt, then
-    /// the previous attempt's auth_key_aux_hash (SPEC §7).
+    /// the previous attempt's `auth_key_aux_hash` (SPEC §7).
     pub retry_id: u64,
     pub temp_aes_iv: Option<[u8; 32]>,
     pub server_time_offset: i64,
@@ -283,6 +351,7 @@ pub struct AuthKeyCreation {
 
 impl AuthKeyCreation {
     /// Start a new auth key creation flow.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             nonce: crypto::random_nonce(),
@@ -305,6 +374,7 @@ impl AuthKeyCreation {
     }
 
     /// Step 1: Build `req_pq_multi` request.
+    #[must_use]
     pub fn build_req_pq(&self) -> Vec<u8> {
         let mut w = TLWriter::new();
         w.write_u32(REQ_PQ_MULTI);
@@ -313,13 +383,18 @@ impl AuthKeyCreation {
     }
 
     /// Step 2: Parse `resPQ` response.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+    /// [`Error::Protocol`]/[`Error::Crypto`] on nonce mismatch or when no
+    /// server key matches a fingerprint.
     pub fn parse_res_pq(&mut self, data: &[u8]) -> Result<()> {
         let mut r = TLReader::new(data);
         let constructor = r.read_u32()?;
         if constructor != RES_PQ {
             return Err(Error::UnexpectedResponse(format!(
-                "expected RES_PQ ({:#x}), got {:#x}",
-                RES_PQ, constructor
+                "expected RES_PQ ({RES_PQ:#x}), got {constructor:#x}"
             )));
         }
 
@@ -363,6 +438,11 @@ impl AuthKeyCreation {
     /// Step 3: Factor PQ and prepare for DH params request.
     ///
     /// Factors pq into p and q where p < q and both are odd primes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NoAuthKey`] when `resPQ` was never parsed and
+    /// [`Error::Crypto`] when factorization cannot proceed.
     pub fn factor_pq(&mut self) -> Result<()> {
         let pq_bytes = self.pq.as_ref().ok_or(Error::NoAuthKey)?;
         let pq = BigUint::from_bytes_be(pq_bytes);
@@ -381,6 +461,18 @@ impl AuthKeyCreation {
     }
 
     /// Step 4: Build `req_DH_params` request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NoAuthKey`] when prior handshake steps are missing;
+    /// panics never occur on the [`AuthKeyCreation::new`] → step-order
+    /// contract (all `Option` fields are populated by the preceding steps).
+    ///
+    /// # Panics
+    ///
+    /// Never under the documented step order: `pq`/`server_nonce` are set
+    /// by [`AuthKeyCreation::parse_res_pq`] before this runs.
+    #[allow(clippy::unwrap_used)] // step-order invariant: parse_res_pq populated pq and server_nonce
     pub fn build_req_dh_params(&mut self, dc_id: i32) -> Result<Vec<u8>> {
         let p = BigUint::from_bytes_be(self.p.as_ref().ok_or(Error::NoAuthKey)?);
         let q = BigUint::from_bytes_be(self.q.as_ref().ok_or(Error::NoAuthKey)?);
@@ -419,6 +511,18 @@ impl AuthKeyCreation {
     }
 
     /// Step 6: Parse `server_DH_params_ok` response.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] on nonce mismatch or a
+    /// `server_DH_params_fail` answer, [`Error::UnexpectedResponse`] for a
+    /// foreign constructor, and IGE/crypto errors on decrypt failure.
+    ///
+    /// # Panics
+    ///
+    /// Never under the documented step order: `nonce`/`server_nonce`/
+    /// `new_nonce` are populated by the preceding handshake steps.
+    #[allow(clippy::unwrap_used)] // step-order invariant: earlier steps populated nonce fields
     pub fn parse_server_dh_params(&mut self, data: &[u8]) -> Result<()> {
         let mut r = TLReader::new(data);
         let constructor = r.read_u32()?;
@@ -444,14 +548,18 @@ impl AuthKeyCreation {
                 // tmp_aes_key = SHA1(new_nonce + server_nonce) + SHA1(server_nonce + new_nonce)[0..12]
                 let mut tmp_key = Vec::with_capacity(32);
                 tmp_key.extend_from_slice(&crypto::sha1_concat(&new_nonce, &server_nonce_bytes));
-                tmp_key.extend_from_slice(&crypto::sha1_concat(&server_nonce_bytes, &new_nonce)[0..12]);
+                tmp_key.extend_from_slice(
+                    &crypto::sha1_concat(&server_nonce_bytes, &new_nonce)[0..12],
+                );
 
                 let mut tmp_aes_key = [0u8; 32];
                 tmp_aes_key.copy_from_slice(&tmp_key);
 
                 // tmp_aes_iv = SHA1(server_nonce + new_nonce)[12..20] + SHA1(new_nonce + new_nonce) + new_nonce[0..4]
                 let mut tmp_iv = Vec::with_capacity(32);
-                tmp_iv.extend_from_slice(&crypto::sha1_concat(&server_nonce_bytes, &new_nonce)[12..20]);
+                tmp_iv.extend_from_slice(
+                    &crypto::sha1_concat(&server_nonce_bytes, &new_nonce)[12..20],
+                );
                 tmp_iv.extend_from_slice(&crypto::sha1_concat(&new_nonce, &new_nonce));
                 tmp_iv.extend_from_slice(&new_nonce[0..4]);
 
@@ -462,7 +570,7 @@ impl AuthKeyCreation {
                 self.temp_aes_iv = Some(tmp_aes_iv);
 
                 // Decrypt
-                let mut answer = encrypted_answer.clone();
+                let mut answer = encrypted_answer;
                 crypto::aes_ige_decrypt(&mut answer, &tmp_aes_key, &tmp_aes_iv)?;
 
                 // answer = SHA1(answer)[0..20] + answer_data + padding
@@ -472,8 +580,7 @@ impl AuthKeyCreation {
                 let inner_constructor = inner_r.read_u32()?;
                 if inner_constructor != SERVER_DH_INNER_DATA {
                     return Err(Error::UnexpectedResponse(format!(
-                        "expected SERVER_DH_INNER_DATA, got {:#x}",
-                        inner_constructor
+                        "expected SERVER_DH_INNER_DATA, got {inner_constructor:#x}"
                     )));
                 }
 
@@ -492,24 +599,31 @@ impl AuthKeyCreation {
 
                 Ok(())
             }
-            SERVER_DH_PARAMS_FAIL => {
-                Err(Error::Protocol("server_DH_params_fail received".into()))
-            }
+            SERVER_DH_PARAMS_FAIL => Err(Error::Protocol("server_DH_params_fail received".into())),
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in DH params response",
-                constructor
+                "unexpected constructor {constructor:#x} in DH params response"
             ))),
         }
     }
 
     /// Step 7: Generate client DH value and build `set_client_DH_params`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NoAuthKey`] when prior handshake steps are missing
+    /// and IGE errors when the temp-key encryption fails.
+    ///
+    /// # Panics
+    ///
+    /// Never under the documented step order: `dh_prime`/`g`/`server_nonce`
+    /// are populated by the preceding handshake steps.
+    #[allow(clippy::unwrap_used)] // step-order invariant: parse_server_dh_params populated these fields
     pub fn build_set_client_dh_params(&mut self) -> Result<Vec<u8>> {
         let dh_prime = BigUint::from_bytes_be(self.dh_prime.as_ref().unwrap());
         let g = BigUint::from(self.g.ok_or(Error::NoAuthKey)?);
 
         // Generate random 2048-bit b
         let mut rng = rand::rng();
-        use num_bigint::BigRng010;
         let b = rng.random_biguint(2048);
         let g_b = g.modpow(&b, &dh_prime);
 
@@ -531,8 +645,14 @@ impl AuthKeyCreation {
         };
         let aux_hash_arr = crypto::sha1(&candidate_key);
         let aux_hash = u64::from_be_bytes([
-            aux_hash_arr[0], aux_hash_arr[1], aux_hash_arr[2], aux_hash_arr[3],
-            aux_hash_arr[4], aux_hash_arr[5], aux_hash_arr[6], aux_hash_arr[7],
+            aux_hash_arr[0],
+            aux_hash_arr[1],
+            aux_hash_arr[2],
+            aux_hash_arr[3],
+            aux_hash_arr[4],
+            aux_hash_arr[5],
+            aux_hash_arr[6],
+            aux_hash_arr[7],
         ]);
         self.auth_key_aux_hash = Some(aux_hash);
 
@@ -579,6 +699,10 @@ impl AuthKeyCreation {
     }
 
     /// Step 9: Parse the DH gen result and compute the auth key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnexpectedResponse`] for a foreign constructor.
     pub fn parse_dh_gen_result(&mut self, data: &[u8]) -> Result<AuthKeyResult> {
         let mut r = TLReader::new(data);
         let constructor = r.read_u32()?;
@@ -599,21 +723,23 @@ impl AuthKeyCreation {
                 Ok(AuthKeyResult::Fail)
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected DH gen result {:#x}",
-                constructor
+                "unexpected DH gen result {constructor:#x}"
             ))),
         }
     }
 
     /// Compute the auth key from the negotiated DH values.
     ///
-    /// Must be called after factor_pq and after generating the client DH value.
-    /// The auth_key = g_a^b mod dh_prime.
+    /// Must be called after `factor_pq` and after generating the client DH
+    /// value. The `auth_key = g_a^b mod dh_prime`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NoAuthKey`] when prior handshake steps are missing.
     pub fn compute_auth_key(&self) -> Result<Vec<u8>> {
         let dh_prime = BigUint::from_bytes_be(self.dh_prime.as_ref().ok_or(Error::NoAuthKey)?);
         let g_a = self.g_a.as_ref().ok_or(Error::NoAuthKey)?;
         let b = self.a.as_ref().ok_or(Error::NoAuthKey)?; // We stored b as "a"
-
         let shared_secret = g_a.modpow(b, &dh_prime);
 
         // Auth key is 2048 bits (256 bytes), zero-padded on the left
@@ -625,7 +751,11 @@ impl AuthKeyCreation {
         Ok(auth_key)
     }
 
-    /// Compute the server salt: substr(new_nonce, 0, 8) XOR substr(server_nonce, 0, 8)
+    /// Compute the server salt: `substr(new_nonce, 0, 8) XOR substr(server_nonce, 0, 8)`
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NoAuthKey`] when the DH nonces are not negotiated yet.
     pub fn compute_server_salt(&self) -> Result<u64> {
         let new_nonce = self.new_nonce.ok_or(Error::NoAuthKey)?;
         let server_nonce = self.server_nonce.ok_or(Error::NoAuthKey)?;
@@ -653,12 +783,13 @@ pub enum AuthKeyResult {
 // Message containers
 // ---------------------------------------------------------------------------
 
-/// Build a msg_container with multiple messages.
+/// Build a `msg_container` with multiple messages.
 ///
 /// The container format is:
-///   msg_container#73f1f8dc
-///   vector#1cb5c415 count:int
-///   [ msg_id:long seq_no:int message:bytes ] × count
+///   `msg_container#73f1f8dc`
+///   `vector#1cb5c415 count:int`
+///   `[ msg_id:long seq_no:int message:bytes ] × count`
+#[must_use]
 pub fn build_msg_container(messages: &[(u64, i32, &[u8])]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MSG_CONTAINER);
@@ -674,7 +805,8 @@ pub fn build_msg_container(messages: &[(u64, i32, &[u8])]) -> Vec<u8> {
     w.into_bytes()
 }
 
-/// Build a msgs_ack message.
+/// Build a `msgs_ack` message.
+#[must_use]
 pub fn build_msgs_ack(msg_ids: &[u64]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MSGS_ACK);
@@ -688,6 +820,7 @@ pub fn build_msgs_ack(msg_ids: &[u64]) -> Vec<u8> {
 }
 
 /// Build a ping message.
+#[must_use]
 pub fn build_ping(id: i64) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(PING);
@@ -700,6 +833,7 @@ pub fn build_ping(id: i64) -> Vec<u8> {
 /// Like [`build_ping`] but instructs the server to drop the connection if
 /// no further pings arrive within `disconnect_delay` seconds — matches
 /// gotd's keepalive, which relies on this to reap dead connections.
+#[must_use]
 pub fn build_ping_delay_disconnect(id: i64, disconnect_delay: i32) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(PING_DELAY_DISCONNECT);
@@ -709,13 +843,17 @@ pub fn build_ping_delay_disconnect(id: i64, disconnect_delay: i32) -> Vec<u8> {
 }
 
 /// Parse a pong message.
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// serialization errors for truncated payloads.
 pub fn parse_pong(data: &[u8]) -> Result<i64> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
     if constructor != PONG {
         return Err(Error::UnexpectedResponse(format!(
-            "expected PONG, got {:#x}",
-            constructor
+            "expected PONG, got {constructor:#x}"
         )));
     }
     let _msg_id = r.read_u64()?;
@@ -724,13 +862,17 @@ pub fn parse_pong(data: &[u8]) -> Result<i64> {
 }
 
 /// Parse an RPC result wrapper.
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// serialization errors for truncated payloads.
 pub fn parse_rpc_result(data: &[u8]) -> Result<Vec<u8>> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
     if constructor != RPC_RESULT {
         return Err(Error::UnexpectedResponse(format!(
-            "expected RPC_RESULT, got {:#x}",
-            constructor
+            "expected RPC_RESULT, got {constructor:#x}"
         )));
     }
     let _req_msg_id = r.read_u64()?;
@@ -739,13 +881,17 @@ pub fn parse_rpc_result(data: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Parse an RPC error.
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// [`Error::Protocol`] for non-UTF-8 error messages.
 pub fn parse_rpc_error(data: &[u8]) -> Result<(i32, String)> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
     if constructor != RPC_ERROR {
         return Err(Error::UnexpectedResponse(format!(
-            "expected RPC_ERROR, got {:#x}",
-            constructor
+            "expected RPC_ERROR, got {constructor:#x}"
         )));
     }
     let error_code = r.read_i32()?;
@@ -756,8 +902,13 @@ pub fn parse_rpc_error(data: &[u8]) -> Result<(i32, String)> {
 
 /// Parse a `bad_msg_notification#a7eff811` service message.
 ///
-/// Returns `(bad_msg_id, bad_msg_seqno, error_code)`. The error_code
+/// Returns `(bad_msg_id, bad_msg_seqno, error_code)`. The `error_code`
 /// meanings are documented in [`crate::pool::describe_bad_msg_code`].
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// serialization errors for truncated payloads.
 pub fn parse_bad_msg_notification(data: &[u8]) -> Result<(u64, i32, i32)> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
@@ -777,6 +928,7 @@ pub fn parse_bad_msg_notification(data: &[u8]) -> Result<(u64, i32, i32)> {
 // ---------------------------------------------------------------------------
 
 /// Wrap method bytes in `invokeWithLayer#da9b0d0d {layer:int}`.
+#[must_use]
 pub fn build_invoke_with_layer(layer: i32, method_bytes: &[u8]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(crate::types::INVOKE_WITH_LAYER);
@@ -789,6 +941,7 @@ pub fn build_invoke_with_layer(layer: i32, method_bytes: &[u8]) -> Vec<u8> {
 ///
 /// `CONNECTION_NOT_INITED` is returned by production servers when
 /// `auth.*`/user RPCs run without this wrapper.
+#[must_use]
 pub fn build_init_connection(
     api_id: i32,
     device_model: &str,
@@ -815,6 +968,7 @@ pub fn build_init_connection(
 ///
 /// Tells the server to process `query` only after `msg_id` was handled —
 /// needed to keep dependent RPCs ordered when pipelining.
+#[must_use]
 pub fn build_invoke_after_msg(msg_id: u64, query: &[u8]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(crate::types::INVOKE_AFTER_MSG);
@@ -827,6 +981,7 @@ pub fn build_invoke_after_msg(msg_id: u64, query: &[u8]) -> Vec<u8> {
 ///
 /// Suppresses update delivery for this request (useful for bulk/poll RPCs
 /// that would otherwise flood the update stream).
+#[must_use]
 pub fn build_invoke_without_updates(query: &[u8]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(crate::types::INVOKE_WITHOUT_UPDATES);
@@ -847,6 +1002,11 @@ pub struct NewSessionCreated {
 }
 
 /// Parse a `new_session_created` body (after the constructor).
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// serialization errors for truncated payloads.
 pub fn parse_new_session_created(data: &[u8]) -> Result<NewSessionCreated> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
@@ -873,6 +1033,11 @@ pub struct SaltWindow {
 /// Parse `future_salts#ae500895 req_msg_id:long now:int salts:vector<future_salt>`.
 ///
 /// `data` is the full service message (constructor included).
+///
+/// # Errors
+///
+/// Returns [`Error::UnexpectedResponse`] for a foreign constructor and
+/// [`Error::Serialization`] on a truncated body.
 pub fn parse_future_salts(data: &[u8]) -> Result<(u64, i32, Vec<SaltWindow>)> {
     let mut r = TLReader::new(data);
     let constructor = r.read_u32()?;
@@ -897,6 +1062,7 @@ pub fn parse_future_salts(data: &[u8]) -> Result<(u64, i32, Vec<SaltWindow>)> {
 
 /// Build `getFutureSalts#b921bd04 num:int` — asks the server for its salt
 /// windows. The reply is a `future_salts` service message.
+#[must_use]
 pub fn build_get_future_salts(num: i32) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(FUTURE_SALTS_REQUEST);
@@ -906,6 +1072,7 @@ pub fn build_get_future_salts(num: i32) -> Vec<u8> {
 
 /// Build `msgs_state_req#da69fb52 msg_ids:Vector<long>` — ask the server
 /// for the delivery state of the given message ids.
+#[must_use]
 pub fn build_msgs_state_req(msg_ids: &[u64]) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(MSGS_STATE_REQ);
@@ -921,8 +1088,13 @@ pub fn build_msgs_state_req(msg_ids: &[u64]) -> Vec<u8> {
 // Pollard's rho factorization for PQ
 // ---------------------------------------------------------------------------
 
+// The trial-division bound `(n as f64).sqrt()` only needs approximate
+// magnitude; precision loss above 2^53 is harmless for the bound. The
+// `to_u64().unwrap()` is guarded by the `bits() < 64` check above it.
+#[allow(clippy::cast_precision_loss, clippy::unwrap_used)]
 fn pollard_rho_factor(n: &BigUint) -> Result<(BigUint, BigUint)> {
     use num_traits::{One, Zero};
+    use rand::RngExt as _;
 
     if n.is_zero() {
         return Err(Error::Crypto("cannot factor zero".into()));
@@ -936,10 +1108,7 @@ fn pollard_rho_factor(n: &BigUint) -> Result<(BigUint, BigUint)> {
         let n_val = n.to_u64().unwrap();
         for d in (3..=((n_val as f64).sqrt() as u64)).step_by(2) {
             if n_val.is_multiple_of(d) {
-                return Ok((
-                    BigUint::from(d),
-                    BigUint::from(n_val / d),
-                ));
+                return Ok((BigUint::from(d), BigUint::from(n_val / d)));
             }
         }
         // n is prime
@@ -947,34 +1116,45 @@ fn pollard_rho_factor(n: &BigUint) -> Result<(BigUint, BigUint)> {
     }
 
     // Pollard's rho
-    use rand::RngExt;
     let mut rng = rand::rng();
-
-    loop {
-        let c = BigUint::from(rng.random_range(1u32..=100));
-        let mut x = BigUint::from(2u32);
-        let mut y = x.clone();
-        let mut d = BigUint::one();
-
-        while d.is_one() {
-            // x = x^2 + c mod n
-            x = (&x * &x + &c) % n;
-            // y = y^2 + c mod n, twice
-            y = (&y * &y + &c) % n;
-            y = (&y * &y + &c) % n;
-            let diff = if x > y { &x - &y } else { &y - &x };
-            d = biguint_gcd(&diff, n);
-        }
-
-        if &d != n {
-            let other = n / &d;
-            return Ok((d, other));
-        }
-        // If d == n, retry with different c
+    let c = BigUint::from(rng.random_range(1u32..=100));
+    if let Some(factors) = rho_attempt(n, c) {
+        return Ok(factors);
     }
+    // Degenerate cycle — retry with a different c.
+    Err(Error::Crypto("pollard rho: degenerate cycle".into()))
 }
 
-/// Compute GCD of two BigUint values.
+// The x/y/c/d names are Pollard's rho's textbook binding; anything
+// else obscures the algorithm. `c` is consumed by the modular
+// arithmetic — by value is the natural binding here.
+#[allow(clippy::many_single_char_names, clippy::needless_pass_by_value)]
+fn rho_attempt(n: &BigUint, c: BigUint) -> Option<(BigUint, BigUint)> {
+    use num_traits::One;
+    let mut x = BigUint::from(2u32);
+    let mut y = x.clone();
+    let mut d = BigUint::one();
+
+    while d.is_one() {
+        // x = x^2 + c mod n
+        x = (&x * &x + &c) % n;
+        // y = y^2 + c mod n, twice
+        y = (&y * &y + &c) % n;
+        y = (&y * &y + &c) % n;
+        let diff = if x > y { &x - &y } else { &y - &x };
+        d = biguint_gcd(&diff, n);
+    }
+
+    if &d != n {
+        let other = n / &d;
+        return Some((d, other));
+    }
+    None // degenerate cycle: caller retries with a different c
+}
+
+/// Compute GCD of two `BigUint` values.
+// The a/x/y/r names follow the Euclidean algorithm's textbook binding.
+#[allow(clippy::many_single_char_names)]
 fn biguint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
     use num_traits::Zero;
     let mut x = a.clone();
@@ -987,6 +1167,11 @@ fn biguint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
     x
 }
 
+#[cfg(test)]
+mod tests {
+    // Test code: unwrap is the idiomatic failure mode here.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
 
     #[test]
     fn test_compress_wraps_large_payload() {
@@ -994,8 +1179,15 @@ fn biguint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
         // Repetitive payload compresses well.
         let payload = vec![b'a'; 8192];
         let wrapped = session.compress_payload(&payload);
-        assert!(wrapped.len() < 256, "expected gzip_packed wrap, got {}", wrapped.len());
-        assert_eq!(u32::from_le_bytes(wrapped[0..4].try_into().unwrap()), crate::serialize::GZIP_PACKED);
+        assert!(
+            wrapped.len() < 256,
+            "expected gzip_packed wrap, got {}",
+            wrapped.len()
+        );
+        assert_eq!(
+            u32::from_le_bytes(wrapped[0..4].try_into().unwrap()),
+            crate::serialize::GZIP_PACKED
+        );
         // Decompresses back to the original (server-side view).
         let mut r = crate::serialize::TLReader::new(&wrapped);
         r.read_u32().unwrap();
@@ -1022,9 +1214,6 @@ fn biguint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
         let big = vec![0u8; 8192];
         assert_eq!(session.compress_payload(&big), big);
     }
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     #[test]
     fn test_session_encrypt_decrypt() {
@@ -1082,7 +1271,7 @@ mod tests {
         // Simulate factor_pq with a known value
         auth.pq = Some(BigUint::from(1234567891u64).to_bytes_be()); // This is prime
         // For testing, we'll just verify the structure is valid
-        assert!(auth.nonce.len() == 16);
+        assert_eq!(auth.nonce.len(), 16);
     }
 
     #[test]
@@ -1110,8 +1299,13 @@ mod tests {
         let _server_nonce = r.read_i128_bytes().unwrap();
         let encrypted = r.read_bytes().unwrap();
 
-        let mut plain = encrypted.clone();
-        crypto::aes_ige_decrypt(&mut plain, &auth.temp_aes_key.unwrap(), &auth.temp_aes_iv.unwrap()).unwrap();
+        let mut plain = encrypted;
+        crypto::aes_ige_decrypt(
+            &mut plain,
+            &auth.temp_aes_key.unwrap(),
+            &auth.temp_aes_iv.unwrap(),
+        )
+        .unwrap();
         // plain = SHA1(inner) + inner + padding; inner ctor + nonce + server_nonce + retry_id
         let inner = &plain[20..];
         let mut ir = TLReader::new(inner);
@@ -1131,14 +1325,22 @@ mod tests {
         let _ = r2.read_i128_bytes().unwrap();
         let _ = r2.read_i128_bytes().unwrap();
         let encrypted2 = r2.read_bytes().unwrap();
-        let mut plain2 = encrypted2.clone();
-        crypto::aes_ige_decrypt(&mut plain2, &auth.temp_aes_key.unwrap(), &auth.temp_aes_iv.unwrap()).unwrap();
+        let mut plain2 = encrypted2;
+        crypto::aes_ige_decrypt(
+            &mut plain2,
+            &auth.temp_aes_key.unwrap(),
+            &auth.temp_aes_iv.unwrap(),
+        )
+        .unwrap();
         let mut ir2 = TLReader::new(&plain2[20..]);
         let _ = ir2.read_u32().unwrap();
         let _ = ir2.read_i128_bytes().unwrap();
         let _ = ir2.read_i128_bytes().unwrap();
         let retry_id2 = ir2.read_i64().unwrap() as u64;
-        assert_eq!(retry_id2, aux1, "second attempt must echo previous aux hash");
+        assert_eq!(
+            retry_id2, aux1,
+            "second attempt must echo previous aux hash"
+        );
     }
 
     #[test]

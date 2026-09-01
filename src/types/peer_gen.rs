@@ -7,10 +7,17 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const PEER_CHANNEL_ID: u32 = 0xa2a5371e;
 pub const PEER_CHAT_ID: u32 = 0x36c6019a;
@@ -34,18 +41,18 @@ impl Peer {
         let ctor = r.read_u32()?;
         match ctor {
             PEER_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
                 Ok(Peer::Channel { channel_id })
             }
             PEER_CHAT_ID => {
-    let chat_id = r.read_i64()?;
-    let chat_id = ChatId(chat_id);
+                let chat_id = r.read_i64()?;
+                let chat_id = ChatId(chat_id);
                 Ok(Peer::Chat { chat_id })
             }
             PEER_USER_ID => {
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
                 Ok(Peer::User { user_id })
             }
             other => Err(Error::Serialization(format!(

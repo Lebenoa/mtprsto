@@ -7,15 +7,25 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
-use super::input_gen::{InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet, InputUser, MaskCoords, TextWithEntities};
+use super::input_gen::{
+    InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet,
+    InputUser, MaskCoords, TextWithEntities,
+};
 use super::message_gen::{MessageEntity, MessageMedia};
-use super::peer_gen::{Peer};
+use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
 use super::user_gen::{EmojiStatus, PeerColor, RecentStory, RestrictionReason, Username};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const CHAT_INVITE_PUBLIC_JOIN_REQUESTS_ID: u32 = 0xed107ab7;
 pub const CHAT_INVITE_EXPORTED_ID: u32 = 0xa22cbd96;
@@ -312,7 +322,23 @@ pub enum ExportedChatInvite {
     /// `chatInvitePublicJoinRequests#ed107ab7`
     ChatInvitePublicJoinRequests,
     /// `chatInviteExported#a22cbd96`
-    ChatInviteExported { flags: i32, revoked: bool, permanent: bool, request_needed: bool, link: String, admin_id: i64, date: i32, start_date: Option<i32>, expire_date: Option<i32>, usage_limit: Option<i32>, usage: Option<i32>, requested: Option<i32>, subscription_expired: Option<i32>, title: Option<String>, subscription_pricing: Option<StarsSubscriptionPricing> },
+    ChatInviteExported {
+        flags: i32,
+        revoked: bool,
+        permanent: bool,
+        request_needed: bool,
+        link: String,
+        admin_id: i64,
+        date: i32,
+        start_date: Option<i32>,
+        expire_date: Option<i32>,
+        usage_limit: Option<i32>,
+        usage: Option<i32>,
+        requested: Option<i32>,
+        subscription_expired: Option<i32>,
+        title: Option<String>,
+        subscription_pricing: Option<StarsSubscriptionPricing>,
+    },
 }
 
 impl ExportedChatInvite {
@@ -320,65 +346,81 @@ impl ExportedChatInvite {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_INVITE_PUBLIC_JOIN_REQUESTS_ID => {
-                Ok(ExportedChatInvite::ChatInvitePublicJoinRequests {  })
+                Ok(ExportedChatInvite::ChatInvitePublicJoinRequests {})
             }
             CHAT_INVITE_EXPORTED_ID => {
-    let flags = r.read_i32()?;
-    let revoked = flags & (1 << 0) != 0;
-    let permanent = flags & (1 << 5) != 0;
-    let request_needed = flags & (1 << 6) != 0;
-    let link = String::from_utf8(r.read_bytes()?)?;
-    let admin_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let start_date = if flags & (1 << 4) != 0 {
-        let start_date = r.read_i32()?;
-        Some(start_date)
-    } else {
-        None
-    };
-    let expire_date = if flags & (1 << 1) != 0 {
-        let expire_date = r.read_i32()?;
-        Some(expire_date)
-    } else {
-        None
-    };
-    let usage_limit = if flags & (1 << 2) != 0 {
-        let usage_limit = r.read_i32()?;
-        Some(usage_limit)
-    } else {
-        None
-    };
-    let usage = if flags & (1 << 3) != 0 {
-        let usage = r.read_i32()?;
-        Some(usage)
-    } else {
-        None
-    };
-    let requested = if flags & (1 << 7) != 0 {
-        let requested = r.read_i32()?;
-        Some(requested)
-    } else {
-        None
-    };
-    let subscription_expired = if flags & (1 << 10) != 0 {
-        let subscription_expired = r.read_i32()?;
-        Some(subscription_expired)
-    } else {
-        None
-    };
-    let title = if flags & (1 << 8) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let subscription_pricing = if flags & (1 << 9) != 0 {
-        let subscription_pricing = StarsSubscriptionPricing::read_from(r)?;
-        Some(subscription_pricing)
-    } else {
-        None
-    };
-                Ok(ExportedChatInvite::ChatInviteExported { flags, revoked, permanent, request_needed, link, admin_id, date, start_date, expire_date, usage_limit, usage, requested, subscription_expired, title, subscription_pricing })
+                let flags = r.read_i32()?;
+                let revoked = flags & (1 << 0) != 0;
+                let permanent = flags & (1 << 5) != 0;
+                let request_needed = flags & (1 << 6) != 0;
+                let link = String::from_utf8(r.read_bytes()?)?;
+                let admin_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let start_date = if flags & (1 << 4) != 0 {
+                    let start_date = r.read_i32()?;
+                    Some(start_date)
+                } else {
+                    None
+                };
+                let expire_date = if flags & (1 << 1) != 0 {
+                    let expire_date = r.read_i32()?;
+                    Some(expire_date)
+                } else {
+                    None
+                };
+                let usage_limit = if flags & (1 << 2) != 0 {
+                    let usage_limit = r.read_i32()?;
+                    Some(usage_limit)
+                } else {
+                    None
+                };
+                let usage = if flags & (1 << 3) != 0 {
+                    let usage = r.read_i32()?;
+                    Some(usage)
+                } else {
+                    None
+                };
+                let requested = if flags & (1 << 7) != 0 {
+                    let requested = r.read_i32()?;
+                    Some(requested)
+                } else {
+                    None
+                };
+                let subscription_expired = if flags & (1 << 10) != 0 {
+                    let subscription_expired = r.read_i32()?;
+                    Some(subscription_expired)
+                } else {
+                    None
+                };
+                let title = if flags & (1 << 8) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let subscription_pricing = if flags & (1 << 9) != 0 {
+                    let subscription_pricing = StarsSubscriptionPricing::read_from(r)?;
+                    Some(subscription_pricing)
+                } else {
+                    None
+                };
+                Ok(ExportedChatInvite::ChatInviteExported {
+                    flags,
+                    revoked,
+                    permanent,
+                    request_needed,
+                    link,
+                    admin_id,
+                    date,
+                    start_date,
+                    expire_date,
+                    usage_limit,
+                    usage,
+                    requested,
+                    subscription_expired,
+                    title,
+                    subscription_pricing,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ExportedChatInvite constructor {other:#x}"
@@ -402,19 +444,16 @@ impl StarsSubscriptionPricing {
                 "expected starsSubscriptionPricing, got {ctor:#x}"
             )));
         }
-    let period = r.read_i32()?;
-    let amount = r.read_i64()?;
-        Ok(StarsSubscriptionPricing {
-            period,
-            amount,
-        })
+        let period = r.read_i32()?;
+        let amount = r.read_i64()?;
+        Ok(StarsSubscriptionPricing { period, amount })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(STARS_SUBSCRIPTION_PRICING_ID);
-    w.write_i32(self.period);
-    w.write_i64(self.amount);
+        w.write_u32(STARS_SUBSCRIPTION_PRICING_ID);
+        w.write_i32(self.period);
+        w.write_i64(self.amount);
     }
 }
 
@@ -422,9 +461,17 @@ impl StarsSubscriptionPricing {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatParticipants {
     /// `chatParticipants#3cbc93f8`
-    ChatParticipants { chat_id: ChatId, participants: Vec<ChatParticipant>, version: i32 },
+    ChatParticipants {
+        chat_id: ChatId,
+        participants: Vec<ChatParticipant>,
+        version: i32,
+    },
     /// `chatParticipantsForbidden#8763d3e1`
-    ChatParticipantsForbidden { flags: i32, chat_id: ChatId, self_participant: Option<ChatParticipant> },
+    ChatParticipantsForbidden {
+        flags: i32,
+        chat_id: ChatId,
+        self_participant: Option<ChatParticipant>,
+    },
 }
 
 impl ChatParticipants {
@@ -432,27 +479,35 @@ impl ChatParticipants {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_PARTICIPANTS_ID => {
-    let chat_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut participants = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        participants.push(ChatParticipant::read_from(r)?);
-    }
-    let version = r.read_i32()?;
-    let chat_id = ChatId(chat_id);
-                Ok(ChatParticipants::ChatParticipants { chat_id, participants, version })
+                let chat_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut participants = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    participants.push(ChatParticipant::read_from(r)?);
+                }
+                let version = r.read_i32()?;
+                let chat_id = ChatId(chat_id);
+                Ok(ChatParticipants::ChatParticipants {
+                    chat_id,
+                    participants,
+                    version,
+                })
             }
             CHAT_PARTICIPANTS_FORBIDDEN_ID => {
-    let flags = r.read_i32()?;
-    let chat_id = r.read_i64()?;
-    let self_participant = if flags & (1 << 0) != 0 {
-        let self_participant = ChatParticipant::read_from(r)?;
-        Some(self_participant)
-    } else {
-        None
-    };
-    let chat_id = ChatId(chat_id);
-                Ok(ChatParticipants::ChatParticipantsForbidden { flags, chat_id, self_participant })
+                let flags = r.read_i32()?;
+                let chat_id = r.read_i64()?;
+                let self_participant = if flags & (1 << 0) != 0 {
+                    let self_participant = ChatParticipant::read_from(r)?;
+                    Some(self_participant)
+                } else {
+                    None
+                };
+                let chat_id = ChatId(chat_id);
+                Ok(ChatParticipants::ChatParticipantsForbidden {
+                    flags,
+                    chat_id,
+                    self_participant,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChatParticipants constructor {other:#x}"
@@ -465,11 +520,27 @@ impl ChatParticipants {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatParticipant {
     /// `chatParticipantAdmin#0360d5d2`
-    ChatParticipantAdmin { flags: i32, user_id: UserId, inviter_id: i64, date: i32, rank: Option<String> },
+    ChatParticipantAdmin {
+        flags: i32,
+        user_id: UserId,
+        inviter_id: i64,
+        date: i32,
+        rank: Option<String>,
+    },
     /// `chatParticipantCreator#e1f867b8`
-    ChatParticipantCreator { flags: i32, user_id: UserId, rank: Option<String> },
+    ChatParticipantCreator {
+        flags: i32,
+        user_id: UserId,
+        rank: Option<String>,
+    },
     /// `chatParticipant#38e79fde`
-    ChatParticipant { flags: i32, user_id: UserId, inviter_id: i64, date: i32, rank: Option<String> },
+    ChatParticipant {
+        flags: i32,
+        user_id: UserId,
+        inviter_id: i64,
+        date: i32,
+        rank: Option<String>,
+    },
 }
 
 impl ChatParticipant {
@@ -477,44 +548,60 @@ impl ChatParticipant {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_PARTICIPANT_ADMIN_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let inviter_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let rank = if flags & (1 << 0) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChatParticipant::ChatParticipantAdmin { flags, user_id, inviter_id, date, rank })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let inviter_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let rank = if flags & (1 << 0) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChatParticipant::ChatParticipantAdmin {
+                    flags,
+                    user_id,
+                    inviter_id,
+                    date,
+                    rank,
+                })
             }
             CHAT_PARTICIPANT_CREATOR_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let rank = if flags & (1 << 0) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChatParticipant::ChatParticipantCreator { flags, user_id, rank })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let rank = if flags & (1 << 0) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChatParticipant::ChatParticipantCreator {
+                    flags,
+                    user_id,
+                    rank,
+                })
             }
             CHAT_PARTICIPANT_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let inviter_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let rank = if flags & (1 << 0) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChatParticipant::ChatParticipant { flags, user_id, inviter_id, date, rank })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let inviter_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let rank = if flags & (1 << 0) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChatParticipant::ChatParticipant {
+                    flags,
+                    user_id,
+                    inviter_id,
+                    date,
+                    rank,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChatParticipant constructor {other:#x}"
@@ -561,31 +648,31 @@ impl ChatBannedRights {
                 "expected chatBannedRights, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let view_messages = flags & (1 << 0) != 0;
-    let send_messages = flags & (1 << 1) != 0;
-    let send_media = flags & (1 << 2) != 0;
-    let send_stickers = flags & (1 << 3) != 0;
-    let send_gifs = flags & (1 << 4) != 0;
-    let send_games = flags & (1 << 5) != 0;
-    let send_inline = flags & (1 << 6) != 0;
-    let embed_links = flags & (1 << 7) != 0;
-    let send_polls = flags & (1 << 8) != 0;
-    let change_info = flags & (1 << 10) != 0;
-    let invite_users = flags & (1 << 15) != 0;
-    let pin_messages = flags & (1 << 17) != 0;
-    let manage_topics = flags & (1 << 18) != 0;
-    let send_photos = flags & (1 << 19) != 0;
-    let send_videos = flags & (1 << 20) != 0;
-    let send_roundvideos = flags & (1 << 21) != 0;
-    let send_audios = flags & (1 << 22) != 0;
-    let send_voices = flags & (1 << 23) != 0;
-    let send_docs = flags & (1 << 24) != 0;
-    let send_plain = flags & (1 << 25) != 0;
-    let edit_rank = flags & (1 << 26) != 0;
-    let send_reactions = flags & (1 << 27) != 0;
-    let manage_linked_peers = flags & (1 << 28) != 0;
-    let until_date = r.read_i32()?;
+        let flags = r.read_i32()?;
+        let view_messages = flags & (1 << 0) != 0;
+        let send_messages = flags & (1 << 1) != 0;
+        let send_media = flags & (1 << 2) != 0;
+        let send_stickers = flags & (1 << 3) != 0;
+        let send_gifs = flags & (1 << 4) != 0;
+        let send_games = flags & (1 << 5) != 0;
+        let send_inline = flags & (1 << 6) != 0;
+        let embed_links = flags & (1 << 7) != 0;
+        let send_polls = flags & (1 << 8) != 0;
+        let change_info = flags & (1 << 10) != 0;
+        let invite_users = flags & (1 << 15) != 0;
+        let pin_messages = flags & (1 << 17) != 0;
+        let manage_topics = flags & (1 << 18) != 0;
+        let send_photos = flags & (1 << 19) != 0;
+        let send_videos = flags & (1 << 20) != 0;
+        let send_roundvideos = flags & (1 << 21) != 0;
+        let send_audios = flags & (1 << 22) != 0;
+        let send_voices = flags & (1 << 23) != 0;
+        let send_docs = flags & (1 << 24) != 0;
+        let send_plain = flags & (1 << 25) != 0;
+        let edit_rank = flags & (1 << 26) != 0;
+        let send_reactions = flags & (1 << 27) != 0;
+        let manage_linked_peers = flags & (1 << 28) != 0;
+        let until_date = r.read_i32()?;
         Ok(ChatBannedRights {
             flags,
             view_messages,
@@ -617,10 +704,32 @@ impl ChatBannedRights {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(CHAT_BANNED_RIGHTS_ID);
-    let flags: i32 = if self.view_messages { 1 << 0 } else { 0 } | if self.send_messages { 1 << 1 } else { 0 } | if self.send_media { 1 << 2 } else { 0 } | if self.send_stickers { 1 << 3 } else { 0 } | if self.send_gifs { 1 << 4 } else { 0 } | if self.send_games { 1 << 5 } else { 0 } | if self.send_inline { 1 << 6 } else { 0 } | if self.embed_links { 1 << 7 } else { 0 } | if self.send_polls { 1 << 8 } else { 0 } | if self.change_info { 1 << 10 } else { 0 } | if self.invite_users { 1 << 15 } else { 0 } | if self.pin_messages { 1 << 17 } else { 0 } | if self.manage_topics { 1 << 18 } else { 0 } | if self.send_photos { 1 << 19 } else { 0 } | if self.send_videos { 1 << 20 } else { 0 } | if self.send_roundvideos { 1 << 21 } else { 0 } | if self.send_audios { 1 << 22 } else { 0 } | if self.send_voices { 1 << 23 } else { 0 } | if self.send_docs { 1 << 24 } else { 0 } | if self.send_plain { 1 << 25 } else { 0 } | if self.edit_rank { 1 << 26 } else { 0 } | if self.send_reactions { 1 << 27 } else { 0 } | if self.manage_linked_peers { 1 << 28 } else { 0 };
-    w.write_i32(flags);
-    w.write_i32(self.until_date);
+        w.write_u32(CHAT_BANNED_RIGHTS_ID);
+        let flags: i32 = if self.view_messages { 1 << 0 } else { 0 }
+            | if self.send_messages { 1 << 1 } else { 0 }
+            | if self.send_media { 1 << 2 } else { 0 }
+            | if self.send_stickers { 1 << 3 } else { 0 }
+            | if self.send_gifs { 1 << 4 } else { 0 }
+            | if self.send_games { 1 << 5 } else { 0 }
+            | if self.send_inline { 1 << 6 } else { 0 }
+            | if self.embed_links { 1 << 7 } else { 0 }
+            | if self.send_polls { 1 << 8 } else { 0 }
+            | if self.change_info { 1 << 10 } else { 0 }
+            | if self.invite_users { 1 << 15 } else { 0 }
+            | if self.pin_messages { 1 << 17 } else { 0 }
+            | if self.manage_topics { 1 << 18 } else { 0 }
+            | if self.send_photos { 1 << 19 } else { 0 }
+            | if self.send_videos { 1 << 20 } else { 0 }
+            | if self.send_roundvideos { 1 << 21 } else { 0 }
+            | if self.send_audios { 1 << 22 } else { 0 }
+            | if self.send_voices { 1 << 23 } else { 0 }
+            | if self.send_docs { 1 << 24 } else { 0 }
+            | if self.send_plain { 1 << 25 } else { 0 }
+            | if self.edit_rank { 1 << 26 } else { 0 }
+            | if self.send_reactions { 1 << 27 } else { 0 }
+            | if self.manage_linked_peers { 1 << 28 } else { 0 };
+        w.write_i32(flags);
+        w.write_i32(self.until_date);
     }
 }
 
@@ -657,26 +766,26 @@ impl ChatAdminRights {
                 "expected chatAdminRights, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let change_info = flags & (1 << 0) != 0;
-    let post_messages = flags & (1 << 1) != 0;
-    let edit_messages = flags & (1 << 2) != 0;
-    let delete_messages = flags & (1 << 3) != 0;
-    let ban_users = flags & (1 << 4) != 0;
-    let invite_users = flags & (1 << 5) != 0;
-    let pin_messages = flags & (1 << 7) != 0;
-    let add_admins = flags & (1 << 9) != 0;
-    let anonymous = flags & (1 << 10) != 0;
-    let manage_call = flags & (1 << 11) != 0;
-    let other = flags & (1 << 12) != 0;
-    let manage_topics = flags & (1 << 13) != 0;
-    let post_stories = flags & (1 << 14) != 0;
-    let edit_stories = flags & (1 << 15) != 0;
-    let delete_stories = flags & (1 << 16) != 0;
-    let manage_direct_messages = flags & (1 << 17) != 0;
-    let manage_ranks = flags & (1 << 18) != 0;
-    let manage_linked_peers = flags & (1 << 19) != 0;
-    let manage_welcome_messages = flags & (1 << 20) != 0;
+        let flags = r.read_i32()?;
+        let change_info = flags & (1 << 0) != 0;
+        let post_messages = flags & (1 << 1) != 0;
+        let edit_messages = flags & (1 << 2) != 0;
+        let delete_messages = flags & (1 << 3) != 0;
+        let ban_users = flags & (1 << 4) != 0;
+        let invite_users = flags & (1 << 5) != 0;
+        let pin_messages = flags & (1 << 7) != 0;
+        let add_admins = flags & (1 << 9) != 0;
+        let anonymous = flags & (1 << 10) != 0;
+        let manage_call = flags & (1 << 11) != 0;
+        let other = flags & (1 << 12) != 0;
+        let manage_topics = flags & (1 << 13) != 0;
+        let post_stories = flags & (1 << 14) != 0;
+        let edit_stories = flags & (1 << 15) != 0;
+        let delete_stories = flags & (1 << 16) != 0;
+        let manage_direct_messages = flags & (1 << 17) != 0;
+        let manage_ranks = flags & (1 << 18) != 0;
+        let manage_linked_peers = flags & (1 << 19) != 0;
+        let manage_welcome_messages = flags & (1 << 20) != 0;
         Ok(ChatAdminRights {
             flags,
             change_info,
@@ -703,9 +812,35 @@ impl ChatAdminRights {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(CHAT_ADMIN_RIGHTS_ID);
-    let flags: i32 = if self.change_info { 1 << 0 } else { 0 } | if self.post_messages { 1 << 1 } else { 0 } | if self.edit_messages { 1 << 2 } else { 0 } | if self.delete_messages { 1 << 3 } else { 0 } | if self.ban_users { 1 << 4 } else { 0 } | if self.invite_users { 1 << 5 } else { 0 } | if self.pin_messages { 1 << 7 } else { 0 } | if self.add_admins { 1 << 9 } else { 0 } | if self.anonymous { 1 << 10 } else { 0 } | if self.manage_call { 1 << 11 } else { 0 } | if self.other { 1 << 12 } else { 0 } | if self.manage_topics { 1 << 13 } else { 0 } | if self.post_stories { 1 << 14 } else { 0 } | if self.edit_stories { 1 << 15 } else { 0 } | if self.delete_stories { 1 << 16 } else { 0 } | if self.manage_direct_messages { 1 << 17 } else { 0 } | if self.manage_ranks { 1 << 18 } else { 0 } | if self.manage_linked_peers { 1 << 19 } else { 0 } | if self.manage_welcome_messages { 1 << 20 } else { 0 };
-    w.write_i32(flags);
+        w.write_u32(CHAT_ADMIN_RIGHTS_ID);
+        let flags: i32 = if self.change_info { 1 << 0 } else { 0 }
+            | if self.post_messages { 1 << 1 } else { 0 }
+            | if self.edit_messages { 1 << 2 } else { 0 }
+            | if self.delete_messages { 1 << 3 } else { 0 }
+            | if self.ban_users { 1 << 4 } else { 0 }
+            | if self.invite_users { 1 << 5 } else { 0 }
+            | if self.pin_messages { 1 << 7 } else { 0 }
+            | if self.add_admins { 1 << 9 } else { 0 }
+            | if self.anonymous { 1 << 10 } else { 0 }
+            | if self.manage_call { 1 << 11 } else { 0 }
+            | if self.other { 1 << 12 } else { 0 }
+            | if self.manage_topics { 1 << 13 } else { 0 }
+            | if self.post_stories { 1 << 14 } else { 0 }
+            | if self.edit_stories { 1 << 15 } else { 0 }
+            | if self.delete_stories { 1 << 16 } else { 0 }
+            | if self.manage_direct_messages {
+                1 << 17
+            } else {
+                0
+            }
+            | if self.manage_ranks { 1 << 18 } else { 0 }
+            | if self.manage_linked_peers { 1 << 19 } else { 0 }
+            | if self.manage_welcome_messages {
+                1 << 20
+            } else {
+                0
+            };
+        w.write_i32(flags);
     }
 }
 
@@ -713,11 +848,114 @@ impl ChatAdminRights {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatFull {
     /// `communityFull#cbb7a507`
-    CommunityFull { flags: i32, id: i64, about: String, chat_photo: Photo, linked_peers: Vec<CommunityPeer>, admins_count: Option<i32>, kicked_count: Option<i32>, peer_link_requests_pending: Option<i32> },
+    CommunityFull {
+        flags: i32,
+        id: i64,
+        about: String,
+        chat_photo: Photo,
+        linked_peers: Vec<CommunityPeer>,
+        admins_count: Option<i32>,
+        kicked_count: Option<i32>,
+        peer_link_requests_pending: Option<i32>,
+    },
     /// `channelFull#a04e8d3a`
-    ChannelFull { flags: i32, can_view_participants: bool, can_set_username: bool, can_set_stickers: bool, hidden_prehistory: bool, can_set_location: bool, has_scheduled: bool, can_view_stats: bool, blocked: bool, flags2: i32, can_delete_channel: bool, antispam: bool, participants_hidden: bool, translations_disabled: bool, stories_pinned_available: bool, view_forum_as_messages: bool, restricted_sponsored: bool, can_view_revenue: bool, paid_media_allowed: bool, can_view_stars_revenue: bool, paid_reactions_available: bool, stargifts_available: bool, paid_messages_available: bool, has_welcome_messages: bool, id: i64, about: String, participants_count: Option<i32>, admins_count: Option<i32>, kicked_count: Option<i32>, banned_count: Option<i32>, online_count: Option<i32>, read_inbox_max_id: i32, read_outbox_max_id: i32, unread_count: i32, chat_photo: Photo, notify_settings: PeerNotifySettings, exported_invite: Option<ExportedChatInvite>, bot_info: Vec<BotInfo>, migrated_from_chat_id: Option<i64>, migrated_from_max_id: Option<i32>, pinned_msg_id: Option<i32>, stickerset: Option<StickerSet>, available_min_id: Option<i32>, folder_id: Option<i32>, linked_chat_id: Option<i64>, location: Option<ChannelLocation>, slowmode_seconds: Option<i32>, slowmode_next_send_date: Option<i32>, stats_dc: Option<i32>, pts: i32, call: Option<InputGroupCall>, ttl_period: Option<i32>, pending_suggestions: Option<Vec<Vec<u8>>>, groupcall_default_join_as: Option<Peer>, theme_emoticon: Option<String>, requests_pending: Option<i32>, recent_requesters: Option<Vec<i64>>, default_send_as: Option<Peer>, available_reactions: Option<ChatReactions>, reactions_limit: Option<i32>, stories: Option<PeerStories>, wallpaper: Option<WallPaper>, boosts_applied: Option<i32>, boosts_unrestrict: Option<i32>, emojiset: Option<StickerSet>, bot_verification: Option<BotVerification>, stargifts_count: Option<i32>, send_paid_messages_stars: Option<i64>, main_tab: Option<ProfileTab>, guard_bot_id: Option<i64> },
+    ChannelFull {
+        flags: i32,
+        can_view_participants: bool,
+        can_set_username: bool,
+        can_set_stickers: bool,
+        hidden_prehistory: bool,
+        can_set_location: bool,
+        has_scheduled: bool,
+        can_view_stats: bool,
+        blocked: bool,
+        flags2: i32,
+        can_delete_channel: bool,
+        antispam: bool,
+        participants_hidden: bool,
+        translations_disabled: bool,
+        stories_pinned_available: bool,
+        view_forum_as_messages: bool,
+        restricted_sponsored: bool,
+        can_view_revenue: bool,
+        paid_media_allowed: bool,
+        can_view_stars_revenue: bool,
+        paid_reactions_available: bool,
+        stargifts_available: bool,
+        paid_messages_available: bool,
+        has_welcome_messages: bool,
+        id: i64,
+        about: String,
+        participants_count: Option<i32>,
+        admins_count: Option<i32>,
+        kicked_count: Option<i32>,
+        banned_count: Option<i32>,
+        online_count: Option<i32>,
+        read_inbox_max_id: i32,
+        read_outbox_max_id: i32,
+        unread_count: i32,
+        chat_photo: Photo,
+        notify_settings: PeerNotifySettings,
+        exported_invite: Option<ExportedChatInvite>,
+        bot_info: Vec<BotInfo>,
+        migrated_from_chat_id: Option<i64>,
+        migrated_from_max_id: Option<i32>,
+        pinned_msg_id: Option<i32>,
+        stickerset: Option<StickerSet>,
+        available_min_id: Option<i32>,
+        folder_id: Option<i32>,
+        linked_chat_id: Option<i64>,
+        location: Option<ChannelLocation>,
+        slowmode_seconds: Option<i32>,
+        slowmode_next_send_date: Option<i32>,
+        stats_dc: Option<i32>,
+        pts: i32,
+        call: Option<InputGroupCall>,
+        ttl_period: Option<i32>,
+        pending_suggestions: Option<Vec<Vec<u8>>>,
+        groupcall_default_join_as: Option<Peer>,
+        theme_emoticon: Option<String>,
+        requests_pending: Option<i32>,
+        recent_requesters: Option<Vec<i64>>,
+        default_send_as: Option<Peer>,
+        available_reactions: Option<ChatReactions>,
+        reactions_limit: Option<i32>,
+        stories: Option<PeerStories>,
+        wallpaper: Option<WallPaper>,
+        boosts_applied: Option<i32>,
+        boosts_unrestrict: Option<i32>,
+        emojiset: Option<StickerSet>,
+        bot_verification: Option<BotVerification>,
+        stargifts_count: Option<i32>,
+        send_paid_messages_stars: Option<i64>,
+        main_tab: Option<ProfileTab>,
+        guard_bot_id: Option<i64>,
+    },
     /// `chatFull#2633421b`
-    ChatFull { flags: i32, can_set_username: bool, has_scheduled: bool, translations_disabled: bool, has_welcome_messages: bool, id: i64, about: String, participants: ChatParticipants, chat_photo: Option<Photo>, notify_settings: PeerNotifySettings, exported_invite: Option<ExportedChatInvite>, bot_info: Option<Vec<BotInfo>>, pinned_msg_id: Option<i32>, folder_id: Option<i32>, call: Option<InputGroupCall>, ttl_period: Option<i32>, groupcall_default_join_as: Option<Peer>, theme_emoticon: Option<String>, requests_pending: Option<i32>, recent_requesters: Option<Vec<i64>>, available_reactions: Option<ChatReactions>, reactions_limit: Option<i32> },
+    ChatFull {
+        flags: i32,
+        can_set_username: bool,
+        has_scheduled: bool,
+        translations_disabled: bool,
+        has_welcome_messages: bool,
+        id: i64,
+        about: String,
+        participants: ChatParticipants,
+        chat_photo: Option<Photo>,
+        notify_settings: PeerNotifySettings,
+        exported_invite: Option<ExportedChatInvite>,
+        bot_info: Option<Vec<BotInfo>>,
+        pinned_msg_id: Option<i32>,
+        folder_id: Option<i32>,
+        call: Option<InputGroupCall>,
+        ttl_period: Option<i32>,
+        groupcall_default_join_as: Option<Peer>,
+        theme_emoticon: Option<String>,
+        requests_pending: Option<i32>,
+        recent_requesters: Option<Vec<i64>>,
+        available_reactions: Option<ChatReactions>,
+        reactions_limit: Option<i32>,
+    },
 }
 
 impl ChatFull {
@@ -725,402 +963,505 @@ impl ChatFull {
         let ctor = r.read_u32()?;
         match ctor {
             COMMUNITY_FULL_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let about = String::from_utf8(r.read_bytes()?)?;
-    let chat_photo = Photo::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut linked_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        linked_peers.push(CommunityPeer::read_from(r)?);
-    }
-    let admins_count = if flags & (1 << 1) != 0 {
-        let admins_count = r.read_i32()?;
-        Some(admins_count)
-    } else {
-        None
-    };
-    let kicked_count = if flags & (1 << 2) != 0 {
-        let kicked_count = r.read_i32()?;
-        Some(kicked_count)
-    } else {
-        None
-    };
-    let peer_link_requests_pending = if flags & (1 << 0) != 0 {
-        let peer_link_requests_pending = r.read_i32()?;
-        Some(peer_link_requests_pending)
-    } else {
-        None
-    };
-                Ok(ChatFull::CommunityFull { flags, id, about, chat_photo, linked_peers, admins_count, kicked_count, peer_link_requests_pending })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let about = String::from_utf8(r.read_bytes()?)?;
+                let chat_photo = Photo::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut linked_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    linked_peers.push(CommunityPeer::read_from(r)?);
+                }
+                let admins_count = if flags & (1 << 1) != 0 {
+                    let admins_count = r.read_i32()?;
+                    Some(admins_count)
+                } else {
+                    None
+                };
+                let kicked_count = if flags & (1 << 2) != 0 {
+                    let kicked_count = r.read_i32()?;
+                    Some(kicked_count)
+                } else {
+                    None
+                };
+                let peer_link_requests_pending = if flags & (1 << 0) != 0 {
+                    let peer_link_requests_pending = r.read_i32()?;
+                    Some(peer_link_requests_pending)
+                } else {
+                    None
+                };
+                Ok(ChatFull::CommunityFull {
+                    flags,
+                    id,
+                    about,
+                    chat_photo,
+                    linked_peers,
+                    admins_count,
+                    kicked_count,
+                    peer_link_requests_pending,
+                })
             }
             CHANNEL_FULL_ID => {
-    let flags = r.read_i32()?;
-    let flags2 = r.read_i32()?;
-    let can_view_participants = flags & (1 << 3) != 0;
-    let can_set_username = flags & (1 << 6) != 0;
-    let can_set_stickers = flags & (1 << 7) != 0;
-    let hidden_prehistory = flags & (1 << 10) != 0;
-    let can_set_location = flags & (1 << 16) != 0;
-    let has_scheduled = flags & (1 << 19) != 0;
-    let can_view_stats = flags & (1 << 20) != 0;
-    let blocked = flags & (1 << 22) != 0;
-    let can_delete_channel = flags2 & (1 << 0) != 0;
-    let antispam = flags2 & (1 << 1) != 0;
-    let participants_hidden = flags2 & (1 << 2) != 0;
-    let translations_disabled = flags2 & (1 << 3) != 0;
-    let stories_pinned_available = flags2 & (1 << 5) != 0;
-    let view_forum_as_messages = flags2 & (1 << 6) != 0;
-    let restricted_sponsored = flags2 & (1 << 11) != 0;
-    let can_view_revenue = flags2 & (1 << 12) != 0;
-    let paid_media_allowed = flags2 & (1 << 14) != 0;
-    let can_view_stars_revenue = flags2 & (1 << 15) != 0;
-    let paid_reactions_available = flags2 & (1 << 16) != 0;
-    let stargifts_available = flags2 & (1 << 19) != 0;
-    let paid_messages_available = flags2 & (1 << 20) != 0;
-    let has_welcome_messages = flags2 & (1 << 24) != 0;
-    let id = r.read_i64()?;
-    let about = String::from_utf8(r.read_bytes()?)?;
-    let participants_count = if flags & (1 << 0) != 0 {
-        let participants_count = r.read_i32()?;
-        Some(participants_count)
-    } else {
-        None
-    };
-    let admins_count = if flags & (1 << 1) != 0 {
-        let admins_count = r.read_i32()?;
-        Some(admins_count)
-    } else {
-        None
-    };
-    let kicked_count = if flags & (1 << 2) != 0 {
-        let kicked_count = r.read_i32()?;
-        Some(kicked_count)
-    } else {
-        None
-    };
-    let banned_count = if flags & (1 << 2) != 0 {
-        let banned_count = r.read_i32()?;
-        Some(banned_count)
-    } else {
-        None
-    };
-    let online_count = if flags & (1 << 13) != 0 {
-        let online_count = r.read_i32()?;
-        Some(online_count)
-    } else {
-        None
-    };
-    let read_inbox_max_id = r.read_i32()?;
-    let read_outbox_max_id = r.read_i32()?;
-    let unread_count = r.read_i32()?;
-    let chat_photo = Photo::read_from(r)?;
-    let notify_settings = PeerNotifySettings::read_from(r)?;
-    let exported_invite = if flags & (1 << 23) != 0 {
-        let exported_invite = ExportedChatInvite::read_from(r)?;
-        Some(exported_invite)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut bot_info = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        bot_info.push(BotInfo::read_from(r)?);
-    }
-    let migrated_from_chat_id = if flags & (1 << 4) != 0 {
-        let migrated_from_chat_id = r.read_i64()?;
-        Some(migrated_from_chat_id)
-    } else {
-        None
-    };
-    let migrated_from_max_id = if flags & (1 << 4) != 0 {
-        let migrated_from_max_id = r.read_i32()?;
-        Some(migrated_from_max_id)
-    } else {
-        None
-    };
-    let pinned_msg_id = if flags & (1 << 5) != 0 {
-        let pinned_msg_id = r.read_i32()?;
-        Some(pinned_msg_id)
-    } else {
-        None
-    };
-    let stickerset = if flags & (1 << 8) != 0 {
-        let stickerset = StickerSet::read_from(r)?;
-        Some(stickerset)
-    } else {
-        None
-    };
-    let available_min_id = if flags & (1 << 9) != 0 {
-        let available_min_id = r.read_i32()?;
-        Some(available_min_id)
-    } else {
-        None
-    };
-    let folder_id = if flags & (1 << 11) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let linked_chat_id = if flags & (1 << 14) != 0 {
-        let linked_chat_id = r.read_i64()?;
-        Some(linked_chat_id)
-    } else {
-        None
-    };
-    let location = if flags & (1 << 15) != 0 {
-        let location = ChannelLocation::read_from(r)?;
-        Some(location)
-    } else {
-        None
-    };
-    let slowmode_seconds = if flags & (1 << 17) != 0 {
-        let slowmode_seconds = r.read_i32()?;
-        Some(slowmode_seconds)
-    } else {
-        None
-    };
-    let slowmode_next_send_date = if flags & (1 << 18) != 0 {
-        let slowmode_next_send_date = r.read_i32()?;
-        Some(slowmode_next_send_date)
-    } else {
-        None
-    };
-    let stats_dc = if flags & (1 << 12) != 0 {
-        let stats_dc = r.read_i32()?;
-        Some(stats_dc)
-    } else {
-        None
-    };
-    let pts = r.read_i32()?;
-    let call = if flags & (1 << 21) != 0 {
-        let call = InputGroupCall::read_from(r)?;
-        Some(call)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 24) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-    let pending_suggestions = if flags & (1 << 25) != 0 {
-        let n = r.read_vector_header()?;
-        let mut pending_suggestions = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            pending_suggestions.push(r.read_bytes()?);
-        }
-        Some(pending_suggestions)
-    } else {
-        None
-    };
-    let groupcall_default_join_as = if flags & (1 << 26) != 0 {
-        let groupcall_default_join_as = Peer::read_from(r)?;
-        Some(groupcall_default_join_as)
-    } else {
-        None
-    };
-    let theme_emoticon = if flags & (1 << 27) != 0 {
-        let theme_emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(theme_emoticon)
-    } else {
-        None
-    };
-    let requests_pending = if flags & (1 << 28) != 0 {
-        let requests_pending = r.read_i32()?;
-        Some(requests_pending)
-    } else {
-        None
-    };
-    let recent_requesters = if flags & (1 << 28) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_requesters.push(r.read_i64()?);
-        }
-        Some(recent_requesters)
-    } else {
-        None
-    };
-    let default_send_as = if flags & (1 << 29) != 0 {
-        let default_send_as = Peer::read_from(r)?;
-        Some(default_send_as)
-    } else {
-        None
-    };
-    let available_reactions = if flags & (1 << 30) != 0 {
-        let available_reactions = ChatReactions::read_from(r)?;
-        Some(available_reactions)
-    } else {
-        None
-    };
-    let reactions_limit = if flags2 & (1 << 13) != 0 {
-        let reactions_limit = r.read_i32()?;
-        Some(reactions_limit)
-    } else {
-        None
-    };
-    let stories = if flags2 & (1 << 4) != 0 {
-        let stories = PeerStories::read_from(r)?;
-        Some(stories)
-    } else {
-        None
-    };
-    let wallpaper = if flags2 & (1 << 7) != 0 {
-        let wallpaper = WallPaper::read_from(r)?;
-        Some(wallpaper)
-    } else {
-        None
-    };
-    let boosts_applied = if flags2 & (1 << 8) != 0 {
-        let boosts_applied = r.read_i32()?;
-        Some(boosts_applied)
-    } else {
-        None
-    };
-    let boosts_unrestrict = if flags2 & (1 << 9) != 0 {
-        let boosts_unrestrict = r.read_i32()?;
-        Some(boosts_unrestrict)
-    } else {
-        None
-    };
-    let emojiset = if flags2 & (1 << 10) != 0 {
-        let emojiset = StickerSet::read_from(r)?;
-        Some(emojiset)
-    } else {
-        None
-    };
-    let bot_verification = if flags2 & (1 << 17) != 0 {
-        let bot_verification = BotVerification::read_from(r)?;
-        Some(bot_verification)
-    } else {
-        None
-    };
-    let stargifts_count = if flags2 & (1 << 18) != 0 {
-        let stargifts_count = r.read_i32()?;
-        Some(stargifts_count)
-    } else {
-        None
-    };
-    let send_paid_messages_stars = if flags2 & (1 << 21) != 0 {
-        let send_paid_messages_stars = r.read_i64()?;
-        Some(send_paid_messages_stars)
-    } else {
-        None
-    };
-    let main_tab = if flags2 & (1 << 22) != 0 {
-        let main_tab = ProfileTab::read_from(r)?;
-        Some(main_tab)
-    } else {
-        None
-    };
-    let guard_bot_id = if flags2 & (1 << 23) != 0 {
-        let guard_bot_id = r.read_i64()?;
-        Some(guard_bot_id)
-    } else {
-        None
-    };
-                Ok(ChatFull::ChannelFull { flags, can_view_participants, can_set_username, can_set_stickers, hidden_prehistory, can_set_location, has_scheduled, can_view_stats, blocked, flags2, can_delete_channel, antispam, participants_hidden, translations_disabled, stories_pinned_available, view_forum_as_messages, restricted_sponsored, can_view_revenue, paid_media_allowed, can_view_stars_revenue, paid_reactions_available, stargifts_available, paid_messages_available, has_welcome_messages, id, about, participants_count, admins_count, kicked_count, banned_count, online_count, read_inbox_max_id, read_outbox_max_id, unread_count, chat_photo, notify_settings, exported_invite, bot_info, migrated_from_chat_id, migrated_from_max_id, pinned_msg_id, stickerset, available_min_id, folder_id, linked_chat_id, location, slowmode_seconds, slowmode_next_send_date, stats_dc, pts, call, ttl_period, pending_suggestions, groupcall_default_join_as, theme_emoticon, requests_pending, recent_requesters, default_send_as, available_reactions, reactions_limit, stories, wallpaper, boosts_applied, boosts_unrestrict, emojiset, bot_verification, stargifts_count, send_paid_messages_stars, main_tab, guard_bot_id })
+                let flags = r.read_i32()?;
+                let flags2 = r.read_i32()?;
+                let can_view_participants = flags & (1 << 3) != 0;
+                let can_set_username = flags & (1 << 6) != 0;
+                let can_set_stickers = flags & (1 << 7) != 0;
+                let hidden_prehistory = flags & (1 << 10) != 0;
+                let can_set_location = flags & (1 << 16) != 0;
+                let has_scheduled = flags & (1 << 19) != 0;
+                let can_view_stats = flags & (1 << 20) != 0;
+                let blocked = flags & (1 << 22) != 0;
+                let can_delete_channel = flags2 & (1 << 0) != 0;
+                let antispam = flags2 & (1 << 1) != 0;
+                let participants_hidden = flags2 & (1 << 2) != 0;
+                let translations_disabled = flags2 & (1 << 3) != 0;
+                let stories_pinned_available = flags2 & (1 << 5) != 0;
+                let view_forum_as_messages = flags2 & (1 << 6) != 0;
+                let restricted_sponsored = flags2 & (1 << 11) != 0;
+                let can_view_revenue = flags2 & (1 << 12) != 0;
+                let paid_media_allowed = flags2 & (1 << 14) != 0;
+                let can_view_stars_revenue = flags2 & (1 << 15) != 0;
+                let paid_reactions_available = flags2 & (1 << 16) != 0;
+                let stargifts_available = flags2 & (1 << 19) != 0;
+                let paid_messages_available = flags2 & (1 << 20) != 0;
+                let has_welcome_messages = flags2 & (1 << 24) != 0;
+                let id = r.read_i64()?;
+                let about = String::from_utf8(r.read_bytes()?)?;
+                let participants_count = if flags & (1 << 0) != 0 {
+                    let participants_count = r.read_i32()?;
+                    Some(participants_count)
+                } else {
+                    None
+                };
+                let admins_count = if flags & (1 << 1) != 0 {
+                    let admins_count = r.read_i32()?;
+                    Some(admins_count)
+                } else {
+                    None
+                };
+                let kicked_count = if flags & (1 << 2) != 0 {
+                    let kicked_count = r.read_i32()?;
+                    Some(kicked_count)
+                } else {
+                    None
+                };
+                let banned_count = if flags & (1 << 2) != 0 {
+                    let banned_count = r.read_i32()?;
+                    Some(banned_count)
+                } else {
+                    None
+                };
+                let online_count = if flags & (1 << 13) != 0 {
+                    let online_count = r.read_i32()?;
+                    Some(online_count)
+                } else {
+                    None
+                };
+                let read_inbox_max_id = r.read_i32()?;
+                let read_outbox_max_id = r.read_i32()?;
+                let unread_count = r.read_i32()?;
+                let chat_photo = Photo::read_from(r)?;
+                let notify_settings = PeerNotifySettings::read_from(r)?;
+                let exported_invite = if flags & (1 << 23) != 0 {
+                    let exported_invite = ExportedChatInvite::read_from(r)?;
+                    Some(exported_invite)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut bot_info = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    bot_info.push(BotInfo::read_from(r)?);
+                }
+                let migrated_from_chat_id = if flags & (1 << 4) != 0 {
+                    let migrated_from_chat_id = r.read_i64()?;
+                    Some(migrated_from_chat_id)
+                } else {
+                    None
+                };
+                let migrated_from_max_id = if flags & (1 << 4) != 0 {
+                    let migrated_from_max_id = r.read_i32()?;
+                    Some(migrated_from_max_id)
+                } else {
+                    None
+                };
+                let pinned_msg_id = if flags & (1 << 5) != 0 {
+                    let pinned_msg_id = r.read_i32()?;
+                    Some(pinned_msg_id)
+                } else {
+                    None
+                };
+                let stickerset = if flags & (1 << 8) != 0 {
+                    let stickerset = StickerSet::read_from(r)?;
+                    Some(stickerset)
+                } else {
+                    None
+                };
+                let available_min_id = if flags & (1 << 9) != 0 {
+                    let available_min_id = r.read_i32()?;
+                    Some(available_min_id)
+                } else {
+                    None
+                };
+                let folder_id = if flags & (1 << 11) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let linked_chat_id = if flags & (1 << 14) != 0 {
+                    let linked_chat_id = r.read_i64()?;
+                    Some(linked_chat_id)
+                } else {
+                    None
+                };
+                let location = if flags & (1 << 15) != 0 {
+                    let location = ChannelLocation::read_from(r)?;
+                    Some(location)
+                } else {
+                    None
+                };
+                let slowmode_seconds = if flags & (1 << 17) != 0 {
+                    let slowmode_seconds = r.read_i32()?;
+                    Some(slowmode_seconds)
+                } else {
+                    None
+                };
+                let slowmode_next_send_date = if flags & (1 << 18) != 0 {
+                    let slowmode_next_send_date = r.read_i32()?;
+                    Some(slowmode_next_send_date)
+                } else {
+                    None
+                };
+                let stats_dc = if flags & (1 << 12) != 0 {
+                    let stats_dc = r.read_i32()?;
+                    Some(stats_dc)
+                } else {
+                    None
+                };
+                let pts = r.read_i32()?;
+                let call = if flags & (1 << 21) != 0 {
+                    let call = InputGroupCall::read_from(r)?;
+                    Some(call)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 24) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                let pending_suggestions = if flags & (1 << 25) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut pending_suggestions = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        pending_suggestions.push(r.read_bytes()?);
+                    }
+                    Some(pending_suggestions)
+                } else {
+                    None
+                };
+                let groupcall_default_join_as = if flags & (1 << 26) != 0 {
+                    let groupcall_default_join_as = Peer::read_from(r)?;
+                    Some(groupcall_default_join_as)
+                } else {
+                    None
+                };
+                let theme_emoticon = if flags & (1 << 27) != 0 {
+                    let theme_emoticon = String::from_utf8(r.read_bytes()?)?;
+                    Some(theme_emoticon)
+                } else {
+                    None
+                };
+                let requests_pending = if flags & (1 << 28) != 0 {
+                    let requests_pending = r.read_i32()?;
+                    Some(requests_pending)
+                } else {
+                    None
+                };
+                let recent_requesters = if flags & (1 << 28) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        recent_requesters.push(r.read_i64()?);
+                    }
+                    Some(recent_requesters)
+                } else {
+                    None
+                };
+                let default_send_as = if flags & (1 << 29) != 0 {
+                    let default_send_as = Peer::read_from(r)?;
+                    Some(default_send_as)
+                } else {
+                    None
+                };
+                let available_reactions = if flags & (1 << 30) != 0 {
+                    let available_reactions = ChatReactions::read_from(r)?;
+                    Some(available_reactions)
+                } else {
+                    None
+                };
+                let reactions_limit = if flags2 & (1 << 13) != 0 {
+                    let reactions_limit = r.read_i32()?;
+                    Some(reactions_limit)
+                } else {
+                    None
+                };
+                let stories = if flags2 & (1 << 4) != 0 {
+                    let stories = PeerStories::read_from(r)?;
+                    Some(stories)
+                } else {
+                    None
+                };
+                let wallpaper = if flags2 & (1 << 7) != 0 {
+                    let wallpaper = WallPaper::read_from(r)?;
+                    Some(wallpaper)
+                } else {
+                    None
+                };
+                let boosts_applied = if flags2 & (1 << 8) != 0 {
+                    let boosts_applied = r.read_i32()?;
+                    Some(boosts_applied)
+                } else {
+                    None
+                };
+                let boosts_unrestrict = if flags2 & (1 << 9) != 0 {
+                    let boosts_unrestrict = r.read_i32()?;
+                    Some(boosts_unrestrict)
+                } else {
+                    None
+                };
+                let emojiset = if flags2 & (1 << 10) != 0 {
+                    let emojiset = StickerSet::read_from(r)?;
+                    Some(emojiset)
+                } else {
+                    None
+                };
+                let bot_verification = if flags2 & (1 << 17) != 0 {
+                    let bot_verification = BotVerification::read_from(r)?;
+                    Some(bot_verification)
+                } else {
+                    None
+                };
+                let stargifts_count = if flags2 & (1 << 18) != 0 {
+                    let stargifts_count = r.read_i32()?;
+                    Some(stargifts_count)
+                } else {
+                    None
+                };
+                let send_paid_messages_stars = if flags2 & (1 << 21) != 0 {
+                    let send_paid_messages_stars = r.read_i64()?;
+                    Some(send_paid_messages_stars)
+                } else {
+                    None
+                };
+                let main_tab = if flags2 & (1 << 22) != 0 {
+                    let main_tab = ProfileTab::read_from(r)?;
+                    Some(main_tab)
+                } else {
+                    None
+                };
+                let guard_bot_id = if flags2 & (1 << 23) != 0 {
+                    let guard_bot_id = r.read_i64()?;
+                    Some(guard_bot_id)
+                } else {
+                    None
+                };
+                Ok(ChatFull::ChannelFull {
+                    flags,
+                    can_view_participants,
+                    can_set_username,
+                    can_set_stickers,
+                    hidden_prehistory,
+                    can_set_location,
+                    has_scheduled,
+                    can_view_stats,
+                    blocked,
+                    flags2,
+                    can_delete_channel,
+                    antispam,
+                    participants_hidden,
+                    translations_disabled,
+                    stories_pinned_available,
+                    view_forum_as_messages,
+                    restricted_sponsored,
+                    can_view_revenue,
+                    paid_media_allowed,
+                    can_view_stars_revenue,
+                    paid_reactions_available,
+                    stargifts_available,
+                    paid_messages_available,
+                    has_welcome_messages,
+                    id,
+                    about,
+                    participants_count,
+                    admins_count,
+                    kicked_count,
+                    banned_count,
+                    online_count,
+                    read_inbox_max_id,
+                    read_outbox_max_id,
+                    unread_count,
+                    chat_photo,
+                    notify_settings,
+                    exported_invite,
+                    bot_info,
+                    migrated_from_chat_id,
+                    migrated_from_max_id,
+                    pinned_msg_id,
+                    stickerset,
+                    available_min_id,
+                    folder_id,
+                    linked_chat_id,
+                    location,
+                    slowmode_seconds,
+                    slowmode_next_send_date,
+                    stats_dc,
+                    pts,
+                    call,
+                    ttl_period,
+                    pending_suggestions,
+                    groupcall_default_join_as,
+                    theme_emoticon,
+                    requests_pending,
+                    recent_requesters,
+                    default_send_as,
+                    available_reactions,
+                    reactions_limit,
+                    stories,
+                    wallpaper,
+                    boosts_applied,
+                    boosts_unrestrict,
+                    emojiset,
+                    bot_verification,
+                    stargifts_count,
+                    send_paid_messages_stars,
+                    main_tab,
+                    guard_bot_id,
+                })
             }
             CHAT_FULL_ID => {
-    let flags = r.read_i32()?;
-    let can_set_username = flags & (1 << 7) != 0;
-    let has_scheduled = flags & (1 << 8) != 0;
-    let translations_disabled = flags & (1 << 19) != 0;
-    let has_welcome_messages = flags & (1 << 21) != 0;
-    let id = r.read_i64()?;
-    let about = String::from_utf8(r.read_bytes()?)?;
-    let participants = ChatParticipants::read_from(r)?;
-    let chat_photo = if flags & (1 << 2) != 0 {
-        let chat_photo = Photo::read_from(r)?;
-        Some(chat_photo)
-    } else {
-        None
-    };
-    let notify_settings = PeerNotifySettings::read_from(r)?;
-    let exported_invite = if flags & (1 << 13) != 0 {
-        let exported_invite = ExportedChatInvite::read_from(r)?;
-        Some(exported_invite)
-    } else {
-        None
-    };
-    let bot_info = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut bot_info = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            bot_info.push(BotInfo::read_from(r)?);
-        }
-        Some(bot_info)
-    } else {
-        None
-    };
-    let pinned_msg_id = if flags & (1 << 6) != 0 {
-        let pinned_msg_id = r.read_i32()?;
-        Some(pinned_msg_id)
-    } else {
-        None
-    };
-    let folder_id = if flags & (1 << 11) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let call = if flags & (1 << 12) != 0 {
-        let call = InputGroupCall::read_from(r)?;
-        Some(call)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 14) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-    let groupcall_default_join_as = if flags & (1 << 15) != 0 {
-        let groupcall_default_join_as = Peer::read_from(r)?;
-        Some(groupcall_default_join_as)
-    } else {
-        None
-    };
-    let theme_emoticon = if flags & (1 << 16) != 0 {
-        let theme_emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(theme_emoticon)
-    } else {
-        None
-    };
-    let requests_pending = if flags & (1 << 17) != 0 {
-        let requests_pending = r.read_i32()?;
-        Some(requests_pending)
-    } else {
-        None
-    };
-    let recent_requesters = if flags & (1 << 17) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_requesters.push(r.read_i64()?);
-        }
-        Some(recent_requesters)
-    } else {
-        None
-    };
-    let available_reactions = if flags & (1 << 18) != 0 {
-        let available_reactions = ChatReactions::read_from(r)?;
-        Some(available_reactions)
-    } else {
-        None
-    };
-    let reactions_limit = if flags & (1 << 20) != 0 {
-        let reactions_limit = r.read_i32()?;
-        Some(reactions_limit)
-    } else {
-        None
-    };
-                Ok(ChatFull::ChatFull { flags, can_set_username, has_scheduled, translations_disabled, has_welcome_messages, id, about, participants, chat_photo, notify_settings, exported_invite, bot_info, pinned_msg_id, folder_id, call, ttl_period, groupcall_default_join_as, theme_emoticon, requests_pending, recent_requesters, available_reactions, reactions_limit })
+                let flags = r.read_i32()?;
+                let can_set_username = flags & (1 << 7) != 0;
+                let has_scheduled = flags & (1 << 8) != 0;
+                let translations_disabled = flags & (1 << 19) != 0;
+                let has_welcome_messages = flags & (1 << 21) != 0;
+                let id = r.read_i64()?;
+                let about = String::from_utf8(r.read_bytes()?)?;
+                let participants = ChatParticipants::read_from(r)?;
+                let chat_photo = if flags & (1 << 2) != 0 {
+                    let chat_photo = Photo::read_from(r)?;
+                    Some(chat_photo)
+                } else {
+                    None
+                };
+                let notify_settings = PeerNotifySettings::read_from(r)?;
+                let exported_invite = if flags & (1 << 13) != 0 {
+                    let exported_invite = ExportedChatInvite::read_from(r)?;
+                    Some(exported_invite)
+                } else {
+                    None
+                };
+                let bot_info = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut bot_info = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        bot_info.push(BotInfo::read_from(r)?);
+                    }
+                    Some(bot_info)
+                } else {
+                    None
+                };
+                let pinned_msg_id = if flags & (1 << 6) != 0 {
+                    let pinned_msg_id = r.read_i32()?;
+                    Some(pinned_msg_id)
+                } else {
+                    None
+                };
+                let folder_id = if flags & (1 << 11) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let call = if flags & (1 << 12) != 0 {
+                    let call = InputGroupCall::read_from(r)?;
+                    Some(call)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 14) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                let groupcall_default_join_as = if flags & (1 << 15) != 0 {
+                    let groupcall_default_join_as = Peer::read_from(r)?;
+                    Some(groupcall_default_join_as)
+                } else {
+                    None
+                };
+                let theme_emoticon = if flags & (1 << 16) != 0 {
+                    let theme_emoticon = String::from_utf8(r.read_bytes()?)?;
+                    Some(theme_emoticon)
+                } else {
+                    None
+                };
+                let requests_pending = if flags & (1 << 17) != 0 {
+                    let requests_pending = r.read_i32()?;
+                    Some(requests_pending)
+                } else {
+                    None
+                };
+                let recent_requesters = if flags & (1 << 17) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut recent_requesters = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        recent_requesters.push(r.read_i64()?);
+                    }
+                    Some(recent_requesters)
+                } else {
+                    None
+                };
+                let available_reactions = if flags & (1 << 18) != 0 {
+                    let available_reactions = ChatReactions::read_from(r)?;
+                    Some(available_reactions)
+                } else {
+                    None
+                };
+                let reactions_limit = if flags & (1 << 20) != 0 {
+                    let reactions_limit = r.read_i32()?;
+                    Some(reactions_limit)
+                } else {
+                    None
+                };
+                Ok(ChatFull::ChatFull {
+                    flags,
+                    can_set_username,
+                    has_scheduled,
+                    translations_disabled,
+                    has_welcome_messages,
+                    id,
+                    about,
+                    participants,
+                    chat_photo,
+                    notify_settings,
+                    exported_invite,
+                    bot_info,
+                    pinned_msg_id,
+                    folder_id,
+                    call,
+                    ttl_period,
+                    groupcall_default_join_as,
+                    theme_emoticon,
+                    requests_pending,
+                    recent_requesters,
+                    available_reactions,
+                    reactions_limit,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChatFull constructor {other:#x}"
@@ -1146,15 +1487,15 @@ impl CommunityPeer {
                 "expected communityPeer, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let can_view_history = flags & (1 << 2) != 0;
-    let visible = if flags & (1 << 0) != 0 {
-        let visible = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(visible)
-    } else {
-        None
-    };
-    let peer = Peer::read_from(r)?;
+        let flags = r.read_i32()?;
+        let can_view_history = flags & (1 << 2) != 0;
+        let visible = if flags & (1 << 0) != 0 {
+            let visible = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(visible)
+        } else {
+            None
+        };
+        let peer = Peer::read_from(r)?;
         Ok(CommunityPeer {
             flags,
             can_view_history,
@@ -1162,18 +1503,31 @@ impl CommunityPeer {
             peer,
         })
     }
-
 }
 
 /// Union `VideoSize` (3 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum VideoSize {
     /// `videoSizeStickerMarkup#0da082fe`
-    VideoSizeStickerMarkup { stickerset: InputStickerSet, sticker_id: i64, background_colors: Vec<i32> },
+    VideoSizeStickerMarkup {
+        stickerset: InputStickerSet,
+        sticker_id: i64,
+        background_colors: Vec<i32>,
+    },
     /// `videoSizeEmojiMarkup#f85c413c`
-    VideoSizeEmojiMarkup { emoji_id: i64, background_colors: Vec<i32> },
+    VideoSizeEmojiMarkup {
+        emoji_id: i64,
+        background_colors: Vec<i32>,
+    },
     /// `videoSize#de33b094`
-    VideoSize { flags: i32, r#type: String, w: i32, h: i32, size: i32, video_start_ts: Option<f64> },
+    VideoSize {
+        flags: i32,
+        r#type: String,
+        w: i32,
+        h: i32,
+        size: i32,
+        video_start_ts: Option<f64>,
+    },
 }
 
 impl VideoSize {
@@ -1181,37 +1535,51 @@ impl VideoSize {
         let ctor = r.read_u32()?;
         match ctor {
             VIDEO_SIZE_STICKER_MARKUP_ID => {
-    let stickerset = InputStickerSet::read_from(r)?;
-    let sticker_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        background_colors.push(r.read_i32()?);
-    }
-                Ok(VideoSize::VideoSizeStickerMarkup { stickerset, sticker_id, background_colors })
+                let stickerset = InputStickerSet::read_from(r)?;
+                let sticker_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeStickerMarkup {
+                    stickerset,
+                    sticker_id,
+                    background_colors,
+                })
             }
             VIDEO_SIZE_EMOJI_MARKUP_ID => {
-    let emoji_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        background_colors.push(r.read_i32()?);
-    }
-                Ok(VideoSize::VideoSizeEmojiMarkup { emoji_id, background_colors })
+                let emoji_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeEmojiMarkup {
+                    emoji_id,
+                    background_colors,
+                })
             }
             VIDEO_SIZE_ID => {
-    let flags = r.read_i32()?;
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let size = r.read_i32()?;
-    let video_start_ts = if flags & (1 << 0) != 0 {
-        let video_start_ts = f64::from_bits(r.read_u64()?);
-        Some(video_start_ts)
-    } else {
-        None
-    };
-                Ok(VideoSize::VideoSize { flags, r#type, w, h, size, video_start_ts })
+                let flags = r.read_i32()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let size = r.read_i32()?;
+                let video_start_ts = if flags & (1 << 0) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                Ok(VideoSize::VideoSize {
+                    flags,
+                    r#type,
+                    w,
+                    h,
+                    size,
+                    video_start_ts,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown VideoSize constructor {other:#x}"
@@ -1245,30 +1613,14 @@ impl ProfileTab {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            PROFILE_TAB_GIFS_ID => {
-                Ok(ProfileTab::ProfileTabGifs {  })
-            }
-            PROFILE_TAB_LINKS_ID => {
-                Ok(ProfileTab::ProfileTabLinks {  })
-            }
-            PROFILE_TAB_VOICE_ID => {
-                Ok(ProfileTab::ProfileTabVoice {  })
-            }
-            PROFILE_TAB_MUSIC_ID => {
-                Ok(ProfileTab::ProfileTabMusic {  })
-            }
-            PROFILE_TAB_FILES_ID => {
-                Ok(ProfileTab::ProfileTabFiles {  })
-            }
-            PROFILE_TAB_MEDIA_ID => {
-                Ok(ProfileTab::ProfileTabMedia {  })
-            }
-            PROFILE_TAB_GIFTS_ID => {
-                Ok(ProfileTab::ProfileTabGifts {  })
-            }
-            PROFILE_TAB_POSTS_ID => {
-                Ok(ProfileTab::ProfileTabPosts {  })
-            }
+            PROFILE_TAB_GIFS_ID => Ok(ProfileTab::ProfileTabGifs {}),
+            PROFILE_TAB_LINKS_ID => Ok(ProfileTab::ProfileTabLinks {}),
+            PROFILE_TAB_VOICE_ID => Ok(ProfileTab::ProfileTabVoice {}),
+            PROFILE_TAB_MUSIC_ID => Ok(ProfileTab::ProfileTabMusic {}),
+            PROFILE_TAB_FILES_ID => Ok(ProfileTab::ProfileTabFiles {}),
+            PROFILE_TAB_MEDIA_ID => Ok(ProfileTab::ProfileTabMedia {}),
+            PROFILE_TAB_GIFTS_ID => Ok(ProfileTab::ProfileTabGifts {}),
+            PROFILE_TAB_POSTS_ID => Ok(ProfileTab::ProfileTabPosts {}),
             other => Err(Error::Serialization(format!(
                 "unknown ProfileTab constructor {other:#x}"
             ))),
@@ -1292,9 +1644,9 @@ impl BotVerification {
                 "expected botVerification, got {ctor:#x}"
             )));
         }
-    let bot_id = r.read_i64()?;
-    let icon = r.read_i64()?;
-    let description = String::from_utf8(r.read_bytes()?)?;
+        let bot_id = r.read_i64()?;
+        let icon = r.read_i64()?;
+        let description = String::from_utf8(r.read_bytes()?)?;
         Ok(BotVerification {
             bot_id,
             icon,
@@ -1304,10 +1656,10 @@ impl BotVerification {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BOT_VERIFICATION_ID);
-    w.write_i64(self.bot_id);
-    w.write_i64(self.icon);
-    w.write_bytes(self.description.as_bytes());
+        w.write_u32(BOT_VERIFICATION_ID);
+        w.write_i64(self.bot_id);
+        w.write_i64(self.icon);
+        w.write_bytes(self.description.as_bytes());
     }
 }
 
@@ -1334,51 +1686,51 @@ impl WallPaperSettings {
                 "expected wallPaperSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let blur = flags & (1 << 1) != 0;
-    let motion = flags & (1 << 2) != 0;
-    let background_color = if flags & (1 << 0) != 0 {
-        let background_color = r.read_i32()?;
-        Some(background_color)
-    } else {
-        None
-    };
-    let second_background_color = if flags & (1 << 4) != 0 {
-        let second_background_color = r.read_i32()?;
-        Some(second_background_color)
-    } else {
-        None
-    };
-    let third_background_color = if flags & (1 << 5) != 0 {
-        let third_background_color = r.read_i32()?;
-        Some(third_background_color)
-    } else {
-        None
-    };
-    let fourth_background_color = if flags & (1 << 6) != 0 {
-        let fourth_background_color = r.read_i32()?;
-        Some(fourth_background_color)
-    } else {
-        None
-    };
-    let intensity = if flags & (1 << 3) != 0 {
-        let intensity = r.read_i32()?;
-        Some(intensity)
-    } else {
-        None
-    };
-    let rotation = if flags & (1 << 4) != 0 {
-        let rotation = r.read_i32()?;
-        Some(rotation)
-    } else {
-        None
-    };
-    let emoticon = if flags & (1 << 7) != 0 {
-        let emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(emoticon)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let blur = flags & (1 << 1) != 0;
+        let motion = flags & (1 << 2) != 0;
+        let background_color = if flags & (1 << 0) != 0 {
+            let background_color = r.read_i32()?;
+            Some(background_color)
+        } else {
+            None
+        };
+        let second_background_color = if flags & (1 << 4) != 0 {
+            let second_background_color = r.read_i32()?;
+            Some(second_background_color)
+        } else {
+            None
+        };
+        let third_background_color = if flags & (1 << 5) != 0 {
+            let third_background_color = r.read_i32()?;
+            Some(third_background_color)
+        } else {
+            None
+        };
+        let fourth_background_color = if flags & (1 << 6) != 0 {
+            let fourth_background_color = r.read_i32()?;
+            Some(fourth_background_color)
+        } else {
+            None
+        };
+        let intensity = if flags & (1 << 3) != 0 {
+            let intensity = r.read_i32()?;
+            Some(intensity)
+        } else {
+            None
+        };
+        let rotation = if flags & (1 << 4) != 0 {
+            let rotation = r.read_i32()?;
+            Some(rotation)
+        } else {
+            None
+        };
+        let emoticon = if flags & (1 << 7) != 0 {
+            let emoticon = String::from_utf8(r.read_bytes()?)?;
+            Some(emoticon)
+        } else {
+            None
+        };
         Ok(WallPaperSettings {
             flags,
             blur,
@@ -1395,30 +1747,54 @@ impl WallPaperSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(WALL_PAPER_SETTINGS_ID);
-    let flags: i32 = if self.blur { 1 << 1 } else { 0 } | if self.motion { 1 << 2 } else { 0 } | if self.background_color.is_some() { 1 << 0 } else { 0 } | if self.second_background_color.is_some() { 1 << 4 } else { 0 } | if self.third_background_color.is_some() { 1 << 5 } else { 0 } | if self.fourth_background_color.is_some() { 1 << 6 } else { 0 } | if self.intensity.is_some() { 1 << 3 } else { 0 } | if self.rotation.is_some() { 1 << 4 } else { 0 } | if self.emoticon.is_some() { 1 << 7 } else { 0 };
-    w.write_i32(flags);
-    if let Some(background_color) = self.background_color {
-        w.write_i32(background_color);
-    }
-    if let Some(second_background_color) = self.second_background_color {
-        w.write_i32(second_background_color);
-    }
-    if let Some(third_background_color) = self.third_background_color {
-        w.write_i32(third_background_color);
-    }
-    if let Some(fourth_background_color) = self.fourth_background_color {
-        w.write_i32(fourth_background_color);
-    }
-    if let Some(intensity) = self.intensity {
-        w.write_i32(intensity);
-    }
-    if let Some(rotation) = self.rotation {
-        w.write_i32(rotation);
-    }
-    if let Some(emoticon) = self.emoticon.clone() {
-        w.write_bytes(emoticon.as_bytes());
-    }
+        w.write_u32(WALL_PAPER_SETTINGS_ID);
+        let flags: i32 = if self.blur { 1 << 1 } else { 0 }
+            | if self.motion { 1 << 2 } else { 0 }
+            | if self.background_color.is_some() {
+                1 << 0
+            } else {
+                0
+            }
+            | if self.second_background_color.is_some() {
+                1 << 4
+            } else {
+                0
+            }
+            | if self.third_background_color.is_some() {
+                1 << 5
+            } else {
+                0
+            }
+            | if self.fourth_background_color.is_some() {
+                1 << 6
+            } else {
+                0
+            }
+            | if self.intensity.is_some() { 1 << 3 } else { 0 }
+            | if self.rotation.is_some() { 1 << 4 } else { 0 }
+            | if self.emoticon.is_some() { 1 << 7 } else { 0 };
+        w.write_i32(flags);
+        if let Some(background_color) = self.background_color {
+            w.write_i32(background_color);
+        }
+        if let Some(second_background_color) = self.second_background_color {
+            w.write_i32(second_background_color);
+        }
+        if let Some(third_background_color) = self.third_background_color {
+            w.write_i32(third_background_color);
+        }
+        if let Some(fourth_background_color) = self.fourth_background_color {
+            w.write_i32(fourth_background_color);
+        }
+        if let Some(intensity) = self.intensity {
+            w.write_i32(intensity);
+        }
+        if let Some(rotation) = self.rotation {
+            w.write_i32(rotation);
+        }
+        if let Some(emoticon) = self.emoticon.clone() {
+            w.write_bytes(emoticon.as_bytes());
+        }
     }
 }
 
@@ -1438,17 +1814,17 @@ impl InputWallPaper {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_WALL_PAPER_NO_FILE_ID => {
-    let id = r.read_i64()?;
+                let id = r.read_i64()?;
                 Ok(InputWallPaper::InputWallPaperNoFile { id })
             }
             INPUT_WALL_PAPER_SLUG_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputWallPaper::InputWallPaperSlug { slug })
             }
             INPUT_WALL_PAPER_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputWallPaper::InputWallPaper { id, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -1462,9 +1838,26 @@ impl InputWallPaper {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WallPaper {
     /// `wallPaperNoFile#e0804116`
-    WallPaperNoFile { id: i64, flags: i32, default: bool, dark: bool, settings: Option<WallPaperSettings> },
+    WallPaperNoFile {
+        id: i64,
+        flags: i32,
+        default: bool,
+        dark: bool,
+        settings: Option<WallPaperSettings>,
+    },
     /// `wallPaper#a437c3ed`
-    WallPaper { id: i64, flags: i32, creator: bool, default: bool, pattern: bool, dark: bool, access_hash: AccessHash, slug: String, document: Document, settings: Option<WallPaperSettings> },
+    WallPaper {
+        id: i64,
+        flags: i32,
+        creator: bool,
+        default: bool,
+        pattern: bool,
+        dark: bool,
+        access_hash: AccessHash,
+        slug: String,
+        document: Document,
+        settings: Option<WallPaperSettings>,
+    },
 }
 
 impl WallPaper {
@@ -1472,36 +1865,53 @@ impl WallPaper {
         let ctor = r.read_u32()?;
         match ctor {
             WALL_PAPER_NO_FILE_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let default = flags & (1 << 1) != 0;
-    let dark = flags & (1 << 4) != 0;
-    let settings = if flags & (1 << 2) != 0 {
-        let settings = WallPaperSettings::read_from(r)?;
-        Some(settings)
-    } else {
-        None
-    };
-                Ok(WallPaper::WallPaperNoFile { id, flags, default, dark, settings })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let default = flags & (1 << 1) != 0;
+                let dark = flags & (1 << 4) != 0;
+                let settings = if flags & (1 << 2) != 0 {
+                    let settings = WallPaperSettings::read_from(r)?;
+                    Some(settings)
+                } else {
+                    None
+                };
+                Ok(WallPaper::WallPaperNoFile {
+                    id,
+                    flags,
+                    default,
+                    dark,
+                    settings,
+                })
             }
             WALL_PAPER_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let creator = flags & (1 << 0) != 0;
-    let default = flags & (1 << 1) != 0;
-    let pattern = flags & (1 << 3) != 0;
-    let dark = flags & (1 << 4) != 0;
-    let access_hash = r.read_i64()?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
-    let document = Document::read_from(r)?;
-    let settings = if flags & (1 << 2) != 0 {
-        let settings = WallPaperSettings::read_from(r)?;
-        Some(settings)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
-                Ok(WallPaper::WallPaper { id, flags, creator, default, pattern, dark, access_hash, slug, document, settings })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let creator = flags & (1 << 0) != 0;
+                let default = flags & (1 << 1) != 0;
+                let pattern = flags & (1 << 3) != 0;
+                let dark = flags & (1 << 4) != 0;
+                let access_hash = r.read_i64()?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                let document = Document::read_from(r)?;
+                let settings = if flags & (1 << 2) != 0 {
+                    let settings = WallPaperSettings::read_from(r)?;
+                    Some(settings)
+                } else {
+                    None
+                };
+                let access_hash = AccessHash(access_hash);
+                Ok(WallPaper::WallPaper {
+                    id,
+                    flags,
+                    creator,
+                    default,
+                    pattern,
+                    dark,
+                    access_hash,
+                    slug,
+                    document,
+                    settings,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown WallPaper constructor {other:#x}"
@@ -1514,17 +1924,47 @@ impl WallPaper {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentAttribute {
     /// `documentAttributeCustomEmoji#fd149899`
-    DocumentAttributeCustomEmoji { flags: i32, free: bool, text_color: bool, alt: String, stickerset: InputStickerSet },
+    DocumentAttributeCustomEmoji {
+        flags: i32,
+        free: bool,
+        text_color: bool,
+        alt: String,
+        stickerset: InputStickerSet,
+    },
     /// `documentAttributeHasStickers#9801d2f7`
     DocumentAttributeHasStickers,
     /// `documentAttributeFilename#15590068`
     DocumentAttributeFilename { file_name: String },
     /// `documentAttributeAudio#9852f9c6`
-    DocumentAttributeAudio { flags: i32, voice: bool, duration: i32, title: Option<String>, performer: Option<String>, waveform: Option<Vec<u8>> },
+    DocumentAttributeAudio {
+        flags: i32,
+        voice: bool,
+        duration: i32,
+        title: Option<String>,
+        performer: Option<String>,
+        waveform: Option<Vec<u8>>,
+    },
     /// `documentAttributeVideo#43c57c48`
-    DocumentAttributeVideo { flags: i32, round_message: bool, supports_streaming: bool, nosound: bool, duration: f64, w: i32, h: i32, preload_prefix_size: Option<i32>, video_start_ts: Option<f64>, video_codec: Option<String> },
+    DocumentAttributeVideo {
+        flags: i32,
+        round_message: bool,
+        supports_streaming: bool,
+        nosound: bool,
+        duration: f64,
+        w: i32,
+        h: i32,
+        preload_prefix_size: Option<i32>,
+        video_start_ts: Option<f64>,
+        video_codec: Option<String>,
+    },
     /// `documentAttributeSticker#6319d612`
-    DocumentAttributeSticker { flags: i32, mask: bool, alt: String, stickerset: InputStickerSet, mask_coords: Option<MaskCoords> },
+    DocumentAttributeSticker {
+        flags: i32,
+        mask: bool,
+        alt: String,
+        stickerset: InputStickerSet,
+        mask_coords: Option<MaskCoords>,
+    },
     /// `documentAttributeAnimated#11b58939`
     DocumentAttributeAnimated,
     /// `documentAttributeImageSize#6c37c15c`
@@ -1536,91 +1976,119 @@ impl DocumentAttribute {
         let ctor = r.read_u32()?;
         match ctor {
             DOCUMENT_ATTRIBUTE_CUSTOM_EMOJI_ID => {
-    let flags = r.read_i32()?;
-    let free = flags & (1 << 0) != 0;
-    let text_color = flags & (1 << 1) != 0;
-    let alt = String::from_utf8(r.read_bytes()?)?;
-    let stickerset = InputStickerSet::read_from(r)?;
-                Ok(DocumentAttribute::DocumentAttributeCustomEmoji { flags, free, text_color, alt, stickerset })
+                let flags = r.read_i32()?;
+                let free = flags & (1 << 0) != 0;
+                let text_color = flags & (1 << 1) != 0;
+                let alt = String::from_utf8(r.read_bytes()?)?;
+                let stickerset = InputStickerSet::read_from(r)?;
+                Ok(DocumentAttribute::DocumentAttributeCustomEmoji {
+                    flags,
+                    free,
+                    text_color,
+                    alt,
+                    stickerset,
+                })
             }
             DOCUMENT_ATTRIBUTE_HAS_STICKERS_ID => {
-                Ok(DocumentAttribute::DocumentAttributeHasStickers {  })
+                Ok(DocumentAttribute::DocumentAttributeHasStickers {})
             }
             DOCUMENT_ATTRIBUTE_FILENAME_ID => {
-    let file_name = String::from_utf8(r.read_bytes()?)?;
+                let file_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(DocumentAttribute::DocumentAttributeFilename { file_name })
             }
             DOCUMENT_ATTRIBUTE_AUDIO_ID => {
-    let flags = r.read_i32()?;
-    let voice = flags & (1 << 10) != 0;
-    let duration = r.read_i32()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let performer = if flags & (1 << 1) != 0 {
-        let performer = String::from_utf8(r.read_bytes()?)?;
-        Some(performer)
-    } else {
-        None
-    };
-    let waveform = if flags & (1 << 2) != 0 {
-        let waveform = r.read_bytes()?;
-        Some(waveform)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeAudio { flags, voice, duration, title, performer, waveform })
+                let flags = r.read_i32()?;
+                let voice = flags & (1 << 10) != 0;
+                let duration = r.read_i32()?;
+                let title = if flags & (1 << 0) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let performer = if flags & (1 << 1) != 0 {
+                    let performer = String::from_utf8(r.read_bytes()?)?;
+                    Some(performer)
+                } else {
+                    None
+                };
+                let waveform = if flags & (1 << 2) != 0 {
+                    let waveform = r.read_bytes()?;
+                    Some(waveform)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeAudio {
+                    flags,
+                    voice,
+                    duration,
+                    title,
+                    performer,
+                    waveform,
+                })
             }
             DOCUMENT_ATTRIBUTE_VIDEO_ID => {
-    let flags = r.read_i32()?;
-    let round_message = flags & (1 << 0) != 0;
-    let supports_streaming = flags & (1 << 1) != 0;
-    let nosound = flags & (1 << 3) != 0;
-    let duration = f64::from_bits(r.read_u64()?);
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let preload_prefix_size = if flags & (1 << 2) != 0 {
-        let preload_prefix_size = r.read_i32()?;
-        Some(preload_prefix_size)
-    } else {
-        None
-    };
-    let video_start_ts = if flags & (1 << 4) != 0 {
-        let video_start_ts = f64::from_bits(r.read_u64()?);
-        Some(video_start_ts)
-    } else {
-        None
-    };
-    let video_codec = if flags & (1 << 5) != 0 {
-        let video_codec = String::from_utf8(r.read_bytes()?)?;
-        Some(video_codec)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeVideo { flags, round_message, supports_streaming, nosound, duration, w, h, preload_prefix_size, video_start_ts, video_codec })
+                let flags = r.read_i32()?;
+                let round_message = flags & (1 << 0) != 0;
+                let supports_streaming = flags & (1 << 1) != 0;
+                let nosound = flags & (1 << 3) != 0;
+                let duration = f64::from_bits(r.read_u64()?);
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let preload_prefix_size = if flags & (1 << 2) != 0 {
+                    let preload_prefix_size = r.read_i32()?;
+                    Some(preload_prefix_size)
+                } else {
+                    None
+                };
+                let video_start_ts = if flags & (1 << 4) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                let video_codec = if flags & (1 << 5) != 0 {
+                    let video_codec = String::from_utf8(r.read_bytes()?)?;
+                    Some(video_codec)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeVideo {
+                    flags,
+                    round_message,
+                    supports_streaming,
+                    nosound,
+                    duration,
+                    w,
+                    h,
+                    preload_prefix_size,
+                    video_start_ts,
+                    video_codec,
+                })
             }
             DOCUMENT_ATTRIBUTE_STICKER_ID => {
-    let flags = r.read_i32()?;
-    let mask = flags & (1 << 1) != 0;
-    let alt = String::from_utf8(r.read_bytes()?)?;
-    let stickerset = InputStickerSet::read_from(r)?;
-    let mask_coords = if flags & (1 << 0) != 0 {
-        let mask_coords = MaskCoords::read_from(r)?;
-        Some(mask_coords)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeSticker { flags, mask, alt, stickerset, mask_coords })
+                let flags = r.read_i32()?;
+                let mask = flags & (1 << 1) != 0;
+                let alt = String::from_utf8(r.read_bytes()?)?;
+                let stickerset = InputStickerSet::read_from(r)?;
+                let mask_coords = if flags & (1 << 0) != 0 {
+                    let mask_coords = MaskCoords::read_from(r)?;
+                    Some(mask_coords)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeSticker {
+                    flags,
+                    mask,
+                    alt,
+                    stickerset,
+                    mask_coords,
+                })
             }
-            DOCUMENT_ATTRIBUTE_ANIMATED_ID => {
-                Ok(DocumentAttribute::DocumentAttributeAnimated {  })
-            }
+            DOCUMENT_ATTRIBUTE_ANIMATED_ID => Ok(DocumentAttribute::DocumentAttributeAnimated {}),
             DOCUMENT_ATTRIBUTE_IMAGE_SIZE_ID => {
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
                 Ok(DocumentAttribute::DocumentAttributeImageSize { w, h })
             }
             other => Err(Error::Serialization(format!(
@@ -1647,19 +2115,19 @@ impl PeerStories {
                 "expected peerStories, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let max_read_id = if flags & (1 << 0) != 0 {
-        let max_read_id = r.read_i32()?;
-        Some(max_read_id)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut stories = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        stories.push(StoryItem::read_from(r)?);
-    }
+        let flags = r.read_i32()?;
+        let peer = Peer::read_from(r)?;
+        let max_read_id = if flags & (1 << 0) != 0 {
+            let max_read_id = r.read_i32()?;
+            Some(max_read_id)
+        } else {
+            None
+        };
+        let n = r.read_vector_header()?;
+        let mut stories = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            stories.push(StoryItem::read_from(r)?);
+        }
         Ok(PeerStories {
             flags,
             peer,
@@ -1667,16 +2135,47 @@ impl PeerStories {
             stories,
         })
     }
-
 }
 
 /// Union `StoryItem` (3 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum StoryItem {
     /// `storyItem#16a4b93c`
-    StoryItem { flags: i32, pinned: bool, public: bool, close_friends: bool, min: bool, noforwards: bool, edited: bool, contacts: bool, selected_contacts: bool, out: bool, id: i32, date: i32, from_id: Option<Peer>, fwd_from: Option<StoryFwdHeader>, expire_date: i32, caption: Option<String>, entities: Option<Vec<MessageEntity>>, media: Box<MessageMedia>, media_areas: Option<Vec<MediaArea>>, privacy: Option<Vec<PrivacyRule>>, views: Option<StoryViews>, sent_reaction: Option<Reaction>, albums: Option<Vec<i32>>, music: Option<Document> },
+    StoryItem {
+        flags: i32,
+        pinned: bool,
+        public: bool,
+        close_friends: bool,
+        min: bool,
+        noforwards: bool,
+        edited: bool,
+        contacts: bool,
+        selected_contacts: bool,
+        out: bool,
+        id: i32,
+        date: i32,
+        from_id: Option<Peer>,
+        fwd_from: Option<StoryFwdHeader>,
+        expire_date: i32,
+        caption: Option<String>,
+        entities: Option<Vec<MessageEntity>>,
+        media: Box<MessageMedia>,
+        media_areas: Option<Vec<MediaArea>>,
+        privacy: Option<Vec<PrivacyRule>>,
+        views: Option<StoryViews>,
+        sent_reaction: Option<Reaction>,
+        albums: Option<Vec<i32>>,
+        music: Option<Document>,
+    },
     /// `storyItemSkipped#ffadc913`
-    StoryItemSkipped { flags: i32, close_friends: bool, live: bool, id: i32, date: i32, expire_date: i32 },
+    StoryItemSkipped {
+        flags: i32,
+        close_friends: bool,
+        live: bool,
+        id: i32,
+        date: i32,
+        expire_date: i32,
+    },
     /// `storyItemDeleted#51e6ee4f`
     StoryItemDeleted { id: i32 },
 }
@@ -1686,109 +2185,141 @@ impl StoryItem {
         let ctor = r.read_u32()?;
         match ctor {
             STORY_ITEM_ID => {
-    let flags = r.read_i32()?;
-    let pinned = flags & (1 << 5) != 0;
-    let public = flags & (1 << 7) != 0;
-    let close_friends = flags & (1 << 8) != 0;
-    let min = flags & (1 << 9) != 0;
-    let noforwards = flags & (1 << 10) != 0;
-    let edited = flags & (1 << 11) != 0;
-    let contacts = flags & (1 << 12) != 0;
-    let selected_contacts = flags & (1 << 13) != 0;
-    let out = flags & (1 << 16) != 0;
-    let id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let from_id = if flags & (1 << 18) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let fwd_from = if flags & (1 << 17) != 0 {
-        let fwd_from = StoryFwdHeader::read_from(r)?;
-        Some(fwd_from)
-    } else {
-        None
-    };
-    let expire_date = r.read_i32()?;
-    let caption = if flags & (1 << 0) != 0 {
-        let caption = String::from_utf8(r.read_bytes()?)?;
-        Some(caption)
-    } else {
-        None
-    };
-    let entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let media = Box::new(MessageMedia::read_from(r)?);
-    let media_areas = if flags & (1 << 14) != 0 {
-        let n = r.read_vector_header()?;
-        let mut media_areas = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            media_areas.push(MediaArea::read_from(r)?);
-        }
-        Some(media_areas)
-    } else {
-        None
-    };
-    let privacy = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut privacy = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            privacy.push(PrivacyRule::read_from(r)?);
-        }
-        Some(privacy)
-    } else {
-        None
-    };
-    let views = if flags & (1 << 3) != 0 {
-        let views = StoryViews::read_from(r)?;
-        Some(views)
-    } else {
-        None
-    };
-    let sent_reaction = if flags & (1 << 15) != 0 {
-        let sent_reaction = Reaction::read_from(r)?;
-        Some(sent_reaction)
-    } else {
-        None
-    };
-    let albums = if flags & (1 << 19) != 0 {
-        let n = r.read_vector_header()?;
-        let mut albums = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            albums.push(r.read_i32()?);
-        }
-        Some(albums)
-    } else {
-        None
-    };
-    let music = if flags & (1 << 20) != 0 {
-        let music = Document::read_from(r)?;
-        Some(music)
-    } else {
-        None
-    };
-                Ok(StoryItem::StoryItem { flags, pinned, public, close_friends, min, noforwards, edited, contacts, selected_contacts, out, id, date, from_id, fwd_from, expire_date, caption, entities, media, media_areas, privacy, views, sent_reaction, albums, music })
+                let flags = r.read_i32()?;
+                let pinned = flags & (1 << 5) != 0;
+                let public = flags & (1 << 7) != 0;
+                let close_friends = flags & (1 << 8) != 0;
+                let min = flags & (1 << 9) != 0;
+                let noforwards = flags & (1 << 10) != 0;
+                let edited = flags & (1 << 11) != 0;
+                let contacts = flags & (1 << 12) != 0;
+                let selected_contacts = flags & (1 << 13) != 0;
+                let out = flags & (1 << 16) != 0;
+                let id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let from_id = if flags & (1 << 18) != 0 {
+                    let from_id = Peer::read_from(r)?;
+                    Some(from_id)
+                } else {
+                    None
+                };
+                let fwd_from = if flags & (1 << 17) != 0 {
+                    let fwd_from = StoryFwdHeader::read_from(r)?;
+                    Some(fwd_from)
+                } else {
+                    None
+                };
+                let expire_date = r.read_i32()?;
+                let caption = if flags & (1 << 0) != 0 {
+                    let caption = String::from_utf8(r.read_bytes()?)?;
+                    Some(caption)
+                } else {
+                    None
+                };
+                let entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let media = Box::new(MessageMedia::read_from(r)?);
+                let media_areas = if flags & (1 << 14) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut media_areas = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        media_areas.push(MediaArea::read_from(r)?);
+                    }
+                    Some(media_areas)
+                } else {
+                    None
+                };
+                let privacy = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut privacy = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        privacy.push(PrivacyRule::read_from(r)?);
+                    }
+                    Some(privacy)
+                } else {
+                    None
+                };
+                let views = if flags & (1 << 3) != 0 {
+                    let views = StoryViews::read_from(r)?;
+                    Some(views)
+                } else {
+                    None
+                };
+                let sent_reaction = if flags & (1 << 15) != 0 {
+                    let sent_reaction = Reaction::read_from(r)?;
+                    Some(sent_reaction)
+                } else {
+                    None
+                };
+                let albums = if flags & (1 << 19) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut albums = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        albums.push(r.read_i32()?);
+                    }
+                    Some(albums)
+                } else {
+                    None
+                };
+                let music = if flags & (1 << 20) != 0 {
+                    let music = Document::read_from(r)?;
+                    Some(music)
+                } else {
+                    None
+                };
+                Ok(StoryItem::StoryItem {
+                    flags,
+                    pinned,
+                    public,
+                    close_friends,
+                    min,
+                    noforwards,
+                    edited,
+                    contacts,
+                    selected_contacts,
+                    out,
+                    id,
+                    date,
+                    from_id,
+                    fwd_from,
+                    expire_date,
+                    caption,
+                    entities,
+                    media,
+                    media_areas,
+                    privacy,
+                    views,
+                    sent_reaction,
+                    albums,
+                    music,
+                })
             }
             STORY_ITEM_SKIPPED_ID => {
-    let flags = r.read_i32()?;
-    let close_friends = flags & (1 << 8) != 0;
-    let live = flags & (1 << 9) != 0;
-    let id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let expire_date = r.read_i32()?;
-                Ok(StoryItem::StoryItemSkipped { flags, close_friends, live, id, date, expire_date })
+                let flags = r.read_i32()?;
+                let close_friends = flags & (1 << 8) != 0;
+                let live = flags & (1 << 9) != 0;
+                let id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let expire_date = r.read_i32()?;
+                Ok(StoryItem::StoryItemSkipped {
+                    flags,
+                    close_friends,
+                    live,
+                    id,
+                    date,
+                    expire_date,
+                })
             }
             STORY_ITEM_DELETED_ID => {
-    let id = r.read_i32()?;
+                let id = r.read_i32()?;
                 Ok(StoryItem::StoryItemDeleted { id })
             }
             other => Err(Error::Serialization(format!(
@@ -1815,20 +2346,16 @@ impl Reaction {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            REACTION_PAID_ID => {
-                Ok(Reaction::ReactionPaid {  })
-            }
+            REACTION_PAID_ID => Ok(Reaction::ReactionPaid {}),
             REACTION_CUSTOM_EMOJI_ID => {
-    let document_id = r.read_i64()?;
+                let document_id = r.read_i64()?;
                 Ok(Reaction::ReactionCustomEmoji { document_id })
             }
             REACTION_EMOJI_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(Reaction::ReactionEmoji { emoticon })
             }
-            REACTION_EMPTY_ID => {
-                Ok(Reaction::ReactionEmpty {  })
-            }
+            REACTION_EMPTY_ID => Ok(Reaction::ReactionEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown Reaction constructor {other:#x}"
             ))),
@@ -1856,41 +2383,41 @@ impl StoryViews {
                 "expected storyViews, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let has_viewers = flags & (1 << 1) != 0;
-    let views_count = r.read_i32()?;
-    let forwards_count = if flags & (1 << 2) != 0 {
-        let forwards_count = r.read_i32()?;
-        Some(forwards_count)
-    } else {
-        None
-    };
-    let reactions = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut reactions = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            reactions.push(ReactionCount::read_from(r)?);
-        }
-        Some(reactions)
-    } else {
-        None
-    };
-    let reactions_count = if flags & (1 << 4) != 0 {
-        let reactions_count = r.read_i32()?;
-        Some(reactions_count)
-    } else {
-        None
-    };
-    let recent_viewers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_viewers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_viewers.push(r.read_i64()?);
-        }
-        Some(recent_viewers)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let has_viewers = flags & (1 << 1) != 0;
+        let views_count = r.read_i32()?;
+        let forwards_count = if flags & (1 << 2) != 0 {
+            let forwards_count = r.read_i32()?;
+            Some(forwards_count)
+        } else {
+            None
+        };
+        let reactions = if flags & (1 << 3) != 0 {
+            let n = r.read_vector_header()?;
+            let mut reactions = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                reactions.push(ReactionCount::read_from(r)?);
+            }
+            Some(reactions)
+        } else {
+            None
+        };
+        let reactions_count = if flags & (1 << 4) != 0 {
+            let reactions_count = r.read_i32()?;
+            Some(reactions_count)
+        } else {
+            None
+        };
+        let recent_viewers = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut recent_viewers = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                recent_viewers.push(r.read_i64()?);
+            }
+            Some(recent_viewers)
+        } else {
+            None
+        };
         Ok(StoryViews {
             flags,
             has_viewers,
@@ -1901,7 +2428,6 @@ impl StoryViews {
             recent_viewers,
         })
     }
-
 }
 
 /// `reactionCount#a3d1cb80 = ReactionCount`
@@ -1921,15 +2447,15 @@ impl ReactionCount {
                 "expected reactionCount, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let chosen_order = if flags & (1 << 0) != 0 {
-        let chosen_order = r.read_i32()?;
-        Some(chosen_order)
-    } else {
-        None
-    };
-    let reaction = Reaction::read_from(r)?;
-    let count = r.read_i32()?;
+        let flags = r.read_i32()?;
+        let chosen_order = if flags & (1 << 0) != 0 {
+            let chosen_order = r.read_i32()?;
+            Some(chosen_order)
+        } else {
+            None
+        };
+        let reaction = Reaction::read_from(r)?;
+        let count = r.read_i32()?;
         Ok(ReactionCount {
             flags,
             chosen_order,
@@ -1937,7 +2463,6 @@ impl ReactionCount {
             count,
         })
     }
-
 }
 
 /// Union `PrivacyRule` (12 constructors).
@@ -1973,62 +2498,48 @@ impl PrivacyRule {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            PRIVACY_VALUE_DISALLOW_BOTS_ID => {
-                Ok(PrivacyRule::PrivacyValueDisallowBots {  })
-            }
-            PRIVACY_VALUE_ALLOW_BOTS_ID => {
-                Ok(PrivacyRule::PrivacyValueAllowBots {  })
-            }
-            PRIVACY_VALUE_ALLOW_PREMIUM_ID => {
-                Ok(PrivacyRule::PrivacyValueAllowPremium {  })
-            }
+            PRIVACY_VALUE_DISALLOW_BOTS_ID => Ok(PrivacyRule::PrivacyValueDisallowBots {}),
+            PRIVACY_VALUE_ALLOW_BOTS_ID => Ok(PrivacyRule::PrivacyValueAllowBots {}),
+            PRIVACY_VALUE_ALLOW_PREMIUM_ID => Ok(PrivacyRule::PrivacyValueAllowPremium {}),
             PRIVACY_VALUE_ALLOW_CLOSE_FRIENDS_ID => {
-                Ok(PrivacyRule::PrivacyValueAllowCloseFriends {  })
+                Ok(PrivacyRule::PrivacyValueAllowCloseFriends {})
             }
             PRIVACY_VALUE_DISALLOW_CHAT_PARTICIPANTS_ID => {
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(r.read_i64()?);
+                }
                 Ok(PrivacyRule::PrivacyValueDisallowChatParticipants { chats })
             }
             PRIVACY_VALUE_ALLOW_CHAT_PARTICIPANTS_ID => {
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(r.read_i64()?);
+                }
                 Ok(PrivacyRule::PrivacyValueAllowChatParticipants { chats })
             }
             PRIVACY_VALUE_DISALLOW_USERS_ID => {
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(r.read_i64()?);
+                }
                 Ok(PrivacyRule::PrivacyValueDisallowUsers { users })
             }
-            PRIVACY_VALUE_DISALLOW_ALL_ID => {
-                Ok(PrivacyRule::PrivacyValueDisallowAll {  })
-            }
-            PRIVACY_VALUE_DISALLOW_CONTACTS_ID => {
-                Ok(PrivacyRule::PrivacyValueDisallowContacts {  })
-            }
+            PRIVACY_VALUE_DISALLOW_ALL_ID => Ok(PrivacyRule::PrivacyValueDisallowAll {}),
+            PRIVACY_VALUE_DISALLOW_CONTACTS_ID => Ok(PrivacyRule::PrivacyValueDisallowContacts {}),
             PRIVACY_VALUE_ALLOW_USERS_ID => {
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(r.read_i64()?);
+                }
                 Ok(PrivacyRule::PrivacyValueAllowUsers { users })
             }
-            PRIVACY_VALUE_ALLOW_ALL_ID => {
-                Ok(PrivacyRule::PrivacyValueAllowAll {  })
-            }
-            PRIVACY_VALUE_ALLOW_CONTACTS_ID => {
-                Ok(PrivacyRule::PrivacyValueAllowContacts {  })
-            }
+            PRIVACY_VALUE_ALLOW_ALL_ID => Ok(PrivacyRule::PrivacyValueAllowAll {}),
+            PRIVACY_VALUE_ALLOW_CONTACTS_ID => Ok(PrivacyRule::PrivacyValueAllowContacts {}),
             other => Err(Error::Serialization(format!(
                 "unknown PrivacyRule constructor {other:#x}"
             ))),
@@ -2040,23 +2551,65 @@ impl PrivacyRule {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MediaArea {
     /// `mediaAreaStarGift#5787686d`
-    MediaAreaStarGift { coordinates: MediaAreaCoordinates, slug: String },
+    MediaAreaStarGift {
+        coordinates: MediaAreaCoordinates,
+        slug: String,
+    },
     /// `mediaAreaWeather#49a6549c`
-    MediaAreaWeather { coordinates: MediaAreaCoordinates, emoji: String, temperature_c: f64, color: i32 },
+    MediaAreaWeather {
+        coordinates: MediaAreaCoordinates,
+        emoji: String,
+        temperature_c: f64,
+        color: i32,
+    },
     /// `mediaAreaUrl#37381085`
-    MediaAreaUrl { coordinates: MediaAreaCoordinates, url: String },
+    MediaAreaUrl {
+        coordinates: MediaAreaCoordinates,
+        url: String,
+    },
     /// `inputMediaAreaChannelPost#2271f2bf`
-    InputMediaAreaChannelPost { coordinates: MediaAreaCoordinates, channel: InputChannel, msg_id: i32 },
+    InputMediaAreaChannelPost {
+        coordinates: MediaAreaCoordinates,
+        channel: InputChannel,
+        msg_id: i32,
+    },
     /// `mediaAreaChannelPost#770416af`
-    MediaAreaChannelPost { coordinates: MediaAreaCoordinates, channel_id: ChannelId, msg_id: i32 },
+    MediaAreaChannelPost {
+        coordinates: MediaAreaCoordinates,
+        channel_id: ChannelId,
+        msg_id: i32,
+    },
     /// `mediaAreaSuggestedReaction#14455871`
-    MediaAreaSuggestedReaction { flags: i32, dark: bool, flipped: bool, coordinates: MediaAreaCoordinates, reaction: Reaction },
+    MediaAreaSuggestedReaction {
+        flags: i32,
+        dark: bool,
+        flipped: bool,
+        coordinates: MediaAreaCoordinates,
+        reaction: Reaction,
+    },
     /// `mediaAreaGeoPoint#cad5452d`
-    MediaAreaGeoPoint { flags: i32, coordinates: MediaAreaCoordinates, geo: GeoPoint, address: Option<GeoPointAddress> },
+    MediaAreaGeoPoint {
+        flags: i32,
+        coordinates: MediaAreaCoordinates,
+        geo: GeoPoint,
+        address: Option<GeoPointAddress>,
+    },
     /// `inputMediaAreaVenue#b282217f`
-    InputMediaAreaVenue { coordinates: MediaAreaCoordinates, query_id: i64, result_id: String },
+    InputMediaAreaVenue {
+        coordinates: MediaAreaCoordinates,
+        query_id: i64,
+        result_id: String,
+    },
     /// `mediaAreaVenue#be82db9c`
-    MediaAreaVenue { coordinates: MediaAreaCoordinates, geo: GeoPoint, title: String, address: String, provider: String, venue_id: String, venue_type: String },
+    MediaAreaVenue {
+        coordinates: MediaAreaCoordinates,
+        geo: GeoPoint,
+        title: String,
+        address: String,
+        provider: String,
+        venue_id: String,
+        venue_type: String,
+    },
 }
 
 impl MediaArea {
@@ -2064,70 +2617,106 @@ impl MediaArea {
         let ctor = r.read_u32()?;
         match ctor {
             MEDIA_AREA_STAR_GIFT_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(MediaArea::MediaAreaStarGift { coordinates, slug })
             }
             MEDIA_AREA_WEATHER_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let emoji = String::from_utf8(r.read_bytes()?)?;
-    let temperature_c = f64::from_bits(r.read_u64()?);
-    let color = r.read_i32()?;
-                Ok(MediaArea::MediaAreaWeather { coordinates, emoji, temperature_c, color })
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let emoji = String::from_utf8(r.read_bytes()?)?;
+                let temperature_c = f64::from_bits(r.read_u64()?);
+                let color = r.read_i32()?;
+                Ok(MediaArea::MediaAreaWeather {
+                    coordinates,
+                    emoji,
+                    temperature_c,
+                    color,
+                })
             }
             MEDIA_AREA_URL_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(MediaArea::MediaAreaUrl { coordinates, url })
             }
             INPUT_MEDIA_AREA_CHANNEL_POST_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let channel = InputChannel::read_from(r)?;
-    let msg_id = r.read_i32()?;
-                Ok(MediaArea::InputMediaAreaChannelPost { coordinates, channel, msg_id })
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let channel = InputChannel::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                Ok(MediaArea::InputMediaAreaChannelPost {
+                    coordinates,
+                    channel,
+                    msg_id,
+                })
             }
             MEDIA_AREA_CHANNEL_POST_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let channel_id = r.read_i64()?;
-    let msg_id = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(MediaArea::MediaAreaChannelPost { coordinates, channel_id, msg_id })
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let channel_id = r.read_i64()?;
+                let msg_id = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(MediaArea::MediaAreaChannelPost {
+                    coordinates,
+                    channel_id,
+                    msg_id,
+                })
             }
             MEDIA_AREA_SUGGESTED_REACTION_ID => {
-    let flags = r.read_i32()?;
-    let dark = flags & (1 << 0) != 0;
-    let flipped = flags & (1 << 1) != 0;
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let reaction = Reaction::read_from(r)?;
-                Ok(MediaArea::MediaAreaSuggestedReaction { flags, dark, flipped, coordinates, reaction })
+                let flags = r.read_i32()?;
+                let dark = flags & (1 << 0) != 0;
+                let flipped = flags & (1 << 1) != 0;
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let reaction = Reaction::read_from(r)?;
+                Ok(MediaArea::MediaAreaSuggestedReaction {
+                    flags,
+                    dark,
+                    flipped,
+                    coordinates,
+                    reaction,
+                })
             }
             MEDIA_AREA_GEO_POINT_ID => {
-    let flags = r.read_i32()?;
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let geo = GeoPoint::read_from(r)?;
-    let address = if flags & (1 << 0) != 0 {
-        let address = GeoPointAddress::read_from(r)?;
-        Some(address)
-    } else {
-        None
-    };
-                Ok(MediaArea::MediaAreaGeoPoint { flags, coordinates, geo, address })
+                let flags = r.read_i32()?;
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let geo = GeoPoint::read_from(r)?;
+                let address = if flags & (1 << 0) != 0 {
+                    let address = GeoPointAddress::read_from(r)?;
+                    Some(address)
+                } else {
+                    None
+                };
+                Ok(MediaArea::MediaAreaGeoPoint {
+                    flags,
+                    coordinates,
+                    geo,
+                    address,
+                })
             }
             INPUT_MEDIA_AREA_VENUE_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let query_id = r.read_i64()?;
-    let result_id = String::from_utf8(r.read_bytes()?)?;
-                Ok(MediaArea::InputMediaAreaVenue { coordinates, query_id, result_id })
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let query_id = r.read_i64()?;
+                let result_id = String::from_utf8(r.read_bytes()?)?;
+                Ok(MediaArea::InputMediaAreaVenue {
+                    coordinates,
+                    query_id,
+                    result_id,
+                })
             }
             MEDIA_AREA_VENUE_ID => {
-    let coordinates = MediaAreaCoordinates::read_from(r)?;
-    let geo = GeoPoint::read_from(r)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let venue_id = String::from_utf8(r.read_bytes()?)?;
-    let venue_type = String::from_utf8(r.read_bytes()?)?;
-                Ok(MediaArea::MediaAreaVenue { coordinates, geo, title, address, provider, venue_id, venue_type })
+                let coordinates = MediaAreaCoordinates::read_from(r)?;
+                let geo = GeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let venue_id = String::from_utf8(r.read_bytes()?)?;
+                let venue_type = String::from_utf8(r.read_bytes()?)?;
+                Ok(MediaArea::MediaAreaVenue {
+                    coordinates,
+                    geo,
+                    title,
+                    address,
+                    provider,
+                    venue_id,
+                    venue_type,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown MediaArea constructor {other:#x}"
@@ -2156,18 +2745,18 @@ impl MediaAreaCoordinates {
                 "expected mediaAreaCoordinates, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let x = f64::from_bits(r.read_u64()?);
-    let y = f64::from_bits(r.read_u64()?);
-    let w = f64::from_bits(r.read_u64()?);
-    let h = f64::from_bits(r.read_u64()?);
-    let rotation = f64::from_bits(r.read_u64()?);
-    let radius = if flags & (1 << 0) != 0 {
-        let radius = f64::from_bits(r.read_u64()?);
-        Some(radius)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let x = f64::from_bits(r.read_u64()?);
+        let y = f64::from_bits(r.read_u64()?);
+        let w = f64::from_bits(r.read_u64()?);
+        let h = f64::from_bits(r.read_u64()?);
+        let rotation = f64::from_bits(r.read_u64()?);
+        let radius = if flags & (1 << 0) != 0 {
+            let radius = f64::from_bits(r.read_u64()?);
+            Some(radius)
+        } else {
+            None
+        };
         Ok(MediaAreaCoordinates {
             flags,
             x,
@@ -2181,17 +2770,17 @@ impl MediaAreaCoordinates {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MEDIA_AREA_COORDINATES_ID);
-    let flags: i32 = if self.radius.is_some() { 1 << 0 } else { 0 };
-    w.write_i32(flags);
-    w.write_double(self.x);
-    w.write_double(self.y);
-    w.write_double(self.w);
-    w.write_double(self.h);
-    w.write_double(self.rotation);
-    if let Some(radius) = self.radius {
-        w.write_double(radius);
-    }
+        w.write_u32(MEDIA_AREA_COORDINATES_ID);
+        let flags: i32 = if self.radius.is_some() { 1 << 0 } else { 0 };
+        w.write_i32(flags);
+        w.write_double(self.x);
+        w.write_double(self.y);
+        w.write_double(self.w);
+        w.write_double(self.h);
+        w.write_double(self.rotation);
+        if let Some(radius) = self.radius {
+            w.write_double(radius);
+        }
     }
 }
 
@@ -2213,26 +2802,26 @@ impl GeoPointAddress {
                 "expected geoPointAddress, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let country_iso2 = String::from_utf8(r.read_bytes()?)?;
-    let state = if flags & (1 << 0) != 0 {
-        let state = String::from_utf8(r.read_bytes()?)?;
-        Some(state)
-    } else {
-        None
-    };
-    let city = if flags & (1 << 1) != 0 {
-        let city = String::from_utf8(r.read_bytes()?)?;
-        Some(city)
-    } else {
-        None
-    };
-    let street = if flags & (1 << 2) != 0 {
-        let street = String::from_utf8(r.read_bytes()?)?;
-        Some(street)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let country_iso2 = String::from_utf8(r.read_bytes()?)?;
+        let state = if flags & (1 << 0) != 0 {
+            let state = String::from_utf8(r.read_bytes()?)?;
+            Some(state)
+        } else {
+            None
+        };
+        let city = if flags & (1 << 1) != 0 {
+            let city = String::from_utf8(r.read_bytes()?)?;
+            Some(city)
+        } else {
+            None
+        };
+        let street = if flags & (1 << 2) != 0 {
+            let street = String::from_utf8(r.read_bytes()?)?;
+            Some(street)
+        } else {
+            None
+        };
         Ok(GeoPointAddress {
             flags,
             country_iso2,
@@ -2244,19 +2833,21 @@ impl GeoPointAddress {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(GEO_POINT_ADDRESS_ID);
-    let flags: i32 = if self.state.is_some() { 1 << 0 } else { 0 } | if self.city.is_some() { 1 << 1 } else { 0 } | if self.street.is_some() { 1 << 2 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.country_iso2.as_bytes());
-    if let Some(state) = self.state.clone() {
-        w.write_bytes(state.as_bytes());
-    }
-    if let Some(city) = self.city.clone() {
-        w.write_bytes(city.as_bytes());
-    }
-    if let Some(street) = self.street.clone() {
-        w.write_bytes(street.as_bytes());
-    }
+        w.write_u32(GEO_POINT_ADDRESS_ID);
+        let flags: i32 = if self.state.is_some() { 1 << 0 } else { 0 }
+            | if self.city.is_some() { 1 << 1 } else { 0 }
+            | if self.street.is_some() { 1 << 2 } else { 0 };
+        w.write_i32(flags);
+        w.write_bytes(self.country_iso2.as_bytes());
+        if let Some(state) = self.state.clone() {
+            w.write_bytes(state.as_bytes());
+        }
+        if let Some(city) = self.city.clone() {
+            w.write_bytes(city.as_bytes());
+        }
+        if let Some(street) = self.street.clone() {
+            w.write_bytes(street.as_bytes());
+        }
     }
 }
 
@@ -2264,43 +2855,144 @@ impl GeoPointAddress {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMedia {
     /// `inputMediaStakeDice#f3a9244a`
-    InputMediaStakeDice { game_hash: String, ton_amount: i64, client_seed: Vec<u8> },
+    InputMediaStakeDice {
+        game_hash: String,
+        ton_amount: i64,
+        client_seed: Vec<u8>,
+    },
     /// `inputMediaTodo#9fc55fde`
     InputMediaTodo { todo: TodoList },
     /// `inputMediaPaidMedia#c4103386`
-    InputMediaPaidMedia { flags: i32, stars_amount: i64, extended_media: Vec<InputMedia>, payload: Option<String> },
+    InputMediaPaidMedia {
+        flags: i32,
+        stars_amount: i64,
+        extended_media: Vec<InputMedia>,
+        payload: Option<String>,
+    },
     /// `inputMediaWebPage#c21b8849`
-    InputMediaWebPage { flags: i32, force_large_media: bool, force_small_media: bool, optional: bool, url: String },
+    InputMediaWebPage {
+        flags: i32,
+        force_large_media: bool,
+        force_small_media: bool,
+        optional: bool,
+        url: String,
+    },
     /// `inputMediaStory#89fdd778`
     InputMediaStory { peer: InputPeer, id: i32 },
     /// `inputMediaDice#e66fbf7b`
     InputMediaDice { emoticon: String },
     /// `inputMediaPoll#883a4108`
-    InputMediaPoll { flags: i32, poll: Box<Poll>, correct_answers: Option<Vec<i32>>, attached_media: Option<Box<InputMedia>>, solution: Option<String>, solution_entities: Option<Vec<MessageEntity>>, solution_media: Option<Box<InputMedia>> },
+    InputMediaPoll {
+        flags: i32,
+        poll: Box<Poll>,
+        correct_answers: Option<Vec<i32>>,
+        attached_media: Option<Box<InputMedia>>,
+        solution: Option<String>,
+        solution_entities: Option<Vec<MessageEntity>>,
+        solution_media: Option<Box<InputMedia>>,
+    },
     /// `inputMediaGeoLive#971fa843`
-    InputMediaGeoLive { flags: i32, stopped: bool, geo_point: InputGeoPoint, heading: Option<i32>, period: Option<i32>, proximity_notification_radius: Option<i32> },
+    InputMediaGeoLive {
+        flags: i32,
+        stopped: bool,
+        geo_point: InputGeoPoint,
+        heading: Option<i32>,
+        period: Option<i32>,
+        proximity_notification_radius: Option<i32>,
+    },
     /// `inputMediaInvoice#405fef0d`
-    InputMediaInvoice { flags: i32, title: String, description: String, photo: Option<InputWebDocument>, invoice: Invoice, payload: Vec<u8>, provider: Option<String>, provider_data: DataJSON, start_param: Option<String>, extended_media: Option<Box<InputMedia>> },
+    InputMediaInvoice {
+        flags: i32,
+        title: String,
+        description: String,
+        photo: Option<InputWebDocument>,
+        invoice: Invoice,
+        payload: Vec<u8>,
+        provider: Option<String>,
+        provider_data: DataJSON,
+        start_param: Option<String>,
+        extended_media: Option<Box<InputMedia>>,
+    },
     /// `inputMediaGame#d33f43f3`
     InputMediaGame { id: InputGame },
     /// `inputMediaDocumentExternal#779600f9`
-    InputMediaDocumentExternal { flags: i32, spoiler: bool, url: String, ttl_seconds: Option<i32>, video_cover: Option<InputPhoto>, video_timestamp: Option<i32> },
+    InputMediaDocumentExternal {
+        flags: i32,
+        spoiler: bool,
+        url: String,
+        ttl_seconds: Option<i32>,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+    },
     /// `inputMediaPhotoExternal#e5bbfe1a`
-    InputMediaPhotoExternal { flags: i32, spoiler: bool, url: String, ttl_seconds: Option<i32> },
+    InputMediaPhotoExternal {
+        flags: i32,
+        spoiler: bool,
+        url: String,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaVenue#c13d1c11`
-    InputMediaVenue { geo_point: InputGeoPoint, title: String, address: String, provider: String, venue_id: String, venue_type: String },
+    InputMediaVenue {
+        geo_point: InputGeoPoint,
+        title: String,
+        address: String,
+        provider: String,
+        venue_id: String,
+        venue_type: String,
+    },
     /// `inputMediaDocument#a8763ab5`
-    InputMediaDocument { flags: i32, spoiler: bool, id: InputDocument, video_cover: Option<InputPhoto>, video_timestamp: Option<i32>, ttl_seconds: Option<i32>, query: Option<String> },
+    InputMediaDocument {
+        flags: i32,
+        spoiler: bool,
+        id: InputDocument,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+        ttl_seconds: Option<i32>,
+        query: Option<String>,
+    },
     /// `inputMediaUploadedDocument#037c9330`
-    InputMediaUploadedDocument { flags: i32, nosound_video: bool, force_file: bool, spoiler: bool, file: InputFile, thumb: Option<InputFile>, mime_type: String, attributes: Vec<DocumentAttribute>, stickers: Option<Vec<InputDocument>>, video_cover: Option<InputPhoto>, video_timestamp: Option<i32>, ttl_seconds: Option<i32> },
+    InputMediaUploadedDocument {
+        flags: i32,
+        nosound_video: bool,
+        force_file: bool,
+        spoiler: bool,
+        file: InputFile,
+        thumb: Option<InputFile>,
+        mime_type: String,
+        attributes: Vec<DocumentAttribute>,
+        stickers: Option<Vec<InputDocument>>,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaContact#f8ab7dfb`
-    InputMediaContact { phone_number: String, first_name: String, last_name: String, vcard: String },
+    InputMediaContact {
+        phone_number: String,
+        first_name: String,
+        last_name: String,
+        vcard: String,
+    },
     /// `inputMediaGeoPoint#f9c44144`
     InputMediaGeoPoint { geo_point: InputGeoPoint },
     /// `inputMediaPhoto#e3af4434`
-    InputMediaPhoto { flags: i32, spoiler: bool, live_photo: bool, id: InputPhoto, ttl_seconds: Option<i32>, video: Option<InputDocument> },
+    InputMediaPhoto {
+        flags: i32,
+        spoiler: bool,
+        live_photo: bool,
+        id: InputPhoto,
+        ttl_seconds: Option<i32>,
+        video: Option<InputDocument>,
+    },
     /// `inputMediaUploadedPhoto#7d8375da`
-    InputMediaUploadedPhoto { flags: i32, spoiler: bool, live_photo: bool, file: InputFile, stickers: Option<Vec<InputDocument>>, ttl_seconds: Option<i32>, video: Option<InputDocument> },
+    InputMediaUploadedPhoto {
+        flags: i32,
+        spoiler: bool,
+        live_photo: bool,
+        file: InputFile,
+        stickers: Option<Vec<InputDocument>>,
+        ttl_seconds: Option<i32>,
+        video: Option<InputDocument>,
+    },
     /// `inputMediaEmpty#9664f57f`
     InputMediaEmpty,
 }
@@ -2310,337 +3002,436 @@ impl InputMedia {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_MEDIA_STAKE_DICE_ID => {
-    let game_hash = String::from_utf8(r.read_bytes()?)?;
-    let ton_amount = r.read_i64()?;
-    let client_seed = r.read_bytes()?;
-                Ok(InputMedia::InputMediaStakeDice { game_hash, ton_amount, client_seed })
+                let game_hash = String::from_utf8(r.read_bytes()?)?;
+                let ton_amount = r.read_i64()?;
+                let client_seed = r.read_bytes()?;
+                Ok(InputMedia::InputMediaStakeDice {
+                    game_hash,
+                    ton_amount,
+                    client_seed,
+                })
             }
             INPUT_MEDIA_TODO_ID => {
-    let todo = TodoList::read_from(r)?;
+                let todo = TodoList::read_from(r)?;
                 Ok(InputMedia::InputMediaTodo { todo })
             }
             INPUT_MEDIA_PAID_MEDIA_ID => {
-    let flags = r.read_i32()?;
-    let stars_amount = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut extended_media = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        extended_media.push(InputMedia::read_from(r)?);
-    }
-    let payload = if flags & (1 << 0) != 0 {
-        let payload = String::from_utf8(r.read_bytes()?)?;
-        Some(payload)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPaidMedia { flags, stars_amount, extended_media, payload })
+                let flags = r.read_i32()?;
+                let stars_amount = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut extended_media = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    extended_media.push(InputMedia::read_from(r)?);
+                }
+                let payload = if flags & (1 << 0) != 0 {
+                    let payload = String::from_utf8(r.read_bytes()?)?;
+                    Some(payload)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPaidMedia {
+                    flags,
+                    stars_amount,
+                    extended_media,
+                    payload,
+                })
             }
             INPUT_MEDIA_WEB_PAGE_ID => {
-    let flags = r.read_i32()?;
-    let force_large_media = flags & (1 << 0) != 0;
-    let force_small_media = flags & (1 << 1) != 0;
-    let optional = flags & (1 << 2) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaWebPage { flags, force_large_media, force_small_media, optional, url })
+                let flags = r.read_i32()?;
+                let force_large_media = flags & (1 << 0) != 0;
+                let force_small_media = flags & (1 << 1) != 0;
+                let optional = flags & (1 << 2) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaWebPage {
+                    flags,
+                    force_large_media,
+                    force_small_media,
+                    optional,
+                    url,
+                })
             }
             INPUT_MEDIA_STORY_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let id = r.read_i32()?;
+                let peer = InputPeer::read_from(r)?;
+                let id = r.read_i32()?;
                 Ok(InputMedia::InputMediaStory { peer, id })
             }
             INPUT_MEDIA_DICE_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputMedia::InputMediaDice { emoticon })
             }
             INPUT_MEDIA_POLL_ID => {
-    let flags = r.read_i32()?;
-    let poll = Box::new(Poll::read_from(r)?);
-    let correct_answers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut correct_answers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            correct_answers.push(r.read_i32()?);
-        }
-        Some(correct_answers)
-    } else {
-        None
-    };
-    let attached_media = if flags & (1 << 3) != 0 {
-        let attached_media = Box::new(InputMedia::read_from(r)?);
-        Some(attached_media)
-    } else {
-        None
-    };
-    let solution = if flags & (1 << 1) != 0 {
-        let solution = String::from_utf8(r.read_bytes()?)?;
-        Some(solution)
-    } else {
-        None
-    };
-    let solution_entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            solution_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(solution_entities)
-    } else {
-        None
-    };
-    let solution_media = if flags & (1 << 2) != 0 {
-        let solution_media = Box::new(InputMedia::read_from(r)?);
-        Some(solution_media)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPoll { flags, poll, correct_answers, attached_media, solution, solution_entities, solution_media })
+                let flags = r.read_i32()?;
+                let poll = Box::new(Poll::read_from(r)?);
+                let correct_answers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut correct_answers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        correct_answers.push(r.read_i32()?);
+                    }
+                    Some(correct_answers)
+                } else {
+                    None
+                };
+                let attached_media = if flags & (1 << 3) != 0 {
+                    let attached_media = Box::new(InputMedia::read_from(r)?);
+                    Some(attached_media)
+                } else {
+                    None
+                };
+                let solution = if flags & (1 << 1) != 0 {
+                    let solution = String::from_utf8(r.read_bytes()?)?;
+                    Some(solution)
+                } else {
+                    None
+                };
+                let solution_entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        solution_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(solution_entities)
+                } else {
+                    None
+                };
+                let solution_media = if flags & (1 << 2) != 0 {
+                    let solution_media = Box::new(InputMedia::read_from(r)?);
+                    Some(solution_media)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPoll {
+                    flags,
+                    poll,
+                    correct_answers,
+                    attached_media,
+                    solution,
+                    solution_entities,
+                    solution_media,
+                })
             }
             INPUT_MEDIA_GEO_LIVE_ID => {
-    let flags = r.read_i32()?;
-    let stopped = flags & (1 << 0) != 0;
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let heading = if flags & (1 << 2) != 0 {
-        let heading = r.read_i32()?;
-        Some(heading)
-    } else {
-        None
-    };
-    let period = if flags & (1 << 1) != 0 {
-        let period = r.read_i32()?;
-        Some(period)
-    } else {
-        None
-    };
-    let proximity_notification_radius = if flags & (1 << 3) != 0 {
-        let proximity_notification_radius = r.read_i32()?;
-        Some(proximity_notification_radius)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaGeoLive { flags, stopped, geo_point, heading, period, proximity_notification_radius })
+                let flags = r.read_i32()?;
+                let stopped = flags & (1 << 0) != 0;
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let heading = if flags & (1 << 2) != 0 {
+                    let heading = r.read_i32()?;
+                    Some(heading)
+                } else {
+                    None
+                };
+                let period = if flags & (1 << 1) != 0 {
+                    let period = r.read_i32()?;
+                    Some(period)
+                } else {
+                    None
+                };
+                let proximity_notification_radius = if flags & (1 << 3) != 0 {
+                    let proximity_notification_radius = r.read_i32()?;
+                    Some(proximity_notification_radius)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaGeoLive {
+                    flags,
+                    stopped,
+                    geo_point,
+                    heading,
+                    period,
+                    proximity_notification_radius,
+                })
             }
             INPUT_MEDIA_INVOICE_ID => {
-    let flags = r.read_i32()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = if flags & (1 << 0) != 0 {
-        let photo = InputWebDocument::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let invoice = Invoice::read_from(r)?;
-    let payload = r.read_bytes()?;
-    let provider = if flags & (1 << 3) != 0 {
-        let provider = String::from_utf8(r.read_bytes()?)?;
-        Some(provider)
-    } else {
-        None
-    };
-    let provider_data = DataJSON::read_from(r)?;
-    let start_param = if flags & (1 << 1) != 0 {
-        let start_param = String::from_utf8(r.read_bytes()?)?;
-        Some(start_param)
-    } else {
-        None
-    };
-    let extended_media = if flags & (1 << 2) != 0 {
-        let extended_media = Box::new(InputMedia::read_from(r)?);
-        Some(extended_media)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaInvoice { flags, title, description, photo, invoice, payload, provider, provider_data, start_param, extended_media })
+                let flags = r.read_i32()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let description = String::from_utf8(r.read_bytes()?)?;
+                let photo = if flags & (1 << 0) != 0 {
+                    let photo = InputWebDocument::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let invoice = Invoice::read_from(r)?;
+                let payload = r.read_bytes()?;
+                let provider = if flags & (1 << 3) != 0 {
+                    let provider = String::from_utf8(r.read_bytes()?)?;
+                    Some(provider)
+                } else {
+                    None
+                };
+                let provider_data = DataJSON::read_from(r)?;
+                let start_param = if flags & (1 << 1) != 0 {
+                    let start_param = String::from_utf8(r.read_bytes()?)?;
+                    Some(start_param)
+                } else {
+                    None
+                };
+                let extended_media = if flags & (1 << 2) != 0 {
+                    let extended_media = Box::new(InputMedia::read_from(r)?);
+                    Some(extended_media)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaInvoice {
+                    flags,
+                    title,
+                    description,
+                    photo,
+                    invoice,
+                    payload,
+                    provider,
+                    provider_data,
+                    start_param,
+                    extended_media,
+                })
             }
             INPUT_MEDIA_GAME_ID => {
-    let id = InputGame::read_from(r)?;
+                let id = InputGame::read_from(r)?;
                 Ok(InputMedia::InputMediaGame { id })
             }
             INPUT_MEDIA_DOCUMENT_EXTERNAL_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let video_cover = if flags & (1 << 2) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 3) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaDocumentExternal { flags, spoiler, url, ttl_seconds, video_cover, video_timestamp })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let video_cover = if flags & (1 << 2) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 3) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaDocumentExternal {
+                    flags,
+                    spoiler,
+                    url,
+                    ttl_seconds,
+                    video_cover,
+                    video_timestamp,
+                })
             }
             INPUT_MEDIA_PHOTO_EXTERNAL_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPhotoExternal { flags, spoiler, url, ttl_seconds })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPhotoExternal {
+                    flags,
+                    spoiler,
+                    url,
+                    ttl_seconds,
+                })
             }
             INPUT_MEDIA_VENUE_ID => {
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let venue_id = String::from_utf8(r.read_bytes()?)?;
-    let venue_type = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaVenue { geo_point, title, address, provider, venue_id, venue_type })
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let venue_id = String::from_utf8(r.read_bytes()?)?;
+                let venue_type = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaVenue {
+                    geo_point,
+                    title,
+                    address,
+                    provider,
+                    venue_id,
+                    venue_type,
+                })
             }
             INPUT_MEDIA_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 2) != 0;
-    let id = InputDocument::read_from(r)?;
-    let video_cover = if flags & (1 << 3) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 4) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let query = if flags & (1 << 1) != 0 {
-        let query = String::from_utf8(r.read_bytes()?)?;
-        Some(query)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaDocument { flags, spoiler, id, video_cover, video_timestamp, ttl_seconds, query })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 2) != 0;
+                let id = InputDocument::read_from(r)?;
+                let video_cover = if flags & (1 << 3) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 4) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let query = if flags & (1 << 1) != 0 {
+                    let query = String::from_utf8(r.read_bytes()?)?;
+                    Some(query)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaDocument {
+                    flags,
+                    spoiler,
+                    id,
+                    video_cover,
+                    video_timestamp,
+                    ttl_seconds,
+                    query,
+                })
             }
             INPUT_MEDIA_UPLOADED_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let nosound_video = flags & (1 << 3) != 0;
-    let force_file = flags & (1 << 4) != 0;
-    let spoiler = flags & (1 << 5) != 0;
-    let file = InputFile::read_from(r)?;
-    let thumb = if flags & (1 << 2) != 0 {
-        let thumb = InputFile::read_from(r)?;
-        Some(thumb)
-    } else {
-        None
-    };
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
-    let stickers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut stickers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            stickers.push(InputDocument::read_from(r)?);
-        }
-        Some(stickers)
-    } else {
-        None
-    };
-    let video_cover = if flags & (1 << 6) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 7) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 1) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaUploadedDocument { flags, nosound_video, force_file, spoiler, file, thumb, mime_type, attributes, stickers, video_cover, video_timestamp, ttl_seconds })
+                let flags = r.read_i32()?;
+                let nosound_video = flags & (1 << 3) != 0;
+                let force_file = flags & (1 << 4) != 0;
+                let spoiler = flags & (1 << 5) != 0;
+                let file = InputFile::read_from(r)?;
+                let thumb = if flags & (1 << 2) != 0 {
+                    let thumb = InputFile::read_from(r)?;
+                    Some(thumb)
+                } else {
+                    None
+                };
+                let mime_type = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(DocumentAttribute::read_from(r)?);
+                }
+                let stickers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut stickers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        stickers.push(InputDocument::read_from(r)?);
+                    }
+                    Some(stickers)
+                } else {
+                    None
+                };
+                let video_cover = if flags & (1 << 6) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 7) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 1) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaUploadedDocument {
+                    flags,
+                    nosound_video,
+                    force_file,
+                    spoiler,
+                    file,
+                    thumb,
+                    mime_type,
+                    attributes,
+                    stickers,
+                    video_cover,
+                    video_timestamp,
+                    ttl_seconds,
+                })
             }
             INPUT_MEDIA_CONTACT_ID => {
-    let phone_number = String::from_utf8(r.read_bytes()?)?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let vcard = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaContact { phone_number, first_name, last_name, vcard })
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let vcard = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaContact {
+                    phone_number,
+                    first_name,
+                    last_name,
+                    vcard,
+                })
             }
             INPUT_MEDIA_GEO_POINT_ID => {
-    let geo_point = InputGeoPoint::read_from(r)?;
+                let geo_point = InputGeoPoint::read_from(r)?;
                 Ok(InputMedia::InputMediaGeoPoint { geo_point })
             }
             INPUT_MEDIA_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let live_photo = flags & (1 << 2) != 0;
-    let id = InputPhoto::read_from(r)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let video = if flags & (1 << 2) != 0 {
-        let video = InputDocument::read_from(r)?;
-        Some(video)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPhoto { flags, spoiler, live_photo, id, ttl_seconds, video })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let live_photo = flags & (1 << 2) != 0;
+                let id = InputPhoto::read_from(r)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let video = if flags & (1 << 2) != 0 {
+                    let video = InputDocument::read_from(r)?;
+                    Some(video)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPhoto {
+                    flags,
+                    spoiler,
+                    live_photo,
+                    id,
+                    ttl_seconds,
+                    video,
+                })
             }
             INPUT_MEDIA_UPLOADED_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 2) != 0;
-    let live_photo = flags & (1 << 3) != 0;
-    let file = InputFile::read_from(r)?;
-    let stickers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut stickers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            stickers.push(InputDocument::read_from(r)?);
-        }
-        Some(stickers)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 1) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let video = if flags & (1 << 3) != 0 {
-        let video = InputDocument::read_from(r)?;
-        Some(video)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaUploadedPhoto { flags, spoiler, live_photo, file, stickers, ttl_seconds, video })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 2) != 0;
+                let live_photo = flags & (1 << 3) != 0;
+                let file = InputFile::read_from(r)?;
+                let stickers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut stickers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        stickers.push(InputDocument::read_from(r)?);
+                    }
+                    Some(stickers)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 1) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let video = if flags & (1 << 3) != 0 {
+                    let video = InputDocument::read_from(r)?;
+                    Some(video)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaUploadedPhoto {
+                    flags,
+                    spoiler,
+                    live_photo,
+                    file,
+                    stickers,
+                    ttl_seconds,
+                    video,
+                })
             }
-            INPUT_MEDIA_EMPTY_ID => {
-                Ok(InputMedia::InputMediaEmpty {  })
-            }
+            INPUT_MEDIA_EMPTY_ID => Ok(InputMedia::InputMediaEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputMedia constructor {other:#x}"
             ))),
@@ -2666,15 +3457,15 @@ impl TodoList {
                 "expected todoList, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let others_can_append = flags & (1 << 0) != 0;
-    let others_can_complete = flags & (1 << 1) != 0;
-    let title = TextWithEntities::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut list = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        list.push(TodoItem::read_from(r)?);
-    }
+        let flags = r.read_i32()?;
+        let others_can_append = flags & (1 << 0) != 0;
+        let others_can_complete = flags & (1 << 1) != 0;
+        let title = TextWithEntities::read_from(r)?;
+        let n = r.read_vector_header()?;
+        let mut list = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            list.push(TodoItem::read_from(r)?);
+        }
         Ok(TodoList {
             flags,
             others_can_append,
@@ -2683,7 +3474,6 @@ impl TodoList {
             list,
         })
     }
-
 }
 
 /// `todoItem#cba9a52f = TodoItem`
@@ -2701,14 +3491,10 @@ impl TodoItem {
                 "expected todoItem, got {ctor:#x}"
             )));
         }
-    let id = r.read_i32()?;
-    let title = TextWithEntities::read_from(r)?;
-        Ok(TodoItem {
-            id,
-            title,
-        })
+        let id = r.read_i32()?;
+        let title = TextWithEntities::read_from(r)?;
+        Ok(TodoItem { id, title })
     }
-
 }
 
 /// `poll#966e2dbf = Poll`
@@ -2742,47 +3528,47 @@ impl Poll {
                 "expected poll, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let closed = flags & (1 << 0) != 0;
-    let public_voters = flags & (1 << 1) != 0;
-    let multiple_choice = flags & (1 << 2) != 0;
-    let quiz = flags & (1 << 3) != 0;
-    let open_answers = flags & (1 << 6) != 0;
-    let revoting_disabled = flags & (1 << 7) != 0;
-    let shuffle_answers = flags & (1 << 8) != 0;
-    let hide_results_until_close = flags & (1 << 9) != 0;
-    let creator = flags & (1 << 10) != 0;
-    let subscribers_only = flags & (1 << 11) != 0;
-    let question = TextWithEntities::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut answers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        answers.push(PollAnswer::read_from(r)?);
-    }
-    let close_period = if flags & (1 << 4) != 0 {
-        let close_period = r.read_i32()?;
-        Some(close_period)
-    } else {
-        None
-    };
-    let close_date = if flags & (1 << 5) != 0 {
-        let close_date = r.read_i32()?;
-        Some(close_date)
-    } else {
-        None
-    };
-    let countries_iso2 = if flags & (1 << 12) != 0 {
+        let flags = r.read_i32()?;
+        let id = r.read_i64()?;
+        let closed = flags & (1 << 0) != 0;
+        let public_voters = flags & (1 << 1) != 0;
+        let multiple_choice = flags & (1 << 2) != 0;
+        let quiz = flags & (1 << 3) != 0;
+        let open_answers = flags & (1 << 6) != 0;
+        let revoting_disabled = flags & (1 << 7) != 0;
+        let shuffle_answers = flags & (1 << 8) != 0;
+        let hide_results_until_close = flags & (1 << 9) != 0;
+        let creator = flags & (1 << 10) != 0;
+        let subscribers_only = flags & (1 << 11) != 0;
+        let question = TextWithEntities::read_from(r)?;
         let n = r.read_vector_header()?;
-        let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
+        let mut answers = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            countries_iso2.push(r.read_bytes()?);
+            answers.push(PollAnswer::read_from(r)?);
         }
-        Some(countries_iso2)
-    } else {
-        None
-    };
-    let hash = r.read_i64()?;
+        let close_period = if flags & (1 << 4) != 0 {
+            let close_period = r.read_i32()?;
+            Some(close_period)
+        } else {
+            None
+        };
+        let close_date = if flags & (1 << 5) != 0 {
+            let close_date = r.read_i32()?;
+            Some(close_date)
+        } else {
+            None
+        };
+        let countries_iso2 = if flags & (1 << 12) != 0 {
+            let n = r.read_vector_header()?;
+            let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                countries_iso2.push(r.read_bytes()?);
+            }
+            Some(countries_iso2)
+        } else {
+            None
+        };
+        let hash = r.read_i64()?;
         Ok(Poll {
             id,
             flags,
@@ -2804,16 +3590,26 @@ impl Poll {
             hash,
         })
     }
-
 }
 
 /// Union `PollAnswer` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PollAnswer {
     /// `inputPollAnswer#199fed96`
-    InputPollAnswer { flags: i32, text: TextWithEntities, media: Option<Box<InputMedia>> },
+    InputPollAnswer {
+        flags: i32,
+        text: TextWithEntities,
+        media: Option<Box<InputMedia>>,
+    },
     /// `pollAnswer#4b7d786a`
-    PollAnswer { flags: i32, text: TextWithEntities, option: Vec<u8>, media: Option<Box<MessageMedia>>, added_by: Option<Peer>, date: Option<i32> },
+    PollAnswer {
+        flags: i32,
+        text: TextWithEntities,
+        option: Vec<u8>,
+        media: Option<Box<MessageMedia>>,
+        added_by: Option<Peer>,
+        date: Option<i32>,
+    },
 }
 
 impl PollAnswer {
@@ -2821,39 +3617,46 @@ impl PollAnswer {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_POLL_ANSWER_ID => {
-    let flags = r.read_i32()?;
-    let text = TextWithEntities::read_from(r)?;
-    let media = if flags & (1 << 0) != 0 {
-        let media = Box::new(InputMedia::read_from(r)?);
-        Some(media)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let text = TextWithEntities::read_from(r)?;
+                let media = if flags & (1 << 0) != 0 {
+                    let media = Box::new(InputMedia::read_from(r)?);
+                    Some(media)
+                } else {
+                    None
+                };
                 Ok(PollAnswer::InputPollAnswer { flags, text, media })
             }
             POLL_ANSWER_ID => {
-    let flags = r.read_i32()?;
-    let text = TextWithEntities::read_from(r)?;
-    let option = r.read_bytes()?;
-    let media = if flags & (1 << 0) != 0 {
-        let media = Box::new(MessageMedia::read_from(r)?);
-        Some(media)
-    } else {
-        None
-    };
-    let added_by = if flags & (1 << 1) != 0 {
-        let added_by = Peer::read_from(r)?;
-        Some(added_by)
-    } else {
-        None
-    };
-    let date = if flags & (1 << 1) != 0 {
-        let date = r.read_i32()?;
-        Some(date)
-    } else {
-        None
-    };
-                Ok(PollAnswer::PollAnswer { flags, text, option, media, added_by, date })
+                let flags = r.read_i32()?;
+                let text = TextWithEntities::read_from(r)?;
+                let option = r.read_bytes()?;
+                let media = if flags & (1 << 0) != 0 {
+                    let media = Box::new(MessageMedia::read_from(r)?);
+                    Some(media)
+                } else {
+                    None
+                };
+                let added_by = if flags & (1 << 1) != 0 {
+                    let added_by = Peer::read_from(r)?;
+                    Some(added_by)
+                } else {
+                    None
+                };
+                let date = if flags & (1 << 1) != 0 {
+                    let date = r.read_i32()?;
+                    Some(date)
+                } else {
+                    None
+                };
+                Ok(PollAnswer::PollAnswer {
+                    flags,
+                    text,
+                    option,
+                    media,
+                    added_by,
+                    date,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PollAnswer constructor {other:#x}"
@@ -2876,16 +3679,14 @@ impl DataJSON {
                 "expected dataJSON, got {ctor:#x}"
             )));
         }
-    let data = String::from_utf8(r.read_bytes()?)?;
-        Ok(DataJSON {
-            data,
-        })
+        let data = String::from_utf8(r.read_bytes()?)?;
+        Ok(DataJSON { data })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(DATA_JSON_ID);
-    w.write_bytes(self.data.as_bytes());
+        w.write_u32(DATA_JSON_ID);
+        w.write_bytes(self.data.as_bytes());
     }
 }
 
@@ -2918,50 +3719,50 @@ impl Invoice {
                 "expected invoice, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let test = flags & (1 << 0) != 0;
-    let name_requested = flags & (1 << 1) != 0;
-    let phone_requested = flags & (1 << 2) != 0;
-    let email_requested = flags & (1 << 3) != 0;
-    let shipping_address_requested = flags & (1 << 4) != 0;
-    let flexible = flags & (1 << 5) != 0;
-    let phone_to_provider = flags & (1 << 6) != 0;
-    let email_to_provider = flags & (1 << 7) != 0;
-    let recurring = flags & (1 << 9) != 0;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut prices = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        prices.push(LabeledPrice::read_from(r)?);
-    }
-    let max_tip_amount = if flags & (1 << 8) != 0 {
-        let max_tip_amount = r.read_i64()?;
-        Some(max_tip_amount)
-    } else {
-        None
-    };
-    let suggested_tip_amounts = if flags & (1 << 8) != 0 {
+        let flags = r.read_i32()?;
+        let test = flags & (1 << 0) != 0;
+        let name_requested = flags & (1 << 1) != 0;
+        let phone_requested = flags & (1 << 2) != 0;
+        let email_requested = flags & (1 << 3) != 0;
+        let shipping_address_requested = flags & (1 << 4) != 0;
+        let flexible = flags & (1 << 5) != 0;
+        let phone_to_provider = flags & (1 << 6) != 0;
+        let email_to_provider = flags & (1 << 7) != 0;
+        let recurring = flags & (1 << 9) != 0;
+        let currency = String::from_utf8(r.read_bytes()?)?;
         let n = r.read_vector_header()?;
-        let mut suggested_tip_amounts = Vec::with_capacity(n.max(0) as usize);
+        let mut prices = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            suggested_tip_amounts.push(r.read_i64()?);
+            prices.push(LabeledPrice::read_from(r)?);
         }
-        Some(suggested_tip_amounts)
-    } else {
-        None
-    };
-    let terms_url = if flags & (1 << 10) != 0 {
-        let terms_url = String::from_utf8(r.read_bytes()?)?;
-        Some(terms_url)
-    } else {
-        None
-    };
-    let subscription_period = if flags & (1 << 11) != 0 {
-        let subscription_period = r.read_i32()?;
-        Some(subscription_period)
-    } else {
-        None
-    };
+        let max_tip_amount = if flags & (1 << 8) != 0 {
+            let max_tip_amount = r.read_i64()?;
+            Some(max_tip_amount)
+        } else {
+            None
+        };
+        let suggested_tip_amounts = if flags & (1 << 8) != 0 {
+            let n = r.read_vector_header()?;
+            let mut suggested_tip_amounts = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                suggested_tip_amounts.push(r.read_i64()?);
+            }
+            Some(suggested_tip_amounts)
+        } else {
+            None
+        };
+        let terms_url = if flags & (1 << 10) != 0 {
+            let terms_url = String::from_utf8(r.read_bytes()?)?;
+            Some(terms_url)
+        } else {
+            None
+        };
+        let subscription_period = if flags & (1 << 11) != 0 {
+            let subscription_period = r.read_i32()?;
+            Some(subscription_period)
+        } else {
+            None
+        };
         Ok(Invoice {
             flags,
             test,
@@ -2984,31 +3785,59 @@ impl Invoice {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(INVOICE_ID);
-    let flags: i32 = if self.test { 1 << 0 } else { 0 } | if self.name_requested { 1 << 1 } else { 0 } | if self.phone_requested { 1 << 2 } else { 0 } | if self.email_requested { 1 << 3 } else { 0 } | if self.shipping_address_requested { 1 << 4 } else { 0 } | if self.flexible { 1 << 5 } else { 0 } | if self.phone_to_provider { 1 << 6 } else { 0 } | if self.email_to_provider { 1 << 7 } else { 0 } | if self.recurring { 1 << 9 } else { 0 } | if self.max_tip_amount.is_some() { 1 << 8 } else { 0 } | if self.suggested_tip_amounts.is_some() { 1 << 8 } else { 0 } | if self.terms_url.is_some() { 1 << 10 } else { 0 } | if self.subscription_period.is_some() { 1 << 11 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.currency.as_bytes());
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.prices.len() as i32);
-    for item in self.prices.iter() {
-        item.write_to(w);
-    }
-    if let Some(max_tip_amount) = self.max_tip_amount {
-        w.write_i64(max_tip_amount);
-    }
-    if let Some(suggested_tip_amounts) = self.suggested_tip_amounts.clone() {
+        w.write_u32(INVOICE_ID);
+        let flags: i32 = if self.test { 1 << 0 } else { 0 }
+            | if self.name_requested { 1 << 1 } else { 0 }
+            | if self.phone_requested { 1 << 2 } else { 0 }
+            | if self.email_requested { 1 << 3 } else { 0 }
+            | if self.shipping_address_requested {
+                1 << 4
+            } else {
+                0
+            }
+            | if self.flexible { 1 << 5 } else { 0 }
+            | if self.phone_to_provider { 1 << 6 } else { 0 }
+            | if self.email_to_provider { 1 << 7 } else { 0 }
+            | if self.recurring { 1 << 9 } else { 0 }
+            | if self.max_tip_amount.is_some() {
+                1 << 8
+            } else {
+                0
+            }
+            | if self.suggested_tip_amounts.is_some() {
+                1 << 8
+            } else {
+                0
+            }
+            | if self.terms_url.is_some() { 1 << 10 } else { 0 }
+            | if self.subscription_period.is_some() {
+                1 << 11
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        w.write_bytes(self.currency.as_bytes());
         w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(suggested_tip_amounts.len() as i32);
-        for item in suggested_tip_amounts.iter().copied() {
-            w.write_i64(item);
+        w.write_i32(self.prices.len() as i32);
+        for item in self.prices.iter() {
+            item.write_to(w);
         }
-    }
-    if let Some(terms_url) = self.terms_url.clone() {
-        w.write_bytes(terms_url.as_bytes());
-    }
-    if let Some(subscription_period) = self.subscription_period {
-        w.write_i32(subscription_period);
-    }
+        if let Some(max_tip_amount) = self.max_tip_amount {
+            w.write_i64(max_tip_amount);
+        }
+        if let Some(suggested_tip_amounts) = self.suggested_tip_amounts.clone() {
+            w.write_u32(crate::serialize::VECTOR);
+            w.write_i32(suggested_tip_amounts.len() as i32);
+            for item in suggested_tip_amounts.iter().copied() {
+                w.write_i64(item);
+            }
+        }
+        if let Some(terms_url) = self.terms_url.clone() {
+            w.write_bytes(terms_url.as_bytes());
+        }
+        if let Some(subscription_period) = self.subscription_period {
+            w.write_i32(subscription_period);
+        }
     }
 }
 
@@ -3027,19 +3856,16 @@ impl LabeledPrice {
                 "expected labeledPrice, got {ctor:#x}"
             )));
         }
-    let label = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-        Ok(LabeledPrice {
-            label,
-            amount,
-        })
+        let label = String::from_utf8(r.read_bytes()?)?;
+        let amount = r.read_i64()?;
+        Ok(LabeledPrice { label, amount })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(LABELED_PRICE_ID);
-    w.write_bytes(self.label.as_bytes());
-    w.write_i64(self.amount);
+        w.write_u32(LABELED_PRICE_ID);
+        w.write_bytes(self.label.as_bytes());
+        w.write_i64(self.amount);
     }
 }
 
@@ -3060,14 +3886,14 @@ impl InputWebDocument {
                 "expected inputWebDocument, got {ctor:#x}"
             )));
         }
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let size = r.read_i32()?;
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
+        let url = String::from_utf8(r.read_bytes()?)?;
+        let size = r.read_i32()?;
+        let mime_type = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut attributes = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            attributes.push(DocumentAttribute::read_from(r)?);
+        }
         Ok(InputWebDocument {
             url,
             size,
@@ -3075,14 +3901,16 @@ impl InputWebDocument {
             attributes,
         })
     }
-
 }
 
 /// Union `InputGame` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputGame {
     /// `inputGameShortName#c331e80a`
-    InputGameShortName { bot_id: InputUser, short_name: String },
+    InputGameShortName {
+        bot_id: InputUser,
+        short_name: String,
+    },
     /// `inputGameID#032c3e77`
     InputGameID { id: i64, access_hash: AccessHash },
 }
@@ -3092,14 +3920,14 @@ impl InputGame {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_GAME_SHORT_NAME_ID => {
-    let bot_id = InputUser::read_from(r)?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
+                let bot_id = InputUser::read_from(r)?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputGame::InputGameShortName { bot_id, short_name })
             }
             INPUT_GAME_ID_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputGame::InputGameID { id, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -3125,16 +3953,15 @@ impl TodoCompletion {
                 "expected todoCompletion, got {ctor:#x}"
             )));
         }
-    let id = r.read_i32()?;
-    let completed_by = Peer::read_from(r)?;
-    let date = r.read_i32()?;
+        let id = r.read_i32()?;
+        let completed_by = Peer::read_from(r)?;
+        let date = r.read_i32()?;
         Ok(TodoCompletion {
             id,
             completed_by,
             date,
         })
     }
-
 }
 
 /// Union `MessageExtendedMedia` (2 constructors).
@@ -3143,7 +3970,13 @@ pub enum MessageExtendedMedia {
     /// `messageExtendedMedia#ee479c64`
     MessageExtendedMedia { media: Box<MessageMedia> },
     /// `messageExtendedMediaPreview#ad628cc8`
-    MessageExtendedMediaPreview { flags: i32, w: Option<i32>, h: Option<i32>, thumb: Option<PhotoSize>, video_duration: Option<i32> },
+    MessageExtendedMediaPreview {
+        flags: i32,
+        w: Option<i32>,
+        h: Option<i32>,
+        thumb: Option<PhotoSize>,
+        video_duration: Option<i32>,
+    },
 }
 
 impl MessageExtendedMedia {
@@ -3151,36 +3984,42 @@ impl MessageExtendedMedia {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_EXTENDED_MEDIA_ID => {
-    let media = Box::new(MessageMedia::read_from(r)?);
+                let media = Box::new(MessageMedia::read_from(r)?);
                 Ok(MessageExtendedMedia::MessageExtendedMedia { media })
             }
             MESSAGE_EXTENDED_MEDIA_PREVIEW_ID => {
-    let flags = r.read_i32()?;
-    let w = if flags & (1 << 0) != 0 {
-        let w = r.read_i32()?;
-        Some(w)
-    } else {
-        None
-    };
-    let h = if flags & (1 << 0) != 0 {
-        let h = r.read_i32()?;
-        Some(h)
-    } else {
-        None
-    };
-    let thumb = if flags & (1 << 1) != 0 {
-        let thumb = PhotoSize::read_from(r)?;
-        Some(thumb)
-    } else {
-        None
-    };
-    let video_duration = if flags & (1 << 2) != 0 {
-        let video_duration = r.read_i32()?;
-        Some(video_duration)
-    } else {
-        None
-    };
-                Ok(MessageExtendedMedia::MessageExtendedMediaPreview { flags, w, h, thumb, video_duration })
+                let flags = r.read_i32()?;
+                let w = if flags & (1 << 0) != 0 {
+                    let w = r.read_i32()?;
+                    Some(w)
+                } else {
+                    None
+                };
+                let h = if flags & (1 << 0) != 0 {
+                    let h = r.read_i32()?;
+                    Some(h)
+                } else {
+                    None
+                };
+                let thumb = if flags & (1 << 1) != 0 {
+                    let thumb = PhotoSize::read_from(r)?;
+                    Some(thumb)
+                } else {
+                    None
+                };
+                let video_duration = if flags & (1 << 2) != 0 {
+                    let video_duration = r.read_i32()?;
+                    Some(video_duration)
+                } else {
+                    None
+                };
+                Ok(MessageExtendedMedia::MessageExtendedMediaPreview {
+                    flags,
+                    w,
+                    h,
+                    thumb,
+                    video_duration,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown MessageExtendedMedia constructor {other:#x}"
@@ -3205,9 +4044,9 @@ impl MessagesEmojiGameOutcome {
                 "expected messages.emojiGameOutcome, got {ctor:#x}"
             )));
         }
-    let seed = r.read_bytes()?;
-    let stake_ton_amount = r.read_i64()?;
-    let ton_amount = r.read_i64()?;
+        let seed = r.read_bytes()?;
+        let stake_ton_amount = r.read_i64()?;
+        let ton_amount = r.read_i64()?;
         Ok(MessagesEmojiGameOutcome {
             seed,
             stake_ton_amount,
@@ -3217,10 +4056,10 @@ impl MessagesEmojiGameOutcome {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MESSAGES_EMOJI_GAME_OUTCOME_ID);
-    w.write_bytes(&self.seed);
-    w.write_i64(self.stake_ton_amount);
-    w.write_i64(self.ton_amount);
+        w.write_u32(MESSAGES_EMOJI_GAME_OUTCOME_ID);
+        w.write_bytes(&self.seed);
+        w.write_i64(self.stake_ton_amount);
+        w.write_i64(self.ton_amount);
     }
 }
 
@@ -3247,58 +4086,58 @@ impl PollResults {
                 "expected pollResults, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let min = flags & (1 << 0) != 0;
-    let has_unread_votes = flags & (1 << 6) != 0;
-    let can_view_stats = flags & (1 << 7) != 0;
-    let results = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut results = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            results.push(PollAnswerVoters::read_from(r)?);
-        }
-        Some(results)
-    } else {
-        None
-    };
-    let total_voters = if flags & (1 << 2) != 0 {
-        let total_voters = r.read_i32()?;
-        Some(total_voters)
-    } else {
-        None
-    };
-    let recent_voters = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_voters = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_voters.push(Peer::read_from(r)?);
-        }
-        Some(recent_voters)
-    } else {
-        None
-    };
-    let solution = if flags & (1 << 4) != 0 {
-        let solution = String::from_utf8(r.read_bytes()?)?;
-        Some(solution)
-    } else {
-        None
-    };
-    let solution_entities = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            solution_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(solution_entities)
-    } else {
-        None
-    };
-    let solution_media = if flags & (1 << 5) != 0 {
-        let solution_media = Box::new(MessageMedia::read_from(r)?);
-        Some(solution_media)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let min = flags & (1 << 0) != 0;
+        let has_unread_votes = flags & (1 << 6) != 0;
+        let can_view_stats = flags & (1 << 7) != 0;
+        let results = if flags & (1 << 1) != 0 {
+            let n = r.read_vector_header()?;
+            let mut results = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                results.push(PollAnswerVoters::read_from(r)?);
+            }
+            Some(results)
+        } else {
+            None
+        };
+        let total_voters = if flags & (1 << 2) != 0 {
+            let total_voters = r.read_i32()?;
+            Some(total_voters)
+        } else {
+            None
+        };
+        let recent_voters = if flags & (1 << 3) != 0 {
+            let n = r.read_vector_header()?;
+            let mut recent_voters = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                recent_voters.push(Peer::read_from(r)?);
+            }
+            Some(recent_voters)
+        } else {
+            None
+        };
+        let solution = if flags & (1 << 4) != 0 {
+            let solution = String::from_utf8(r.read_bytes()?)?;
+            Some(solution)
+        } else {
+            None
+        };
+        let solution_entities = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                solution_entities.push(MessageEntity::read_from(r)?);
+            }
+            Some(solution_entities)
+        } else {
+            None
+        };
+        let solution_media = if flags & (1 << 5) != 0 {
+            let solution_media = Box::new(MessageMedia::read_from(r)?);
+            Some(solution_media)
+        } else {
+            None
+        };
         Ok(PollResults {
             flags,
             min,
@@ -3312,7 +4151,6 @@ impl PollResults {
             solution_media,
         })
     }
-
 }
 
 /// `pollAnswerVoters#3645230a = PollAnswerVoters`
@@ -3334,26 +4172,26 @@ impl PollAnswerVoters {
                 "expected pollAnswerVoters, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let chosen = flags & (1 << 0) != 0;
-    let correct = flags & (1 << 1) != 0;
-    let option = r.read_bytes()?;
-    let voters = if flags & (1 << 2) != 0 {
-        let voters = r.read_i32()?;
-        Some(voters)
-    } else {
-        None
-    };
-    let recent_voters = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_voters = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_voters.push(Peer::read_from(r)?);
-        }
-        Some(recent_voters)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let chosen = flags & (1 << 0) != 0;
+        let correct = flags & (1 << 1) != 0;
+        let option = r.read_bytes()?;
+        let voters = if flags & (1 << 2) != 0 {
+            let voters = r.read_i32()?;
+            Some(voters)
+        } else {
+            None
+        };
+        let recent_voters = if flags & (1 << 2) != 0 {
+            let n = r.read_vector_header()?;
+            let mut recent_voters = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                recent_voters.push(Peer::read_from(r)?);
+            }
+            Some(recent_voters)
+        } else {
+            None
+        };
         Ok(PollAnswerVoters {
             flags,
             chosen,
@@ -3363,7 +4201,6 @@ impl PollAnswerVoters {
             recent_voters,
         })
     }
-
 }
 
 /// `game#bdf9653b = Game`
@@ -3387,20 +4224,20 @@ impl Game {
                 "expected game, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = Photo::read_from(r)?;
-    let document = if flags & (1 << 0) != 0 {
-        let document = Document::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
+        let flags = r.read_i32()?;
+        let id = r.read_i64()?;
+        let access_hash = r.read_i64()?;
+        let short_name = String::from_utf8(r.read_bytes()?)?;
+        let title = String::from_utf8(r.read_bytes()?)?;
+        let description = String::from_utf8(r.read_bytes()?)?;
+        let photo = Photo::read_from(r)?;
+        let document = if flags & (1 << 0) != 0 {
+            let document = Document::read_from(r)?;
+            Some(document)
+        } else {
+            None
+        };
+        let access_hash = AccessHash(access_hash);
         Ok(Game {
             flags,
             id,
@@ -3412,20 +4249,53 @@ impl Game {
             document,
         })
     }
-
 }
 
 /// Union `WebPage` (4 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum WebPage {
     /// `webPageNotModified#7311ca11`
-    WebPageNotModified { flags: i32, cached_page_views: Option<i32> },
+    WebPageNotModified {
+        flags: i32,
+        cached_page_views: Option<i32>,
+    },
     /// `webPage#e89c45b2`
-    WebPage { flags: i32, has_large_media: bool, video_cover_photo: bool, id: i64, url: String, display_url: String, hash: i32, r#type: Option<String>, site_name: Option<String>, title: Option<String>, description: Option<String>, photo: Option<Photo>, embed_url: Option<String>, embed_type: Option<String>, embed_width: Option<i32>, embed_height: Option<i32>, duration: Option<i32>, author: Option<String>, document: Option<Document>, cached_page: Option<Page>, attributes: Option<Vec<WebPageAttribute>> },
+    WebPage {
+        flags: i32,
+        has_large_media: bool,
+        video_cover_photo: bool,
+        id: i64,
+        url: String,
+        display_url: String,
+        hash: i32,
+        r#type: Option<String>,
+        site_name: Option<String>,
+        title: Option<String>,
+        description: Option<String>,
+        photo: Option<Photo>,
+        embed_url: Option<String>,
+        embed_type: Option<String>,
+        embed_width: Option<i32>,
+        embed_height: Option<i32>,
+        duration: Option<i32>,
+        author: Option<String>,
+        document: Option<Document>,
+        cached_page: Option<Page>,
+        attributes: Option<Vec<WebPageAttribute>>,
+    },
     /// `webPagePending#b0d13e47`
-    WebPagePending { flags: i32, id: i64, url: Option<String>, date: i32 },
+    WebPagePending {
+        flags: i32,
+        id: i64,
+        url: Option<String>,
+        date: i32,
+    },
     /// `webPageEmpty#211a1788`
-    WebPageEmpty { flags: i32, id: i64, url: Option<String> },
+    WebPageEmpty {
+        flags: i32,
+        id: i64,
+        url: Option<String>,
+    },
 }
 
 impl WebPage {
@@ -3433,134 +4303,164 @@ impl WebPage {
         let ctor = r.read_u32()?;
         match ctor {
             WEB_PAGE_NOT_MODIFIED_ID => {
-    let flags = r.read_i32()?;
-    let cached_page_views = if flags & (1 << 0) != 0 {
-        let cached_page_views = r.read_i32()?;
-        Some(cached_page_views)
-    } else {
-        None
-    };
-                Ok(WebPage::WebPageNotModified { flags, cached_page_views })
+                let flags = r.read_i32()?;
+                let cached_page_views = if flags & (1 << 0) != 0 {
+                    let cached_page_views = r.read_i32()?;
+                    Some(cached_page_views)
+                } else {
+                    None
+                };
+                Ok(WebPage::WebPageNotModified {
+                    flags,
+                    cached_page_views,
+                })
             }
             WEB_PAGE_ID => {
-    let flags = r.read_i32()?;
-    let has_large_media = flags & (1 << 13) != 0;
-    let video_cover_photo = flags & (1 << 14) != 0;
-    let id = r.read_i64()?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let display_url = String::from_utf8(r.read_bytes()?)?;
-    let hash = r.read_i32()?;
-    let r#type = if flags & (1 << 0) != 0 {
-        let r#type = String::from_utf8(r.read_bytes()?)?;
-        Some(r#type)
-    } else {
-        None
-    };
-    let site_name = if flags & (1 << 1) != 0 {
-        let site_name = String::from_utf8(r.read_bytes()?)?;
-        Some(site_name)
-    } else {
-        None
-    };
-    let title = if flags & (1 << 2) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let description = if flags & (1 << 3) != 0 {
-        let description = String::from_utf8(r.read_bytes()?)?;
-        Some(description)
-    } else {
-        None
-    };
-    let photo = if flags & (1 << 4) != 0 {
-        let photo = Photo::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let embed_url = if flags & (1 << 5) != 0 {
-        let embed_url = String::from_utf8(r.read_bytes()?)?;
-        Some(embed_url)
-    } else {
-        None
-    };
-    let embed_type = if flags & (1 << 5) != 0 {
-        let embed_type = String::from_utf8(r.read_bytes()?)?;
-        Some(embed_type)
-    } else {
-        None
-    };
-    let embed_width = if flags & (1 << 6) != 0 {
-        let embed_width = r.read_i32()?;
-        Some(embed_width)
-    } else {
-        None
-    };
-    let embed_height = if flags & (1 << 6) != 0 {
-        let embed_height = r.read_i32()?;
-        Some(embed_height)
-    } else {
-        None
-    };
-    let duration = if flags & (1 << 7) != 0 {
-        let duration = r.read_i32()?;
-        Some(duration)
-    } else {
-        None
-    };
-    let author = if flags & (1 << 8) != 0 {
-        let author = String::from_utf8(r.read_bytes()?)?;
-        Some(author)
-    } else {
-        None
-    };
-    let document = if flags & (1 << 9) != 0 {
-        let document = Document::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let cached_page = if flags & (1 << 10) != 0 {
-        let cached_page = Page::read_from(r)?;
-        Some(cached_page)
-    } else {
-        None
-    };
-    let attributes = if flags & (1 << 12) != 0 {
-        let n = r.read_vector_header()?;
-        let mut attributes = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            attributes.push(WebPageAttribute::read_from(r)?);
-        }
-        Some(attributes)
-    } else {
-        None
-    };
-                Ok(WebPage::WebPage { flags, has_large_media, video_cover_photo, id, url, display_url, hash, r#type, site_name, title, description, photo, embed_url, embed_type, embed_width, embed_height, duration, author, document, cached_page, attributes })
+                let flags = r.read_i32()?;
+                let has_large_media = flags & (1 << 13) != 0;
+                let video_cover_photo = flags & (1 << 14) != 0;
+                let id = r.read_i64()?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let display_url = String::from_utf8(r.read_bytes()?)?;
+                let hash = r.read_i32()?;
+                let r#type = if flags & (1 << 0) != 0 {
+                    let r#type = String::from_utf8(r.read_bytes()?)?;
+                    Some(r#type)
+                } else {
+                    None
+                };
+                let site_name = if flags & (1 << 1) != 0 {
+                    let site_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(site_name)
+                } else {
+                    None
+                };
+                let title = if flags & (1 << 2) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let description = if flags & (1 << 3) != 0 {
+                    let description = String::from_utf8(r.read_bytes()?)?;
+                    Some(description)
+                } else {
+                    None
+                };
+                let photo = if flags & (1 << 4) != 0 {
+                    let photo = Photo::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let embed_url = if flags & (1 << 5) != 0 {
+                    let embed_url = String::from_utf8(r.read_bytes()?)?;
+                    Some(embed_url)
+                } else {
+                    None
+                };
+                let embed_type = if flags & (1 << 5) != 0 {
+                    let embed_type = String::from_utf8(r.read_bytes()?)?;
+                    Some(embed_type)
+                } else {
+                    None
+                };
+                let embed_width = if flags & (1 << 6) != 0 {
+                    let embed_width = r.read_i32()?;
+                    Some(embed_width)
+                } else {
+                    None
+                };
+                let embed_height = if flags & (1 << 6) != 0 {
+                    let embed_height = r.read_i32()?;
+                    Some(embed_height)
+                } else {
+                    None
+                };
+                let duration = if flags & (1 << 7) != 0 {
+                    let duration = r.read_i32()?;
+                    Some(duration)
+                } else {
+                    None
+                };
+                let author = if flags & (1 << 8) != 0 {
+                    let author = String::from_utf8(r.read_bytes()?)?;
+                    Some(author)
+                } else {
+                    None
+                };
+                let document = if flags & (1 << 9) != 0 {
+                    let document = Document::read_from(r)?;
+                    Some(document)
+                } else {
+                    None
+                };
+                let cached_page = if flags & (1 << 10) != 0 {
+                    let cached_page = Page::read_from(r)?;
+                    Some(cached_page)
+                } else {
+                    None
+                };
+                let attributes = if flags & (1 << 12) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        attributes.push(WebPageAttribute::read_from(r)?);
+                    }
+                    Some(attributes)
+                } else {
+                    None
+                };
+                Ok(WebPage::WebPage {
+                    flags,
+                    has_large_media,
+                    video_cover_photo,
+                    id,
+                    url,
+                    display_url,
+                    hash,
+                    r#type,
+                    site_name,
+                    title,
+                    description,
+                    photo,
+                    embed_url,
+                    embed_type,
+                    embed_width,
+                    embed_height,
+                    duration,
+                    author,
+                    document,
+                    cached_page,
+                    attributes,
+                })
             }
             WEB_PAGE_PENDING_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let url = if flags & (1 << 0) != 0 {
-        let url = String::from_utf8(r.read_bytes()?)?;
-        Some(url)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-                Ok(WebPage::WebPagePending { flags, id, url, date })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let url = if flags & (1 << 0) != 0 {
+                    let url = String::from_utf8(r.read_bytes()?)?;
+                    Some(url)
+                } else {
+                    None
+                };
+                let date = r.read_i32()?;
+                Ok(WebPage::WebPagePending {
+                    flags,
+                    id,
+                    url,
+                    date,
+                })
             }
             WEB_PAGE_EMPTY_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let url = if flags & (1 << 0) != 0 {
-        let url = String::from_utf8(r.read_bytes()?)?;
-        Some(url)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let url = if flags & (1 << 0) != 0 {
+                    let url = String::from_utf8(r.read_bytes()?)?;
+                    Some(url)
+                } else {
+                    None
+                };
                 Ok(WebPage::WebPageEmpty { flags, id, url })
             }
             other => Err(Error::Serialization(format!(
@@ -3582,11 +4482,25 @@ pub enum WebPageAttribute {
     /// `webPageAttributeUniqueStarGift#cf6f6db8`
     WebPageAttributeUniqueStarGift { gift: StarGift },
     /// `webPageAttributeStickerSet#50cc03d3`
-    WebPageAttributeStickerSet { flags: i32, emojis: bool, text_color: bool, stickers: Vec<Document> },
+    WebPageAttributeStickerSet {
+        flags: i32,
+        emojis: bool,
+        text_color: bool,
+        stickers: Vec<Document>,
+    },
     /// `webPageAttributeStory#2e94c3e7`
-    WebPageAttributeStory { flags: i32, peer: Peer, id: i32, story: Option<Box<StoryItem>> },
+    WebPageAttributeStory {
+        flags: i32,
+        peer: Peer,
+        id: i32,
+        story: Option<Box<StoryItem>>,
+    },
     /// `webPageAttributeTheme#54b56617`
-    WebPageAttributeTheme { flags: i32, documents: Option<Vec<Document>>, settings: Option<ThemeSettings> },
+    WebPageAttributeTheme {
+        flags: i32,
+        documents: Option<Vec<Document>>,
+        settings: Option<ThemeSettings>,
+    },
 }
 
 impl WebPageAttribute {
@@ -3594,68 +4508,82 @@ impl WebPageAttribute {
         let ctor = r.read_u32()?;
         match ctor {
             WEB_PAGE_ATTRIBUTE_AI_COMPOSE_TONE_ID => {
-    let emoji_id = r.read_i64()?;
+                let emoji_id = r.read_i64()?;
                 Ok(WebPageAttribute::WebPageAttributeAiComposeTone { emoji_id })
             }
             WEB_PAGE_ATTRIBUTE_STAR_GIFT_AUCTION_ID => {
-    let gift = StarGift::read_from(r)?;
-    let end_date = r.read_i32()?;
+                let gift = StarGift::read_from(r)?;
+                let end_date = r.read_i32()?;
                 Ok(WebPageAttribute::WebPageAttributeStarGiftAuction { gift, end_date })
             }
             WEB_PAGE_ATTRIBUTE_STAR_GIFT_COLLECTION_ID => {
-    let n = r.read_vector_header()?;
-    let mut icons = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        icons.push(Document::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut icons = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    icons.push(Document::read_from(r)?);
+                }
                 Ok(WebPageAttribute::WebPageAttributeStarGiftCollection { icons })
             }
             WEB_PAGE_ATTRIBUTE_UNIQUE_STAR_GIFT_ID => {
-    let gift = StarGift::read_from(r)?;
+                let gift = StarGift::read_from(r)?;
                 Ok(WebPageAttribute::WebPageAttributeUniqueStarGift { gift })
             }
             WEB_PAGE_ATTRIBUTE_STICKER_SET_ID => {
-    let flags = r.read_i32()?;
-    let emojis = flags & (1 << 0) != 0;
-    let text_color = flags & (1 << 1) != 0;
-    let n = r.read_vector_header()?;
-    let mut stickers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        stickers.push(Document::read_from(r)?);
-    }
-                Ok(WebPageAttribute::WebPageAttributeStickerSet { flags, emojis, text_color, stickers })
+                let flags = r.read_i32()?;
+                let emojis = flags & (1 << 0) != 0;
+                let text_color = flags & (1 << 1) != 0;
+                let n = r.read_vector_header()?;
+                let mut stickers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    stickers.push(Document::read_from(r)?);
+                }
+                Ok(WebPageAttribute::WebPageAttributeStickerSet {
+                    flags,
+                    emojis,
+                    text_color,
+                    stickers,
+                })
             }
             WEB_PAGE_ATTRIBUTE_STORY_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let id = r.read_i32()?;
-    let story = if flags & (1 << 0) != 0 {
-        let story = Box::new(StoryItem::read_from(r)?);
-        Some(story)
-    } else {
-        None
-    };
-                Ok(WebPageAttribute::WebPageAttributeStory { flags, peer, id, story })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let id = r.read_i32()?;
+                let story = if flags & (1 << 0) != 0 {
+                    let story = Box::new(StoryItem::read_from(r)?);
+                    Some(story)
+                } else {
+                    None
+                };
+                Ok(WebPageAttribute::WebPageAttributeStory {
+                    flags,
+                    peer,
+                    id,
+                    story,
+                })
             }
             WEB_PAGE_ATTRIBUTE_THEME_ID => {
-    let flags = r.read_i32()?;
-    let documents = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut documents = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            documents.push(Document::read_from(r)?);
-        }
-        Some(documents)
-    } else {
-        None
-    };
-    let settings = if flags & (1 << 1) != 0 {
-        let settings = ThemeSettings::read_from(r)?;
-        Some(settings)
-    } else {
-        None
-    };
-                Ok(WebPageAttribute::WebPageAttributeTheme { flags, documents, settings })
+                let flags = r.read_i32()?;
+                let documents = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut documents = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        documents.push(Document::read_from(r)?);
+                    }
+                    Some(documents)
+                } else {
+                    None
+                };
+                let settings = if flags & (1 << 1) != 0 {
+                    let settings = ThemeSettings::read_from(r)?;
+                    Some(settings)
+                } else {
+                    None
+                };
+                Ok(WebPageAttribute::WebPageAttributeTheme {
+                    flags,
+                    documents,
+                    settings,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown WebPageAttribute constructor {other:#x}"
@@ -3668,9 +4596,68 @@ impl WebPageAttribute {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StarGift {
     /// `starGiftUnique#85f0a9cd`
-    StarGiftUnique { flags: i32, require_premium: bool, resale_ton_only: bool, theme_available: bool, burned: bool, crafted: bool, id: i64, gift_id: i64, title: String, slug: String, num: i32, owner_id: Option<Peer>, owner_name: Option<String>, owner_address: Option<String>, attributes: Vec<StarGiftAttribute>, availability_issued: i32, availability_total: i32, gift_address: Option<String>, resell_amount: Option<Vec<StarsAmount>>, released_by: Option<Peer>, value_amount: Option<i64>, value_currency: Option<String>, value_usd_amount: Option<i64>, theme_peer: Option<Peer>, peer_color: Option<PeerColor>, host_id: Option<Peer>, offer_min_stars: Option<i32>, craft_chance_permille: Option<i32> },
+    StarGiftUnique {
+        flags: i32,
+        require_premium: bool,
+        resale_ton_only: bool,
+        theme_available: bool,
+        burned: bool,
+        crafted: bool,
+        id: i64,
+        gift_id: i64,
+        title: String,
+        slug: String,
+        num: i32,
+        owner_id: Option<Peer>,
+        owner_name: Option<String>,
+        owner_address: Option<String>,
+        attributes: Vec<StarGiftAttribute>,
+        availability_issued: i32,
+        availability_total: i32,
+        gift_address: Option<String>,
+        resell_amount: Option<Vec<StarsAmount>>,
+        released_by: Option<Peer>,
+        value_amount: Option<i64>,
+        value_currency: Option<String>,
+        value_usd_amount: Option<i64>,
+        theme_peer: Option<Peer>,
+        peer_color: Option<PeerColor>,
+        host_id: Option<Peer>,
+        offer_min_stars: Option<i32>,
+        craft_chance_permille: Option<i32>,
+    },
     /// `starGift#313a9547`
-    StarGift { flags: i32, limited: bool, sold_out: bool, birthday: bool, require_premium: bool, limited_per_user: bool, peer_color_available: bool, auction: bool, id: i64, sticker: Document, stars: i64, availability_remains: Option<i32>, availability_total: Option<i32>, availability_resale: Option<i64>, convert_stars: i64, first_sale_date: Option<i32>, last_sale_date: Option<i32>, upgrade_stars: Option<i64>, resell_min_stars: Option<i64>, title: Option<String>, released_by: Option<Peer>, per_user_total: Option<i32>, per_user_remains: Option<i32>, locked_until_date: Option<i32>, auction_slug: Option<String>, gifts_per_round: Option<i32>, auction_start_date: Option<i32>, upgrade_variants: Option<i32>, background: Option<StarGiftBackground> },
+    StarGift {
+        flags: i32,
+        limited: bool,
+        sold_out: bool,
+        birthday: bool,
+        require_premium: bool,
+        limited_per_user: bool,
+        peer_color_available: bool,
+        auction: bool,
+        id: i64,
+        sticker: Document,
+        stars: i64,
+        availability_remains: Option<i32>,
+        availability_total: Option<i32>,
+        availability_resale: Option<i64>,
+        convert_stars: i64,
+        first_sale_date: Option<i32>,
+        last_sale_date: Option<i32>,
+        upgrade_stars: Option<i64>,
+        resell_min_stars: Option<i64>,
+        title: Option<String>,
+        released_by: Option<Peer>,
+        per_user_total: Option<i32>,
+        per_user_remains: Option<i32>,
+        locked_until_date: Option<i32>,
+        auction_slug: Option<String>,
+        gifts_per_round: Option<i32>,
+        auction_start_date: Option<i32>,
+        upgrade_variants: Option<i32>,
+        background: Option<StarGiftBackground>,
+    },
 }
 
 impl StarGift {
@@ -3678,230 +4665,289 @@ impl StarGift {
         let ctor = r.read_u32()?;
         match ctor {
             STAR_GIFT_UNIQUE_ID => {
-    let flags = r.read_i32()?;
-    let require_premium = flags & (1 << 6) != 0;
-    let resale_ton_only = flags & (1 << 7) != 0;
-    let theme_available = flags & (1 << 9) != 0;
-    let burned = flags & (1 << 14) != 0;
-    let crafted = flags & (1 << 15) != 0;
-    let id = r.read_i64()?;
-    let gift_id = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
-    let num = r.read_i32()?;
-    let owner_id = if flags & (1 << 0) != 0 {
-        let owner_id = Peer::read_from(r)?;
-        Some(owner_id)
-    } else {
-        None
-    };
-    let owner_name = if flags & (1 << 1) != 0 {
-        let owner_name = String::from_utf8(r.read_bytes()?)?;
-        Some(owner_name)
-    } else {
-        None
-    };
-    let owner_address = if flags & (1 << 2) != 0 {
-        let owner_address = String::from_utf8(r.read_bytes()?)?;
-        Some(owner_address)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(StarGiftAttribute::read_from(r)?);
-    }
-    let availability_issued = r.read_i32()?;
-    let availability_total = r.read_i32()?;
-    let gift_address = if flags & (1 << 3) != 0 {
-        let gift_address = String::from_utf8(r.read_bytes()?)?;
-        Some(gift_address)
-    } else {
-        None
-    };
-    let resell_amount = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut resell_amount = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            resell_amount.push(StarsAmount::read_from(r)?);
-        }
-        Some(resell_amount)
-    } else {
-        None
-    };
-    let released_by = if flags & (1 << 5) != 0 {
-        let released_by = Peer::read_from(r)?;
-        Some(released_by)
-    } else {
-        None
-    };
-    let value_amount = if flags & (1 << 8) != 0 {
-        let value_amount = r.read_i64()?;
-        Some(value_amount)
-    } else {
-        None
-    };
-    let value_currency = if flags & (1 << 8) != 0 {
-        let value_currency = String::from_utf8(r.read_bytes()?)?;
-        Some(value_currency)
-    } else {
-        None
-    };
-    let value_usd_amount = if flags & (1 << 8) != 0 {
-        let value_usd_amount = r.read_i64()?;
-        Some(value_usd_amount)
-    } else {
-        None
-    };
-    let theme_peer = if flags & (1 << 10) != 0 {
-        let theme_peer = Peer::read_from(r)?;
-        Some(theme_peer)
-    } else {
-        None
-    };
-    let peer_color = if flags & (1 << 11) != 0 {
-        let peer_color = PeerColor::read_from(r)?;
-        Some(peer_color)
-    } else {
-        None
-    };
-    let host_id = if flags & (1 << 12) != 0 {
-        let host_id = Peer::read_from(r)?;
-        Some(host_id)
-    } else {
-        None
-    };
-    let offer_min_stars = if flags & (1 << 13) != 0 {
-        let offer_min_stars = r.read_i32()?;
-        Some(offer_min_stars)
-    } else {
-        None
-    };
-    let craft_chance_permille = if flags & (1 << 16) != 0 {
-        let craft_chance_permille = r.read_i32()?;
-        Some(craft_chance_permille)
-    } else {
-        None
-    };
-                Ok(StarGift::StarGiftUnique { flags, require_premium, resale_ton_only, theme_available, burned, crafted, id, gift_id, title, slug, num, owner_id, owner_name, owner_address, attributes, availability_issued, availability_total, gift_address, resell_amount, released_by, value_amount, value_currency, value_usd_amount, theme_peer, peer_color, host_id, offer_min_stars, craft_chance_permille })
+                let flags = r.read_i32()?;
+                let require_premium = flags & (1 << 6) != 0;
+                let resale_ton_only = flags & (1 << 7) != 0;
+                let theme_available = flags & (1 << 9) != 0;
+                let burned = flags & (1 << 14) != 0;
+                let crafted = flags & (1 << 15) != 0;
+                let id = r.read_i64()?;
+                let gift_id = r.read_i64()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                let num = r.read_i32()?;
+                let owner_id = if flags & (1 << 0) != 0 {
+                    let owner_id = Peer::read_from(r)?;
+                    Some(owner_id)
+                } else {
+                    None
+                };
+                let owner_name = if flags & (1 << 1) != 0 {
+                    let owner_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(owner_name)
+                } else {
+                    None
+                };
+                let owner_address = if flags & (1 << 2) != 0 {
+                    let owner_address = String::from_utf8(r.read_bytes()?)?;
+                    Some(owner_address)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(StarGiftAttribute::read_from(r)?);
+                }
+                let availability_issued = r.read_i32()?;
+                let availability_total = r.read_i32()?;
+                let gift_address = if flags & (1 << 3) != 0 {
+                    let gift_address = String::from_utf8(r.read_bytes()?)?;
+                    Some(gift_address)
+                } else {
+                    None
+                };
+                let resell_amount = if flags & (1 << 4) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut resell_amount = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        resell_amount.push(StarsAmount::read_from(r)?);
+                    }
+                    Some(resell_amount)
+                } else {
+                    None
+                };
+                let released_by = if flags & (1 << 5) != 0 {
+                    let released_by = Peer::read_from(r)?;
+                    Some(released_by)
+                } else {
+                    None
+                };
+                let value_amount = if flags & (1 << 8) != 0 {
+                    let value_amount = r.read_i64()?;
+                    Some(value_amount)
+                } else {
+                    None
+                };
+                let value_currency = if flags & (1 << 8) != 0 {
+                    let value_currency = String::from_utf8(r.read_bytes()?)?;
+                    Some(value_currency)
+                } else {
+                    None
+                };
+                let value_usd_amount = if flags & (1 << 8) != 0 {
+                    let value_usd_amount = r.read_i64()?;
+                    Some(value_usd_amount)
+                } else {
+                    None
+                };
+                let theme_peer = if flags & (1 << 10) != 0 {
+                    let theme_peer = Peer::read_from(r)?;
+                    Some(theme_peer)
+                } else {
+                    None
+                };
+                let peer_color = if flags & (1 << 11) != 0 {
+                    let peer_color = PeerColor::read_from(r)?;
+                    Some(peer_color)
+                } else {
+                    None
+                };
+                let host_id = if flags & (1 << 12) != 0 {
+                    let host_id = Peer::read_from(r)?;
+                    Some(host_id)
+                } else {
+                    None
+                };
+                let offer_min_stars = if flags & (1 << 13) != 0 {
+                    let offer_min_stars = r.read_i32()?;
+                    Some(offer_min_stars)
+                } else {
+                    None
+                };
+                let craft_chance_permille = if flags & (1 << 16) != 0 {
+                    let craft_chance_permille = r.read_i32()?;
+                    Some(craft_chance_permille)
+                } else {
+                    None
+                };
+                Ok(StarGift::StarGiftUnique {
+                    flags,
+                    require_premium,
+                    resale_ton_only,
+                    theme_available,
+                    burned,
+                    crafted,
+                    id,
+                    gift_id,
+                    title,
+                    slug,
+                    num,
+                    owner_id,
+                    owner_name,
+                    owner_address,
+                    attributes,
+                    availability_issued,
+                    availability_total,
+                    gift_address,
+                    resell_amount,
+                    released_by,
+                    value_amount,
+                    value_currency,
+                    value_usd_amount,
+                    theme_peer,
+                    peer_color,
+                    host_id,
+                    offer_min_stars,
+                    craft_chance_permille,
+                })
             }
             STAR_GIFT_ID => {
-    let flags = r.read_i32()?;
-    let limited = flags & (1 << 0) != 0;
-    let sold_out = flags & (1 << 1) != 0;
-    let birthday = flags & (1 << 2) != 0;
-    let require_premium = flags & (1 << 7) != 0;
-    let limited_per_user = flags & (1 << 8) != 0;
-    let peer_color_available = flags & (1 << 10) != 0;
-    let auction = flags & (1 << 11) != 0;
-    let id = r.read_i64()?;
-    let sticker = Document::read_from(r)?;
-    let stars = r.read_i64()?;
-    let availability_remains = if flags & (1 << 0) != 0 {
-        let availability_remains = r.read_i32()?;
-        Some(availability_remains)
-    } else {
-        None
-    };
-    let availability_total = if flags & (1 << 0) != 0 {
-        let availability_total = r.read_i32()?;
-        Some(availability_total)
-    } else {
-        None
-    };
-    let availability_resale = if flags & (1 << 4) != 0 {
-        let availability_resale = r.read_i64()?;
-        Some(availability_resale)
-    } else {
-        None
-    };
-    let convert_stars = r.read_i64()?;
-    let first_sale_date = if flags & (1 << 1) != 0 {
-        let first_sale_date = r.read_i32()?;
-        Some(first_sale_date)
-    } else {
-        None
-    };
-    let last_sale_date = if flags & (1 << 1) != 0 {
-        let last_sale_date = r.read_i32()?;
-        Some(last_sale_date)
-    } else {
-        None
-    };
-    let upgrade_stars = if flags & (1 << 3) != 0 {
-        let upgrade_stars = r.read_i64()?;
-        Some(upgrade_stars)
-    } else {
-        None
-    };
-    let resell_min_stars = if flags & (1 << 4) != 0 {
-        let resell_min_stars = r.read_i64()?;
-        Some(resell_min_stars)
-    } else {
-        None
-    };
-    let title = if flags & (1 << 5) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let released_by = if flags & (1 << 6) != 0 {
-        let released_by = Peer::read_from(r)?;
-        Some(released_by)
-    } else {
-        None
-    };
-    let per_user_total = if flags & (1 << 8) != 0 {
-        let per_user_total = r.read_i32()?;
-        Some(per_user_total)
-    } else {
-        None
-    };
-    let per_user_remains = if flags & (1 << 8) != 0 {
-        let per_user_remains = r.read_i32()?;
-        Some(per_user_remains)
-    } else {
-        None
-    };
-    let locked_until_date = if flags & (1 << 9) != 0 {
-        let locked_until_date = r.read_i32()?;
-        Some(locked_until_date)
-    } else {
-        None
-    };
-    let auction_slug = if flags & (1 << 11) != 0 {
-        let auction_slug = String::from_utf8(r.read_bytes()?)?;
-        Some(auction_slug)
-    } else {
-        None
-    };
-    let gifts_per_round = if flags & (1 << 11) != 0 {
-        let gifts_per_round = r.read_i32()?;
-        Some(gifts_per_round)
-    } else {
-        None
-    };
-    let auction_start_date = if flags & (1 << 11) != 0 {
-        let auction_start_date = r.read_i32()?;
-        Some(auction_start_date)
-    } else {
-        None
-    };
-    let upgrade_variants = if flags & (1 << 12) != 0 {
-        let upgrade_variants = r.read_i32()?;
-        Some(upgrade_variants)
-    } else {
-        None
-    };
-    let background = if flags & (1 << 13) != 0 {
-        let background = StarGiftBackground::read_from(r)?;
-        Some(background)
-    } else {
-        None
-    };
-                Ok(StarGift::StarGift { flags, limited, sold_out, birthday, require_premium, limited_per_user, peer_color_available, auction, id, sticker, stars, availability_remains, availability_total, availability_resale, convert_stars, first_sale_date, last_sale_date, upgrade_stars, resell_min_stars, title, released_by, per_user_total, per_user_remains, locked_until_date, auction_slug, gifts_per_round, auction_start_date, upgrade_variants, background })
+                let flags = r.read_i32()?;
+                let limited = flags & (1 << 0) != 0;
+                let sold_out = flags & (1 << 1) != 0;
+                let birthday = flags & (1 << 2) != 0;
+                let require_premium = flags & (1 << 7) != 0;
+                let limited_per_user = flags & (1 << 8) != 0;
+                let peer_color_available = flags & (1 << 10) != 0;
+                let auction = flags & (1 << 11) != 0;
+                let id = r.read_i64()?;
+                let sticker = Document::read_from(r)?;
+                let stars = r.read_i64()?;
+                let availability_remains = if flags & (1 << 0) != 0 {
+                    let availability_remains = r.read_i32()?;
+                    Some(availability_remains)
+                } else {
+                    None
+                };
+                let availability_total = if flags & (1 << 0) != 0 {
+                    let availability_total = r.read_i32()?;
+                    Some(availability_total)
+                } else {
+                    None
+                };
+                let availability_resale = if flags & (1 << 4) != 0 {
+                    let availability_resale = r.read_i64()?;
+                    Some(availability_resale)
+                } else {
+                    None
+                };
+                let convert_stars = r.read_i64()?;
+                let first_sale_date = if flags & (1 << 1) != 0 {
+                    let first_sale_date = r.read_i32()?;
+                    Some(first_sale_date)
+                } else {
+                    None
+                };
+                let last_sale_date = if flags & (1 << 1) != 0 {
+                    let last_sale_date = r.read_i32()?;
+                    Some(last_sale_date)
+                } else {
+                    None
+                };
+                let upgrade_stars = if flags & (1 << 3) != 0 {
+                    let upgrade_stars = r.read_i64()?;
+                    Some(upgrade_stars)
+                } else {
+                    None
+                };
+                let resell_min_stars = if flags & (1 << 4) != 0 {
+                    let resell_min_stars = r.read_i64()?;
+                    Some(resell_min_stars)
+                } else {
+                    None
+                };
+                let title = if flags & (1 << 5) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let released_by = if flags & (1 << 6) != 0 {
+                    let released_by = Peer::read_from(r)?;
+                    Some(released_by)
+                } else {
+                    None
+                };
+                let per_user_total = if flags & (1 << 8) != 0 {
+                    let per_user_total = r.read_i32()?;
+                    Some(per_user_total)
+                } else {
+                    None
+                };
+                let per_user_remains = if flags & (1 << 8) != 0 {
+                    let per_user_remains = r.read_i32()?;
+                    Some(per_user_remains)
+                } else {
+                    None
+                };
+                let locked_until_date = if flags & (1 << 9) != 0 {
+                    let locked_until_date = r.read_i32()?;
+                    Some(locked_until_date)
+                } else {
+                    None
+                };
+                let auction_slug = if flags & (1 << 11) != 0 {
+                    let auction_slug = String::from_utf8(r.read_bytes()?)?;
+                    Some(auction_slug)
+                } else {
+                    None
+                };
+                let gifts_per_round = if flags & (1 << 11) != 0 {
+                    let gifts_per_round = r.read_i32()?;
+                    Some(gifts_per_round)
+                } else {
+                    None
+                };
+                let auction_start_date = if flags & (1 << 11) != 0 {
+                    let auction_start_date = r.read_i32()?;
+                    Some(auction_start_date)
+                } else {
+                    None
+                };
+                let upgrade_variants = if flags & (1 << 12) != 0 {
+                    let upgrade_variants = r.read_i32()?;
+                    Some(upgrade_variants)
+                } else {
+                    None
+                };
+                let background = if flags & (1 << 13) != 0 {
+                    let background = StarGiftBackground::read_from(r)?;
+                    Some(background)
+                } else {
+                    None
+                };
+                Ok(StarGift::StarGift {
+                    flags,
+                    limited,
+                    sold_out,
+                    birthday,
+                    require_premium,
+                    limited_per_user,
+                    peer_color_available,
+                    auction,
+                    id,
+                    sticker,
+                    stars,
+                    availability_remains,
+                    availability_total,
+                    availability_resale,
+                    convert_stars,
+                    first_sale_date,
+                    last_sale_date,
+                    upgrade_stars,
+                    resell_min_stars,
+                    title,
+                    released_by,
+                    per_user_total,
+                    per_user_remains,
+                    locked_until_date,
+                    auction_slug,
+                    gifts_per_round,
+                    auction_start_date,
+                    upgrade_variants,
+                    background,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown StarGift constructor {other:#x}"
@@ -3924,12 +4970,12 @@ impl StarsAmount {
         let ctor = r.read_u32()?;
         match ctor {
             STARS_TON_AMOUNT_ID => {
-    let amount = r.read_i64()?;
+                let amount = r.read_i64()?;
                 Ok(StarsAmount::StarsTonAmount { amount })
             }
             STARS_AMOUNT_ID => {
-    let amount = r.read_i64()?;
-    let nanos = r.read_i32()?;
+                let amount = r.read_i64()?;
+                let nanos = r.read_i32()?;
                 Ok(StarsAmount::StarsAmount { amount, nanos })
             }
             other => Err(Error::Serialization(format!(
@@ -3943,13 +4989,37 @@ impl StarsAmount {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StarGiftAttribute {
     /// `starGiftAttributeOriginalDetails#e0bff26c`
-    StarGiftAttributeOriginalDetails { flags: i32, sender_id: Option<Peer>, recipient_id: Peer, date: i32, message: Option<TextWithEntities> },
+    StarGiftAttributeOriginalDetails {
+        flags: i32,
+        sender_id: Option<Peer>,
+        recipient_id: Peer,
+        date: i32,
+        message: Option<TextWithEntities>,
+    },
     /// `starGiftAttributeBackdrop#9f2504e4`
-    StarGiftAttributeBackdrop { name: String, backdrop_id: i32, center_color: i32, edge_color: i32, pattern_color: i32, text_color: i32, rarity: StarGiftAttributeRarity },
+    StarGiftAttributeBackdrop {
+        name: String,
+        backdrop_id: i32,
+        center_color: i32,
+        edge_color: i32,
+        pattern_color: i32,
+        text_color: i32,
+        rarity: StarGiftAttributeRarity,
+    },
     /// `starGiftAttributePattern#4e7085ea`
-    StarGiftAttributePattern { name: String, document: Document, rarity: StarGiftAttributeRarity },
+    StarGiftAttributePattern {
+        name: String,
+        document: Document,
+        rarity: StarGiftAttributeRarity,
+    },
     /// `starGiftAttributeModel#565251e2`
-    StarGiftAttributeModel { flags: i32, crafted: bool, name: String, document: Document, rarity: StarGiftAttributeRarity },
+    StarGiftAttributeModel {
+        flags: i32,
+        crafted: bool,
+        name: String,
+        document: Document,
+        rarity: StarGiftAttributeRarity,
+    },
 }
 
 impl StarGiftAttribute {
@@ -3957,46 +5027,70 @@ impl StarGiftAttribute {
         let ctor = r.read_u32()?;
         match ctor {
             STAR_GIFT_ATTRIBUTE_ORIGINAL_DETAILS_ID => {
-    let flags = r.read_i32()?;
-    let sender_id = if flags & (1 << 0) != 0 {
-        let sender_id = Peer::read_from(r)?;
-        Some(sender_id)
-    } else {
-        None
-    };
-    let recipient_id = Peer::read_from(r)?;
-    let date = r.read_i32()?;
-    let message = if flags & (1 << 1) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-                Ok(StarGiftAttribute::StarGiftAttributeOriginalDetails { flags, sender_id, recipient_id, date, message })
+                let flags = r.read_i32()?;
+                let sender_id = if flags & (1 << 0) != 0 {
+                    let sender_id = Peer::read_from(r)?;
+                    Some(sender_id)
+                } else {
+                    None
+                };
+                let recipient_id = Peer::read_from(r)?;
+                let date = r.read_i32()?;
+                let message = if flags & (1 << 1) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                Ok(StarGiftAttribute::StarGiftAttributeOriginalDetails {
+                    flags,
+                    sender_id,
+                    recipient_id,
+                    date,
+                    message,
+                })
             }
             STAR_GIFT_ATTRIBUTE_BACKDROP_ID => {
-    let name = String::from_utf8(r.read_bytes()?)?;
-    let backdrop_id = r.read_i32()?;
-    let center_color = r.read_i32()?;
-    let edge_color = r.read_i32()?;
-    let pattern_color = r.read_i32()?;
-    let text_color = r.read_i32()?;
-    let rarity = StarGiftAttributeRarity::read_from(r)?;
-                Ok(StarGiftAttribute::StarGiftAttributeBackdrop { name, backdrop_id, center_color, edge_color, pattern_color, text_color, rarity })
+                let name = String::from_utf8(r.read_bytes()?)?;
+                let backdrop_id = r.read_i32()?;
+                let center_color = r.read_i32()?;
+                let edge_color = r.read_i32()?;
+                let pattern_color = r.read_i32()?;
+                let text_color = r.read_i32()?;
+                let rarity = StarGiftAttributeRarity::read_from(r)?;
+                Ok(StarGiftAttribute::StarGiftAttributeBackdrop {
+                    name,
+                    backdrop_id,
+                    center_color,
+                    edge_color,
+                    pattern_color,
+                    text_color,
+                    rarity,
+                })
             }
             STAR_GIFT_ATTRIBUTE_PATTERN_ID => {
-    let name = String::from_utf8(r.read_bytes()?)?;
-    let document = Document::read_from(r)?;
-    let rarity = StarGiftAttributeRarity::read_from(r)?;
-                Ok(StarGiftAttribute::StarGiftAttributePattern { name, document, rarity })
+                let name = String::from_utf8(r.read_bytes()?)?;
+                let document = Document::read_from(r)?;
+                let rarity = StarGiftAttributeRarity::read_from(r)?;
+                Ok(StarGiftAttribute::StarGiftAttributePattern {
+                    name,
+                    document,
+                    rarity,
+                })
             }
             STAR_GIFT_ATTRIBUTE_MODEL_ID => {
-    let flags = r.read_i32()?;
-    let crafted = flags & (1 << 0) != 0;
-    let name = String::from_utf8(r.read_bytes()?)?;
-    let document = Document::read_from(r)?;
-    let rarity = StarGiftAttributeRarity::read_from(r)?;
-                Ok(StarGiftAttribute::StarGiftAttributeModel { flags, crafted, name, document, rarity })
+                let flags = r.read_i32()?;
+                let crafted = flags & (1 << 0) != 0;
+                let name = String::from_utf8(r.read_bytes()?)?;
+                let document = Document::read_from(r)?;
+                let rarity = StarGiftAttributeRarity::read_from(r)?;
+                Ok(StarGiftAttribute::StarGiftAttributeModel {
+                    flags,
+                    crafted,
+                    name,
+                    document,
+                    rarity,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown StarGiftAttribute constructor {other:#x}"
@@ -4025,19 +5119,19 @@ impl StarGiftAttributeRarity {
         let ctor = r.read_u32()?;
         match ctor {
             STAR_GIFT_ATTRIBUTE_RARITY_LEGENDARY_ID => {
-                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityLegendary {  })
+                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityLegendary {})
             }
             STAR_GIFT_ATTRIBUTE_RARITY_EPIC_ID => {
-                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityEpic {  })
+                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityEpic {})
             }
             STAR_GIFT_ATTRIBUTE_RARITY_RARE_ID => {
-                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityRare {  })
+                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityRare {})
             }
             STAR_GIFT_ATTRIBUTE_RARITY_UNCOMMON_ID => {
-                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityUncommon {  })
+                Ok(StarGiftAttributeRarity::StarGiftAttributeRarityUncommon {})
             }
             STAR_GIFT_ATTRIBUTE_RARITY_ID => {
-    let permille = r.read_i32()?;
+                let permille = r.read_i32()?;
                 Ok(StarGiftAttributeRarity::StarGiftAttributeRarity { permille })
             }
             other => Err(Error::Serialization(format!(
@@ -4063,9 +5157,9 @@ impl StarGiftBackground {
                 "expected starGiftBackground, got {ctor:#x}"
             )));
         }
-    let center_color = r.read_i32()?;
-    let edge_color = r.read_i32()?;
-    let text_color = r.read_i32()?;
+        let center_color = r.read_i32()?;
+        let edge_color = r.read_i32()?;
+        let text_color = r.read_i32()?;
         Ok(StarGiftBackground {
             center_color,
             edge_color,
@@ -4075,10 +5169,10 @@ impl StarGiftBackground {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(STAR_GIFT_BACKGROUND_ID);
-    w.write_i32(self.center_color);
-    w.write_i32(self.edge_color);
-    w.write_i32(self.text_color);
+        w.write_u32(STAR_GIFT_BACKGROUND_ID);
+        w.write_i32(self.center_color);
+        w.write_i32(self.edge_color);
+        w.write_i32(self.text_color);
     }
 }
 
@@ -4102,32 +5196,32 @@ impl ThemeSettings {
                 "expected themeSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let message_colors_animated = flags & (1 << 2) != 0;
-    let base_theme = BaseTheme::read_from(r)?;
-    let accent_color = r.read_i32()?;
-    let outbox_accent_color = if flags & (1 << 3) != 0 {
-        let outbox_accent_color = r.read_i32()?;
-        Some(outbox_accent_color)
-    } else {
-        None
-    };
-    let message_colors = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut message_colors = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            message_colors.push(r.read_i32()?);
-        }
-        Some(message_colors)
-    } else {
-        None
-    };
-    let wallpaper = if flags & (1 << 1) != 0 {
-        let wallpaper = WallPaper::read_from(r)?;
-        Some(wallpaper)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let message_colors_animated = flags & (1 << 2) != 0;
+        let base_theme = BaseTheme::read_from(r)?;
+        let accent_color = r.read_i32()?;
+        let outbox_accent_color = if flags & (1 << 3) != 0 {
+            let outbox_accent_color = r.read_i32()?;
+            Some(outbox_accent_color)
+        } else {
+            None
+        };
+        let message_colors = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut message_colors = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                message_colors.push(r.read_i32()?);
+            }
+            Some(message_colors)
+        } else {
+            None
+        };
+        let wallpaper = if flags & (1 << 1) != 0 {
+            let wallpaper = WallPaper::read_from(r)?;
+            Some(wallpaper)
+        } else {
+            None
+        };
         Ok(ThemeSettings {
             flags,
             message_colors_animated,
@@ -4138,7 +5232,6 @@ impl ThemeSettings {
             wallpaper,
         })
     }
-
 }
 
 /// Union `BaseTheme` (5 constructors).
@@ -4160,21 +5253,11 @@ impl BaseTheme {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            BASE_THEME_ARCTIC_ID => {
-                Ok(BaseTheme::BaseThemeArctic {  })
-            }
-            BASE_THEME_TINTED_ID => {
-                Ok(BaseTheme::BaseThemeTinted {  })
-            }
-            BASE_THEME_NIGHT_ID => {
-                Ok(BaseTheme::BaseThemeNight {  })
-            }
-            BASE_THEME_DAY_ID => {
-                Ok(BaseTheme::BaseThemeDay {  })
-            }
-            BASE_THEME_CLASSIC_ID => {
-                Ok(BaseTheme::BaseThemeClassic {  })
-            }
+            BASE_THEME_ARCTIC_ID => Ok(BaseTheme::BaseThemeArctic {}),
+            BASE_THEME_TINTED_ID => Ok(BaseTheme::BaseThemeTinted {}),
+            BASE_THEME_NIGHT_ID => Ok(BaseTheme::BaseThemeNight {}),
+            BASE_THEME_DAY_ID => Ok(BaseTheme::BaseThemeDay {}),
+            BASE_THEME_CLASSIC_ID => Ok(BaseTheme::BaseThemeClassic {}),
             other => Err(Error::Serialization(format!(
                 "unknown BaseTheme constructor {other:#x}"
             ))),
@@ -4204,32 +5287,32 @@ impl Page {
                 "expected page, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let part = flags & (1 << 0) != 0;
-    let rtl = flags & (1 << 1) != 0;
-    let v2 = flags & (1 << 2) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut photos = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        photos.push(Photo::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut documents = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        documents.push(Document::read_from(r)?);
-    }
-    let views = if flags & (1 << 3) != 0 {
-        let views = r.read_i32()?;
-        Some(views)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let part = flags & (1 << 0) != 0;
+        let rtl = flags & (1 << 1) != 0;
+        let v2 = flags & (1 << 2) != 0;
+        let url = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut blocks = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            blocks.push(PageBlock::read_from(r)?);
+        }
+        let n = r.read_vector_header()?;
+        let mut photos = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            photos.push(Photo::read_from(r)?);
+        }
+        let n = r.read_vector_header()?;
+        let mut documents = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            documents.push(Document::read_from(r)?);
+        }
+        let views = if flags & (1 << 3) != 0 {
+            let views = r.read_i32()?;
+            Some(views)
+        } else {
+            None
+        };
         Ok(Page {
             flags,
             part,
@@ -4242,20 +5325,37 @@ impl Page {
             views,
         })
     }
-
 }
 
 /// Union `PageBlock` (41 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageBlock {
     /// `pageBlockDocument#38fa3ba3`
-    PageBlockDocument { document_id: i64, caption: PageCaption },
+    PageBlockDocument {
+        document_id: i64,
+        caption: PageCaption,
+    },
     /// `pageBlockButtonRow#6d640318`
-    PageBlockButtonRow { flags: i32, align_left: bool, align_center: bool, align_right: bool, buttons: Vec<PageButton> },
+    PageBlockButtonRow {
+        flags: i32,
+        align_left: bool,
+        align_center: bool,
+        align_right: bool,
+        buttons: Vec<PageButton>,
+    },
     /// `pageBlockBlockquoteBlocks#0e6e47c4`
-    PageBlockBlockquoteBlocks { blocks: Vec<PageBlock>, caption: RichText },
+    PageBlockBlockquoteBlocks {
+        blocks: Vec<PageBlock>,
+        caption: RichText,
+    },
     /// `inputPageBlockMap#574b617f`
-    InputPageBlockMap { geo: InputGeoPoint, zoom: i32, w: i32, h: i32, caption: PageCaption },
+    InputPageBlockMap {
+        geo: InputGeoPoint,
+        zoom: i32,
+        w: i32,
+        h: i32,
+        caption: PageCaption,
+    },
     /// `pageBlockThinking#3c29a3e2`
     PageBlockThinking { text: RichText },
     /// `pageBlockMath#59080c20`
@@ -4273,15 +5373,42 @@ pub enum PageBlock {
     /// `pageBlockHeading1#baff072f`
     PageBlockHeading1 { text: RichText },
     /// `pageBlockMap#a44f3ef6`
-    PageBlockMap { geo: GeoPoint, zoom: i32, w: i32, h: i32, caption: PageCaption },
+    PageBlockMap {
+        geo: GeoPoint,
+        zoom: i32,
+        w: i32,
+        h: i32,
+        caption: PageCaption,
+    },
     /// `pageBlockRelatedArticles#16115a96`
-    PageBlockRelatedArticles { title: RichText, articles: Vec<PageRelatedArticle> },
+    PageBlockRelatedArticles {
+        title: RichText,
+        articles: Vec<PageRelatedArticle>,
+    },
     /// `pageBlockDetails#76768bed`
-    PageBlockDetails { flags: i32, open: bool, blocks: Vec<PageBlock>, title: RichText },
+    PageBlockDetails {
+        flags: i32,
+        open: bool,
+        blocks: Vec<PageBlock>,
+        title: RichText,
+    },
     /// `pageBlockOrderedList#1fd6f6c1`
-    PageBlockOrderedList { flags: i32, reversed: bool, items: Vec<PageListOrderedItem>, start: Option<i32>, r#type: Option<String> },
+    PageBlockOrderedList {
+        flags: i32,
+        reversed: bool,
+        items: Vec<PageListOrderedItem>,
+        start: Option<i32>,
+        r#type: Option<String>,
+    },
     /// `pageBlockTable#bf4dea82`
-    PageBlockTable { flags: i32, bordered: bool, striped: bool, compact: bool, title: RichText, rows: Vec<PageTableRow> },
+    PageBlockTable {
+        flags: i32,
+        bordered: bool,
+        striped: bool,
+        compact: bool,
+        title: RichText,
+        rows: Vec<PageTableRow>,
+    },
     /// `pageBlockKicker#1e148390`
     PageBlockKicker { text: RichText },
     /// `pageBlockAudio#804361ea`
@@ -4289,23 +5416,66 @@ pub enum PageBlock {
     /// `pageBlockChannel#ef1751b5`
     PageBlockChannel { channel: Chat },
     /// `pageBlockSlideshow#031f9590`
-    PageBlockSlideshow { items: Vec<PageBlock>, caption: PageCaption },
+    PageBlockSlideshow {
+        items: Vec<PageBlock>,
+        caption: PageCaption,
+    },
     /// `pageBlockCollage#65a0fa4d`
-    PageBlockCollage { items: Vec<PageBlock>, caption: PageCaption },
+    PageBlockCollage {
+        items: Vec<PageBlock>,
+        caption: PageCaption,
+    },
     /// `pageBlockEmbedPost#f259a80b`
-    PageBlockEmbedPost { url: String, webpage_id: i64, author_photo_id: i64, author: String, date: i32, blocks: Vec<PageBlock>, caption: PageCaption },
+    PageBlockEmbedPost {
+        url: String,
+        webpage_id: i64,
+        author_photo_id: i64,
+        author: String,
+        date: i32,
+        blocks: Vec<PageBlock>,
+        caption: PageCaption,
+    },
     /// `pageBlockEmbed#a8718dc5`
-    PageBlockEmbed { flags: i32, full_width: bool, allow_scrolling: bool, url: Option<String>, html: Option<String>, poster_photo_id: Option<i64>, w: Option<i32>, h: Option<i32>, caption: PageCaption },
+    PageBlockEmbed {
+        flags: i32,
+        full_width: bool,
+        allow_scrolling: bool,
+        url: Option<String>,
+        html: Option<String>,
+        poster_photo_id: Option<i64>,
+        w: Option<i32>,
+        h: Option<i32>,
+        caption: PageCaption,
+    },
     /// `pageBlockCover#39f23300`
     PageBlockCover { cover: Box<PageBlock> },
     /// `pageBlockVideo#7c8fe7b6`
-    PageBlockVideo { flags: i32, autoplay: bool, r#loop: bool, spoiler: bool, video_id: i64, caption: PageCaption },
+    PageBlockVideo {
+        flags: i32,
+        autoplay: bool,
+        r#loop: bool,
+        spoiler: bool,
+        video_id: i64,
+        caption: PageCaption,
+    },
     /// `pageBlockPhoto#1759c560`
-    PageBlockPhoto { flags: i32, spoiler: bool, photo_id: i64, caption: PageCaption, url: Option<String>, webpage_id: Option<i64> },
+    PageBlockPhoto {
+        flags: i32,
+        spoiler: bool,
+        photo_id: i64,
+        caption: PageCaption,
+        url: Option<String>,
+        webpage_id: Option<i64>,
+    },
     /// `pageBlockPullquote#4f4456d3`
     PageBlockPullquote { text: RichText, caption: RichText },
     /// `pageBlockBlockquote#66d1670b`
-    PageBlockBlockquote { flags: i32, collapsed: bool, text: RichText, caption: RichText },
+    PageBlockBlockquote {
+        flags: i32,
+        collapsed: bool,
+        text: RichText,
+        caption: RichText,
+    },
     /// `pageBlockList#e4e88011`
     PageBlockList { items: Vec<PageListItem> },
     /// `pageBlockAnchor#ce0d37b0`
@@ -4323,7 +5493,10 @@ pub enum PageBlock {
     /// `pageBlockHeader#bfd064ec`
     PageBlockHeader { text: RichText },
     /// `pageBlockAuthorDate#baafe5e0`
-    PageBlockAuthorDate { author: RichText, published_date: i32 },
+    PageBlockAuthorDate {
+        author: RichText,
+        published_date: i32,
+    },
     /// `pageBlockSubtitle#8ffa9a1f`
     PageBlockSubtitle { text: RichText },
     /// `pageBlockTitle#70abc3fd`
@@ -4337,312 +5510,387 @@ impl PageBlock {
         let ctor = r.read_u32()?;
         match ctor {
             PAGE_BLOCK_DOCUMENT_ID => {
-    let document_id = r.read_i64()?;
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockDocument { document_id, caption })
+                let document_id = r.read_i64()?;
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::PageBlockDocument {
+                    document_id,
+                    caption,
+                })
             }
             PAGE_BLOCK_BUTTON_ROW_ID => {
-    let flags = r.read_i32()?;
-    let align_left = flags & (1 << 0) != 0;
-    let align_center = flags & (1 << 1) != 0;
-    let align_right = flags & (1 << 2) != 0;
-    let n = r.read_vector_header()?;
-    let mut buttons = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        buttons.push(PageButton::read_from(r)?);
-    }
-                Ok(PageBlock::PageBlockButtonRow { flags, align_left, align_center, align_right, buttons })
+                let flags = r.read_i32()?;
+                let align_left = flags & (1 << 0) != 0;
+                let align_center = flags & (1 << 1) != 0;
+                let align_right = flags & (1 << 2) != 0;
+                let n = r.read_vector_header()?;
+                let mut buttons = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    buttons.push(PageButton::read_from(r)?);
+                }
+                Ok(PageBlock::PageBlockButtonRow {
+                    flags,
+                    align_left,
+                    align_center,
+                    align_right,
+                    buttons,
+                })
             }
             PAGE_BLOCK_BLOCKQUOTE_BLOCKS_ID => {
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let caption = RichText::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                let caption = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockBlockquoteBlocks { blocks, caption })
             }
             INPUT_PAGE_BLOCK_MAP_ID => {
-    let geo = InputGeoPoint::read_from(r)?;
-    let zoom = r.read_i32()?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::InputPageBlockMap { geo, zoom, w, h, caption })
+                let geo = InputGeoPoint::read_from(r)?;
+                let zoom = r.read_i32()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::InputPageBlockMap {
+                    geo,
+                    zoom,
+                    w,
+                    h,
+                    caption,
+                })
             }
             PAGE_BLOCK_THINKING_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockThinking { text })
             }
             PAGE_BLOCK_MATH_ID => {
-    let source = String::from_utf8(r.read_bytes()?)?;
+                let source = String::from_utf8(r.read_bytes()?)?;
                 Ok(PageBlock::PageBlockMath { source })
             }
             PAGE_BLOCK_HEADING6_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading6 { text })
             }
             PAGE_BLOCK_HEADING5_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading5 { text })
             }
             PAGE_BLOCK_HEADING4_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading4 { text })
             }
             PAGE_BLOCK_HEADING3_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading3 { text })
             }
             PAGE_BLOCK_HEADING2_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading2 { text })
             }
             PAGE_BLOCK_HEADING1_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeading1 { text })
             }
             PAGE_BLOCK_MAP_ID => {
-    let geo = GeoPoint::read_from(r)?;
-    let zoom = r.read_i32()?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockMap { geo, zoom, w, h, caption })
+                let geo = GeoPoint::read_from(r)?;
+                let zoom = r.read_i32()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::PageBlockMap {
+                    geo,
+                    zoom,
+                    w,
+                    h,
+                    caption,
+                })
             }
             PAGE_BLOCK_RELATED_ARTICLES_ID => {
-    let title = RichText::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut articles = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        articles.push(PageRelatedArticle::read_from(r)?);
-    }
+                let title = RichText::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut articles = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    articles.push(PageRelatedArticle::read_from(r)?);
+                }
                 Ok(PageBlock::PageBlockRelatedArticles { title, articles })
             }
             PAGE_BLOCK_DETAILS_ID => {
-    let flags = r.read_i32()?;
-    let open = flags & (1 << 0) != 0;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let title = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockDetails { flags, open, blocks, title })
+                let flags = r.read_i32()?;
+                let open = flags & (1 << 0) != 0;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                let title = RichText::read_from(r)?;
+                Ok(PageBlock::PageBlockDetails {
+                    flags,
+                    open,
+                    blocks,
+                    title,
+                })
             }
             PAGE_BLOCK_ORDERED_LIST_ID => {
-    let flags = r.read_i32()?;
-    let reversed = flags & (1 << 2) != 0;
-    let n = r.read_vector_header()?;
-    let mut items = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        items.push(PageListOrderedItem::read_from(r)?);
-    }
-    let start = if flags & (1 << 0) != 0 {
-        let start = r.read_i32()?;
-        Some(start)
-    } else {
-        None
-    };
-    let r#type = if flags & (1 << 1) != 0 {
-        let r#type = String::from_utf8(r.read_bytes()?)?;
-        Some(r#type)
-    } else {
-        None
-    };
-                Ok(PageBlock::PageBlockOrderedList { flags, reversed, items, start, r#type })
+                let flags = r.read_i32()?;
+                let reversed = flags & (1 << 2) != 0;
+                let n = r.read_vector_header()?;
+                let mut items = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    items.push(PageListOrderedItem::read_from(r)?);
+                }
+                let start = if flags & (1 << 0) != 0 {
+                    let start = r.read_i32()?;
+                    Some(start)
+                } else {
+                    None
+                };
+                let r#type = if flags & (1 << 1) != 0 {
+                    let r#type = String::from_utf8(r.read_bytes()?)?;
+                    Some(r#type)
+                } else {
+                    None
+                };
+                Ok(PageBlock::PageBlockOrderedList {
+                    flags,
+                    reversed,
+                    items,
+                    start,
+                    r#type,
+                })
             }
             PAGE_BLOCK_TABLE_ID => {
-    let flags = r.read_i32()?;
-    let bordered = flags & (1 << 0) != 0;
-    let striped = flags & (1 << 1) != 0;
-    let compact = flags & (1 << 2) != 0;
-    let title = RichText::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut rows = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rows.push(PageTableRow::read_from(r)?);
-    }
-                Ok(PageBlock::PageBlockTable { flags, bordered, striped, compact, title, rows })
+                let flags = r.read_i32()?;
+                let bordered = flags & (1 << 0) != 0;
+                let striped = flags & (1 << 1) != 0;
+                let compact = flags & (1 << 2) != 0;
+                let title = RichText::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut rows = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rows.push(PageTableRow::read_from(r)?);
+                }
+                Ok(PageBlock::PageBlockTable {
+                    flags,
+                    bordered,
+                    striped,
+                    compact,
+                    title,
+                    rows,
+                })
             }
             PAGE_BLOCK_KICKER_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockKicker { text })
             }
             PAGE_BLOCK_AUDIO_ID => {
-    let audio_id = r.read_i64()?;
-    let caption = PageCaption::read_from(r)?;
+                let audio_id = r.read_i64()?;
+                let caption = PageCaption::read_from(r)?;
                 Ok(PageBlock::PageBlockAudio { audio_id, caption })
             }
             PAGE_BLOCK_CHANNEL_ID => {
-    let channel = Chat::read_from(r)?;
+                let channel = Chat::read_from(r)?;
                 Ok(PageBlock::PageBlockChannel { channel })
             }
             PAGE_BLOCK_SLIDESHOW_ID => {
-    let n = r.read_vector_header()?;
-    let mut items = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        items.push(PageBlock::read_from(r)?);
-    }
-    let caption = PageCaption::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut items = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    items.push(PageBlock::read_from(r)?);
+                }
+                let caption = PageCaption::read_from(r)?;
                 Ok(PageBlock::PageBlockSlideshow { items, caption })
             }
             PAGE_BLOCK_COLLAGE_ID => {
-    let n = r.read_vector_header()?;
-    let mut items = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        items.push(PageBlock::read_from(r)?);
-    }
-    let caption = PageCaption::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut items = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    items.push(PageBlock::read_from(r)?);
+                }
+                let caption = PageCaption::read_from(r)?;
                 Ok(PageBlock::PageBlockCollage { items, caption })
             }
             PAGE_BLOCK_EMBED_POST_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let webpage_id = r.read_i64()?;
-    let author_photo_id = r.read_i64()?;
-    let author = String::from_utf8(r.read_bytes()?)?;
-    let date = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockEmbedPost { url, webpage_id, author_photo_id, author, date, blocks, caption })
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let webpage_id = r.read_i64()?;
+                let author_photo_id = r.read_i64()?;
+                let author = String::from_utf8(r.read_bytes()?)?;
+                let date = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::PageBlockEmbedPost {
+                    url,
+                    webpage_id,
+                    author_photo_id,
+                    author,
+                    date,
+                    blocks,
+                    caption,
+                })
             }
             PAGE_BLOCK_EMBED_ID => {
-    let flags = r.read_i32()?;
-    let full_width = flags & (1 << 0) != 0;
-    let allow_scrolling = flags & (1 << 3) != 0;
-    let url = if flags & (1 << 1) != 0 {
-        let url = String::from_utf8(r.read_bytes()?)?;
-        Some(url)
-    } else {
-        None
-    };
-    let html = if flags & (1 << 2) != 0 {
-        let html = String::from_utf8(r.read_bytes()?)?;
-        Some(html)
-    } else {
-        None
-    };
-    let poster_photo_id = if flags & (1 << 4) != 0 {
-        let poster_photo_id = r.read_i64()?;
-        Some(poster_photo_id)
-    } else {
-        None
-    };
-    let w = if flags & (1 << 5) != 0 {
-        let w = r.read_i32()?;
-        Some(w)
-    } else {
-        None
-    };
-    let h = if flags & (1 << 5) != 0 {
-        let h = r.read_i32()?;
-        Some(h)
-    } else {
-        None
-    };
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockEmbed { flags, full_width, allow_scrolling, url, html, poster_photo_id, w, h, caption })
+                let flags = r.read_i32()?;
+                let full_width = flags & (1 << 0) != 0;
+                let allow_scrolling = flags & (1 << 3) != 0;
+                let url = if flags & (1 << 1) != 0 {
+                    let url = String::from_utf8(r.read_bytes()?)?;
+                    Some(url)
+                } else {
+                    None
+                };
+                let html = if flags & (1 << 2) != 0 {
+                    let html = String::from_utf8(r.read_bytes()?)?;
+                    Some(html)
+                } else {
+                    None
+                };
+                let poster_photo_id = if flags & (1 << 4) != 0 {
+                    let poster_photo_id = r.read_i64()?;
+                    Some(poster_photo_id)
+                } else {
+                    None
+                };
+                let w = if flags & (1 << 5) != 0 {
+                    let w = r.read_i32()?;
+                    Some(w)
+                } else {
+                    None
+                };
+                let h = if flags & (1 << 5) != 0 {
+                    let h = r.read_i32()?;
+                    Some(h)
+                } else {
+                    None
+                };
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::PageBlockEmbed {
+                    flags,
+                    full_width,
+                    allow_scrolling,
+                    url,
+                    html,
+                    poster_photo_id,
+                    w,
+                    h,
+                    caption,
+                })
             }
             PAGE_BLOCK_COVER_ID => {
-    let cover = Box::new(PageBlock::read_from(r)?);
+                let cover = Box::new(PageBlock::read_from(r)?);
                 Ok(PageBlock::PageBlockCover { cover })
             }
             PAGE_BLOCK_VIDEO_ID => {
-    let flags = r.read_i32()?;
-    let autoplay = flags & (1 << 0) != 0;
-    let r#loop = flags & (1 << 1) != 0;
-    let spoiler = flags & (1 << 2) != 0;
-    let video_id = r.read_i64()?;
-    let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockVideo { flags, autoplay, r#loop, spoiler, video_id, caption })
+                let flags = r.read_i32()?;
+                let autoplay = flags & (1 << 0) != 0;
+                let r#loop = flags & (1 << 1) != 0;
+                let spoiler = flags & (1 << 2) != 0;
+                let video_id = r.read_i64()?;
+                let caption = PageCaption::read_from(r)?;
+                Ok(PageBlock::PageBlockVideo {
+                    flags,
+                    autoplay,
+                    r#loop,
+                    spoiler,
+                    video_id,
+                    caption,
+                })
             }
             PAGE_BLOCK_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let photo_id = r.read_i64()?;
-    let caption = PageCaption::read_from(r)?;
-    let url = if flags & (1 << 0) != 0 {
-        let url = String::from_utf8(r.read_bytes()?)?;
-        Some(url)
-    } else {
-        None
-    };
-    let webpage_id = if flags & (1 << 0) != 0 {
-        let webpage_id = r.read_i64()?;
-        Some(webpage_id)
-    } else {
-        None
-    };
-                Ok(PageBlock::PageBlockPhoto { flags, spoiler, photo_id, caption, url, webpage_id })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let photo_id = r.read_i64()?;
+                let caption = PageCaption::read_from(r)?;
+                let url = if flags & (1 << 0) != 0 {
+                    let url = String::from_utf8(r.read_bytes()?)?;
+                    Some(url)
+                } else {
+                    None
+                };
+                let webpage_id = if flags & (1 << 0) != 0 {
+                    let webpage_id = r.read_i64()?;
+                    Some(webpage_id)
+                } else {
+                    None
+                };
+                Ok(PageBlock::PageBlockPhoto {
+                    flags,
+                    spoiler,
+                    photo_id,
+                    caption,
+                    url,
+                    webpage_id,
+                })
             }
             PAGE_BLOCK_PULLQUOTE_ID => {
-    let text = RichText::read_from(r)?;
-    let caption = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
+                let caption = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockPullquote { text, caption })
             }
             PAGE_BLOCK_BLOCKQUOTE_ID => {
-    let flags = r.read_i32()?;
-    let collapsed = flags & (1 << 0) != 0;
-    let text = RichText::read_from(r)?;
-    let caption = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockBlockquote { flags, collapsed, text, caption })
+                let flags = r.read_i32()?;
+                let collapsed = flags & (1 << 0) != 0;
+                let text = RichText::read_from(r)?;
+                let caption = RichText::read_from(r)?;
+                Ok(PageBlock::PageBlockBlockquote {
+                    flags,
+                    collapsed,
+                    text,
+                    caption,
+                })
             }
             PAGE_BLOCK_LIST_ID => {
-    let n = r.read_vector_header()?;
-    let mut items = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        items.push(PageListItem::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut items = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    items.push(PageListItem::read_from(r)?);
+                }
                 Ok(PageBlock::PageBlockList { items })
             }
             PAGE_BLOCK_ANCHOR_ID => {
-    let name = String::from_utf8(r.read_bytes()?)?;
+                let name = String::from_utf8(r.read_bytes()?)?;
                 Ok(PageBlock::PageBlockAnchor { name })
             }
-            PAGE_BLOCK_DIVIDER_ID => {
-                Ok(PageBlock::PageBlockDivider {  })
-            }
+            PAGE_BLOCK_DIVIDER_ID => Ok(PageBlock::PageBlockDivider {}),
             PAGE_BLOCK_FOOTER_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockFooter { text })
             }
             PAGE_BLOCK_PREFORMATTED_ID => {
-    let text = RichText::read_from(r)?;
-    let language = String::from_utf8(r.read_bytes()?)?;
+                let text = RichText::read_from(r)?;
+                let language = String::from_utf8(r.read_bytes()?)?;
                 Ok(PageBlock::PageBlockPreformatted { text, language })
             }
             PAGE_BLOCK_PARAGRAPH_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockParagraph { text })
             }
             PAGE_BLOCK_SUBHEADER_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockSubheader { text })
             }
             PAGE_BLOCK_HEADER_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockHeader { text })
             }
             PAGE_BLOCK_AUTHOR_DATE_ID => {
-    let author = RichText::read_from(r)?;
-    let published_date = r.read_i32()?;
-                Ok(PageBlock::PageBlockAuthorDate { author, published_date })
+                let author = RichText::read_from(r)?;
+                let published_date = r.read_i32()?;
+                Ok(PageBlock::PageBlockAuthorDate {
+                    author,
+                    published_date,
+                })
             }
             PAGE_BLOCK_SUBTITLE_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockSubtitle { text })
             }
             PAGE_BLOCK_TITLE_ID => {
-    let text = RichText::read_from(r)?;
+                let text = RichText::read_from(r)?;
                 Ok(PageBlock::PageBlockTitle { text })
             }
-            PAGE_BLOCK_UNSUPPORTED_ID => {
-                Ok(PageBlock::PageBlockUnsupported {  })
-            }
+            PAGE_BLOCK_UNSUPPORTED_ID => Ok(PageBlock::PageBlockUnsupported {}),
             other => Err(Error::Serialization(format!(
                 "unknown PageBlock constructor {other:#x}"
             ))),
@@ -4665,27 +5913,44 @@ impl PageCaption {
                 "expected pageCaption, got {ctor:#x}"
             )));
         }
-    let text = RichText::read_from(r)?;
-    let credit = RichText::read_from(r)?;
-        Ok(PageCaption {
-            text,
-            credit,
-        })
+        let text = RichText::read_from(r)?;
+        let credit = RichText::read_from(r)?;
+        Ok(PageCaption { text, credit })
     }
-
 }
 
 /// Union `RichText` (31 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum RichText {
     /// `textButton#afc79cd6`
-    TextButton { flags: i32, text: Box<RichText>, r#type: InlineButtonType, style: Option<RichButtonStyle> },
+    TextButton {
+        flags: i32,
+        text: Box<RichText>,
+        r#type: InlineButtonType,
+        style: Option<RichButtonStyle>,
+    },
     /// `textDiff#9686cb50`
-    TextDiff { text: Box<RichText>, old_text: Box<RichText> },
+    TextDiff {
+        text: Box<RichText>,
+        old_text: Box<RichText>,
+    },
     /// `textDate#a5b45e2b`
-    TextDate { flags: i32, relative: bool, short_time: bool, long_time: bool, short_date: bool, long_date: bool, day_of_week: bool, text: Box<RichText>, date: i32 },
+    TextDate {
+        flags: i32,
+        relative: bool,
+        short_time: bool,
+        long_time: bool,
+        short_date: bool,
+        long_date: bool,
+        day_of_week: bool,
+        text: Box<RichText>,
+        date: i32,
+    },
     /// `textMentionName#01a9fbfc`
-    TextMentionName { text: Box<RichText>, user_id: UserId },
+    TextMentionName {
+        text: Box<RichText>,
+        user_id: UserId,
+    },
     /// `textBankCard#b956812d`
     TextBankCard { text: Box<RichText> },
     /// `textAutoPhone#24c26789`
@@ -4725,7 +5990,11 @@ pub enum RichText {
     /// `textEmail#de5a0dd6`
     TextEmail { text: Box<RichText>, email: String },
     /// `textUrl#3c2884c1`
-    TextUrl { text: Box<RichText>, url: String, webpage_id: i64 },
+    TextUrl {
+        text: Box<RichText>,
+        url: String,
+        webpage_id: i64,
+    },
     /// `textFixed#6c3f19b9`
     TextFixed { text: Box<RichText> },
     /// `textStrike#9bf8bb95`
@@ -4747,159 +6016,176 @@ impl RichText {
         let ctor = r.read_u32()?;
         match ctor {
             TEXT_BUTTON_ID => {
-    let flags = r.read_i32()?;
-    let text = Box::new(RichText::read_from(r)?);
-    let r#type = InlineButtonType::read_from(r)?;
-    let style = if flags & (1 << 0) != 0 {
-        let style = RichButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-                Ok(RichText::TextButton { flags, text, r#type, style })
+                let flags = r.read_i32()?;
+                let text = Box::new(RichText::read_from(r)?);
+                let r#type = InlineButtonType::read_from(r)?;
+                let style = if flags & (1 << 0) != 0 {
+                    let style = RichButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                Ok(RichText::TextButton {
+                    flags,
+                    text,
+                    r#type,
+                    style,
+                })
             }
             TEXT_DIFF_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let old_text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
+                let old_text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextDiff { text, old_text })
             }
             TEXT_DATE_ID => {
-    let flags = r.read_i32()?;
-    let relative = flags & (1 << 0) != 0;
-    let short_time = flags & (1 << 1) != 0;
-    let long_time = flags & (1 << 2) != 0;
-    let short_date = flags & (1 << 3) != 0;
-    let long_date = flags & (1 << 4) != 0;
-    let day_of_week = flags & (1 << 5) != 0;
-    let text = Box::new(RichText::read_from(r)?);
-    let date = r.read_i32()?;
-                Ok(RichText::TextDate { flags, relative, short_time, long_time, short_date, long_date, day_of_week, text, date })
+                let flags = r.read_i32()?;
+                let relative = flags & (1 << 0) != 0;
+                let short_time = flags & (1 << 1) != 0;
+                let long_time = flags & (1 << 2) != 0;
+                let short_date = flags & (1 << 3) != 0;
+                let long_date = flags & (1 << 4) != 0;
+                let day_of_week = flags & (1 << 5) != 0;
+                let text = Box::new(RichText::read_from(r)?);
+                let date = r.read_i32()?;
+                Ok(RichText::TextDate {
+                    flags,
+                    relative,
+                    short_time,
+                    long_time,
+                    short_date,
+                    long_date,
+                    day_of_week,
+                    text,
+                    date,
+                })
             }
             TEXT_MENTION_NAME_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+                let text = Box::new(RichText::read_from(r)?);
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
                 Ok(RichText::TextMentionName { text, user_id })
             }
             TEXT_BANK_CARD_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextBankCard { text })
             }
             TEXT_AUTO_PHONE_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextAutoPhone { text })
             }
             TEXT_AUTO_EMAIL_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextAutoEmail { text })
             }
             TEXT_AUTO_URL_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextAutoUrl { text })
             }
             TEXT_CASHTAG_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextCashtag { text })
             }
             TEXT_BOT_COMMAND_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextBotCommand { text })
             }
             TEXT_HASHTAG_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextHashtag { text })
             }
             TEXT_MENTION_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextMention { text })
             }
             TEXT_SPOILER_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextSpoiler { text })
             }
             TEXT_CUSTOM_EMOJI_ID => {
-    let document_id = r.read_i64()?;
-    let alt = String::from_utf8(r.read_bytes()?)?;
+                let document_id = r.read_i64()?;
+                let alt = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextCustomEmoji { document_id, alt })
             }
             TEXT_MATH_ID => {
-    let source = String::from_utf8(r.read_bytes()?)?;
+                let source = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextMath { source })
             }
             TEXT_ANCHOR_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let name = String::from_utf8(r.read_bytes()?)?;
+                let text = Box::new(RichText::read_from(r)?);
+                let name = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextAnchor { text, name })
             }
             TEXT_IMAGE_ID => {
-    let document_id = r.read_i64()?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
+                let document_id = r.read_i64()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
                 Ok(RichText::TextImage { document_id, w, h })
             }
             TEXT_PHONE_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let phone = String::from_utf8(r.read_bytes()?)?;
+                let text = Box::new(RichText::read_from(r)?);
+                let phone = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextPhone { text, phone })
             }
             TEXT_MARKED_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextMarked { text })
             }
             TEXT_SUPERSCRIPT_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextSuperscript { text })
             }
             TEXT_SUBSCRIPT_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextSubscript { text })
             }
             TEXT_CONCAT_ID => {
-    let n = r.read_vector_header()?;
-    let mut texts = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        texts.push(RichText::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut texts = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    texts.push(RichText::read_from(r)?);
+                }
                 Ok(RichText::TextConcat { texts })
             }
             TEXT_EMAIL_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let email = String::from_utf8(r.read_bytes()?)?;
+                let text = Box::new(RichText::read_from(r)?);
+                let email = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextEmail { text, email })
             }
             TEXT_URL_ID => {
-    let text = Box::new(RichText::read_from(r)?);
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let webpage_id = r.read_i64()?;
-                Ok(RichText::TextUrl { text, url, webpage_id })
+                let text = Box::new(RichText::read_from(r)?);
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let webpage_id = r.read_i64()?;
+                Ok(RichText::TextUrl {
+                    text,
+                    url,
+                    webpage_id,
+                })
             }
             TEXT_FIXED_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextFixed { text })
             }
             TEXT_STRIKE_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextStrike { text })
             }
             TEXT_UNDERLINE_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextUnderline { text })
             }
             TEXT_ITALIC_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextItalic { text })
             }
             TEXT_BOLD_ID => {
-    let text = Box::new(RichText::read_from(r)?);
+                let text = Box::new(RichText::read_from(r)?);
                 Ok(RichText::TextBold { text })
             }
             TEXT_PLAIN_ID => {
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(RichText::TextPlain { text })
             }
-            TEXT_EMPTY_ID => {
-                Ok(RichText::TextEmpty {  })
-            }
+            TEXT_EMPTY_ID => Ok(RichText::TextEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown RichText constructor {other:#x}"
             ))),
@@ -4925,11 +6211,11 @@ impl RichButtonStyle {
                 "expected richButtonStyle, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let bg_primary = flags & (1 << 0) != 0;
-    let bg_danger = flags & (1 << 1) != 0;
-    let bg_success = flags & (1 << 2) != 0;
-    let link = flags & (1 << 3) != 0;
+        let flags = r.read_i32()?;
+        let bg_primary = flags & (1 << 0) != 0;
+        let bg_danger = flags & (1 << 1) != 0;
+        let bg_success = flags & (1 << 2) != 0;
+        let link = flags & (1 << 3) != 0;
         Ok(RichButtonStyle {
             flags,
             bg_primary,
@@ -4941,9 +6227,12 @@ impl RichButtonStyle {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(RICH_BUTTON_STYLE_ID);
-    let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 } | if self.bg_danger { 1 << 1 } else { 0 } | if self.bg_success { 1 << 2 } else { 0 } | if self.link { 1 << 3 } else { 0 };
-    w.write_i32(flags);
+        w.write_u32(RICH_BUTTON_STYLE_ID);
+        let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 }
+            | if self.bg_danger { 1 << 1 } else { 0 }
+            | if self.bg_success { 1 << 2 } else { 0 }
+            | if self.link { 1 << 3 } else { 0 };
+        w.write_i32(flags);
     }
 }
 
@@ -4959,19 +6248,39 @@ pub enum InlineButtonType {
     /// `inlineButtonTypeUserProfile#3fa33fcf`
     InlineButtonTypeUserProfile { user_id: UserId },
     /// `inlineButtonTypeSwitchInline#93773ff5`
-    InlineButtonTypeSwitchInline { flags: i32, same_peer: bool, query: String, peer_types: Option<Vec<InlineQueryPeerType>> },
+    InlineButtonTypeSwitchInline {
+        flags: i32,
+        same_peer: bool,
+        query: String,
+        peer_types: Option<Vec<InlineQueryPeerType>>,
+    },
     /// `inlineButtonTypeBuy#48bad7a5`
     InlineButtonTypeBuy,
     /// `inlineButtonTypeGame#5cd3709d`
     InlineButtonTypeGame,
     /// `inlineButtonTypeCallback#2955bc38`
-    InlineButtonTypeCallback { flags: i32, requires_password: bool, data: Vec<u8> },
+    InlineButtonTypeCallback {
+        flags: i32,
+        requires_password: bool,
+        data: Vec<u8>,
+    },
     /// `inlineButtonTypeWebView#3bcab5b4`
     InlineButtonTypeWebView { url: String },
     /// `inputInlineButtonTypeUrlAuth#9961bcb4`
-    InputInlineButtonTypeUrlAuth { flags: i32, request_write_access: bool, fwd_text: Option<String>, url: String, bot: Option<InputUser> },
+    InputInlineButtonTypeUrlAuth {
+        flags: i32,
+        request_write_access: bool,
+        fwd_text: Option<String>,
+        url: String,
+        bot: Option<InputUser>,
+    },
     /// `inlineButtonTypeUrlAuth#bfd02da2`
-    InlineButtonTypeUrlAuth { flags: i32, fwd_text: Option<String>, url: String, button_id: i32 },
+    InlineButtonTypeUrlAuth {
+        flags: i32,
+        fwd_text: Option<String>,
+        url: String,
+        button_id: i32,
+    },
     /// `inlineButtonTypeUrl#eca4f8d4`
     InlineButtonTypeUrl { url: String },
 }
@@ -4980,86 +6289,100 @@ impl InlineButtonType {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INLINE_BUTTON_TYPE_DISABLED_ID => {
-                Ok(InlineButtonType::InlineButtonTypeDisabled {  })
-            }
+            INLINE_BUTTON_TYPE_DISABLED_ID => Ok(InlineButtonType::InlineButtonTypeDisabled {}),
             INLINE_BUTTON_TYPE_COPY_ID => {
-    let copy_text = String::from_utf8(r.read_bytes()?)?;
+                let copy_text = String::from_utf8(r.read_bytes()?)?;
                 Ok(InlineButtonType::InlineButtonTypeCopy { copy_text })
             }
             INPUT_INLINE_BUTTON_TYPE_USER_PROFILE_ID => {
-    let user_id = InputUser::read_from(r)?;
+                let user_id = InputUser::read_from(r)?;
                 Ok(InlineButtonType::InputInlineButtonTypeUserProfile { user_id })
             }
             INLINE_BUTTON_TYPE_USER_PROFILE_ID => {
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
                 Ok(InlineButtonType::InlineButtonTypeUserProfile { user_id })
             }
             INLINE_BUTTON_TYPE_SWITCH_INLINE_ID => {
-    let flags = r.read_i32()?;
-    let same_peer = flags & (1 << 0) != 0;
-    let query = String::from_utf8(r.read_bytes()?)?;
-    let peer_types = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut peer_types = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            peer_types.push(InlineQueryPeerType::read_from(r)?);
-        }
-        Some(peer_types)
-    } else {
-        None
-    };
-                Ok(InlineButtonType::InlineButtonTypeSwitchInline { flags, same_peer, query, peer_types })
+                let flags = r.read_i32()?;
+                let same_peer = flags & (1 << 0) != 0;
+                let query = String::from_utf8(r.read_bytes()?)?;
+                let peer_types = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut peer_types = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        peer_types.push(InlineQueryPeerType::read_from(r)?);
+                    }
+                    Some(peer_types)
+                } else {
+                    None
+                };
+                Ok(InlineButtonType::InlineButtonTypeSwitchInline {
+                    flags,
+                    same_peer,
+                    query,
+                    peer_types,
+                })
             }
-            INLINE_BUTTON_TYPE_BUY_ID => {
-                Ok(InlineButtonType::InlineButtonTypeBuy {  })
-            }
-            INLINE_BUTTON_TYPE_GAME_ID => {
-                Ok(InlineButtonType::InlineButtonTypeGame {  })
-            }
+            INLINE_BUTTON_TYPE_BUY_ID => Ok(InlineButtonType::InlineButtonTypeBuy {}),
+            INLINE_BUTTON_TYPE_GAME_ID => Ok(InlineButtonType::InlineButtonTypeGame {}),
             INLINE_BUTTON_TYPE_CALLBACK_ID => {
-    let flags = r.read_i32()?;
-    let requires_password = flags & (1 << 0) != 0;
-    let data = r.read_bytes()?;
-                Ok(InlineButtonType::InlineButtonTypeCallback { flags, requires_password, data })
+                let flags = r.read_i32()?;
+                let requires_password = flags & (1 << 0) != 0;
+                let data = r.read_bytes()?;
+                Ok(InlineButtonType::InlineButtonTypeCallback {
+                    flags,
+                    requires_password,
+                    data,
+                })
             }
             INLINE_BUTTON_TYPE_WEB_VIEW_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(InlineButtonType::InlineButtonTypeWebView { url })
             }
             INPUT_INLINE_BUTTON_TYPE_URL_AUTH_ID => {
-    let flags = r.read_i32()?;
-    let request_write_access = flags & (1 << 0) != 0;
-    let fwd_text = if flags & (1 << 1) != 0 {
-        let fwd_text = String::from_utf8(r.read_bytes()?)?;
-        Some(fwd_text)
-    } else {
-        None
-    };
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let bot = if flags & (1 << 2) != 0 {
-        let bot = InputUser::read_from(r)?;
-        Some(bot)
-    } else {
-        None
-    };
-                Ok(InlineButtonType::InputInlineButtonTypeUrlAuth { flags, request_write_access, fwd_text, url, bot })
+                let flags = r.read_i32()?;
+                let request_write_access = flags & (1 << 0) != 0;
+                let fwd_text = if flags & (1 << 1) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let bot = if flags & (1 << 2) != 0 {
+                    let bot = InputUser::read_from(r)?;
+                    Some(bot)
+                } else {
+                    None
+                };
+                Ok(InlineButtonType::InputInlineButtonTypeUrlAuth {
+                    flags,
+                    request_write_access,
+                    fwd_text,
+                    url,
+                    bot,
+                })
             }
             INLINE_BUTTON_TYPE_URL_AUTH_ID => {
-    let flags = r.read_i32()?;
-    let fwd_text = if flags & (1 << 0) != 0 {
-        let fwd_text = String::from_utf8(r.read_bytes()?)?;
-        Some(fwd_text)
-    } else {
-        None
-    };
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let button_id = r.read_i32()?;
-                Ok(InlineButtonType::InlineButtonTypeUrlAuth { flags, fwd_text, url, button_id })
+                let flags = r.read_i32()?;
+                let fwd_text = if flags & (1 << 0) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                Ok(InlineButtonType::InlineButtonTypeUrlAuth {
+                    flags,
+                    fwd_text,
+                    url,
+                    button_id,
+                })
             }
             INLINE_BUTTON_TYPE_URL_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(InlineButtonType::InlineButtonTypeUrl { url })
             }
             other => Err(Error::Serialization(format!(
@@ -5091,22 +6414,18 @@ impl InlineQueryPeerType {
         let ctor = r.read_u32()?;
         match ctor {
             INLINE_QUERY_PEER_TYPE_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {})
             }
             INLINE_QUERY_PEER_TYPE_BROADCAST_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {})
             }
             INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {})
             }
-            INLINE_QUERY_PEER_TYPE_CHAT_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {  })
-            }
-            INLINE_QUERY_PEER_TYPE_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypePM {  })
-            }
+            INLINE_QUERY_PEER_TYPE_CHAT_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {}),
+            INLINE_QUERY_PEER_TYPE_PM_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypePM {}),
             INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown InlineQueryPeerType constructor {other:#x}"
@@ -5132,15 +6451,15 @@ impl PageButton {
                 "expected pageButton, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let text = RichText::read_from(r)?;
-    let r#type = InlineButtonType::read_from(r)?;
-    let style = if flags & (1 << 0) != 0 {
-        let style = RichButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let text = RichText::read_from(r)?;
+        let r#type = InlineButtonType::read_from(r)?;
+        let style = if flags & (1 << 0) != 0 {
+            let style = RichButtonStyle::read_from(r)?;
+            Some(style)
+        } else {
+            None
+        };
         Ok(PageButton {
             flags,
             text,
@@ -5148,7 +6467,6 @@ impl PageButton {
             style,
         })
     }
-
 }
 
 /// `pageRelatedArticle#b390dc08 = PageRelatedArticle`
@@ -5172,39 +6490,39 @@ impl PageRelatedArticle {
                 "expected pageRelatedArticle, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let webpage_id = r.read_i64()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let description = if flags & (1 << 1) != 0 {
-        let description = String::from_utf8(r.read_bytes()?)?;
-        Some(description)
-    } else {
-        None
-    };
-    let photo_id = if flags & (1 << 2) != 0 {
-        let photo_id = r.read_i64()?;
-        Some(photo_id)
-    } else {
-        None
-    };
-    let author = if flags & (1 << 3) != 0 {
-        let author = String::from_utf8(r.read_bytes()?)?;
-        Some(author)
-    } else {
-        None
-    };
-    let published_date = if flags & (1 << 4) != 0 {
-        let published_date = r.read_i32()?;
-        Some(published_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let url = String::from_utf8(r.read_bytes()?)?;
+        let webpage_id = r.read_i64()?;
+        let title = if flags & (1 << 0) != 0 {
+            let title = String::from_utf8(r.read_bytes()?)?;
+            Some(title)
+        } else {
+            None
+        };
+        let description = if flags & (1 << 1) != 0 {
+            let description = String::from_utf8(r.read_bytes()?)?;
+            Some(description)
+        } else {
+            None
+        };
+        let photo_id = if flags & (1 << 2) != 0 {
+            let photo_id = r.read_i64()?;
+            Some(photo_id)
+        } else {
+            None
+        };
+        let author = if flags & (1 << 3) != 0 {
+            let author = String::from_utf8(r.read_bytes()?)?;
+            Some(author)
+        } else {
+            None
+        };
+        let published_date = if flags & (1 << 4) != 0 {
+            let published_date = r.read_i32()?;
+            Some(published_date)
+        } else {
+            None
+        };
         Ok(PageRelatedArticle {
             flags,
             url,
@@ -5219,26 +6537,38 @@ impl PageRelatedArticle {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(PAGE_RELATED_ARTICLE_ID);
-    let flags: i32 = if self.title.is_some() { 1 << 0 } else { 0 } | if self.description.is_some() { 1 << 1 } else { 0 } | if self.photo_id.is_some() { 1 << 2 } else { 0 } | if self.author.is_some() { 1 << 3 } else { 0 } | if self.published_date.is_some() { 1 << 4 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.url.as_bytes());
-    w.write_i64(self.webpage_id);
-    if let Some(title) = self.title.clone() {
-        w.write_bytes(title.as_bytes());
-    }
-    if let Some(description) = self.description.clone() {
-        w.write_bytes(description.as_bytes());
-    }
-    if let Some(photo_id) = self.photo_id {
-        w.write_i64(photo_id);
-    }
-    if let Some(author) = self.author.clone() {
-        w.write_bytes(author.as_bytes());
-    }
-    if let Some(published_date) = self.published_date {
-        w.write_i32(published_date);
-    }
+        w.write_u32(PAGE_RELATED_ARTICLE_ID);
+        let flags: i32 = if self.title.is_some() { 1 << 0 } else { 0 }
+            | if self.description.is_some() {
+                1 << 1
+            } else {
+                0
+            }
+            | if self.photo_id.is_some() { 1 << 2 } else { 0 }
+            | if self.author.is_some() { 1 << 3 } else { 0 }
+            | if self.published_date.is_some() {
+                1 << 4
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        w.write_bytes(self.url.as_bytes());
+        w.write_i64(self.webpage_id);
+        if let Some(title) = self.title.clone() {
+            w.write_bytes(title.as_bytes());
+        }
+        if let Some(description) = self.description.clone() {
+            w.write_bytes(description.as_bytes());
+        }
+        if let Some(photo_id) = self.photo_id {
+            w.write_i64(photo_id);
+        }
+        if let Some(author) = self.author.clone() {
+            w.write_bytes(author.as_bytes());
+        }
+        if let Some(published_date) = self.published_date {
+            w.write_i32(published_date);
+        }
     }
 }
 
@@ -5246,9 +6576,25 @@ impl PageRelatedArticle {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageListOrderedItem {
     /// `pageListOrderedItemBlocks#8ff2d5f0`
-    PageListOrderedItemBlocks { flags: i32, checkbox: bool, checked: bool, num: Option<String>, blocks: Vec<PageBlock>, value: Option<i32>, r#type: Option<String> },
+    PageListOrderedItemBlocks {
+        flags: i32,
+        checkbox: bool,
+        checked: bool,
+        num: Option<String>,
+        blocks: Vec<PageBlock>,
+        value: Option<i32>,
+        r#type: Option<String>,
+    },
     /// `pageListOrderedItemText#15031189`
-    PageListOrderedItemText { flags: i32, checkbox: bool, checked: bool, num: Option<String>, text: RichText, value: Option<i32>, r#type: Option<String> },
+    PageListOrderedItemText {
+        flags: i32,
+        checkbox: bool,
+        checked: bool,
+        num: Option<String>,
+        text: RichText,
+        value: Option<i32>,
+        r#type: Option<String>,
+    },
 }
 
 impl PageListOrderedItem {
@@ -5256,58 +6602,74 @@ impl PageListOrderedItem {
         let ctor = r.read_u32()?;
         match ctor {
             PAGE_LIST_ORDERED_ITEM_BLOCKS_ID => {
-    let flags = r.read_i32()?;
-    let checkbox = flags & (1 << 0) != 0;
-    let checked = flags & (1 << 1) != 0;
-    let num = if flags & (1 << 2) != 0 {
-        let num = String::from_utf8(r.read_bytes()?)?;
-        Some(num)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let value = if flags & (1 << 3) != 0 {
-        let value = r.read_i32()?;
-        Some(value)
-    } else {
-        None
-    };
-    let r#type = if flags & (1 << 4) != 0 {
-        let r#type = String::from_utf8(r.read_bytes()?)?;
-        Some(r#type)
-    } else {
-        None
-    };
-                Ok(PageListOrderedItem::PageListOrderedItemBlocks { flags, checkbox, checked, num, blocks, value, r#type })
+                let flags = r.read_i32()?;
+                let checkbox = flags & (1 << 0) != 0;
+                let checked = flags & (1 << 1) != 0;
+                let num = if flags & (1 << 2) != 0 {
+                    let num = String::from_utf8(r.read_bytes()?)?;
+                    Some(num)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                let value = if flags & (1 << 3) != 0 {
+                    let value = r.read_i32()?;
+                    Some(value)
+                } else {
+                    None
+                };
+                let r#type = if flags & (1 << 4) != 0 {
+                    let r#type = String::from_utf8(r.read_bytes()?)?;
+                    Some(r#type)
+                } else {
+                    None
+                };
+                Ok(PageListOrderedItem::PageListOrderedItemBlocks {
+                    flags,
+                    checkbox,
+                    checked,
+                    num,
+                    blocks,
+                    value,
+                    r#type,
+                })
             }
             PAGE_LIST_ORDERED_ITEM_TEXT_ID => {
-    let flags = r.read_i32()?;
-    let checkbox = flags & (1 << 0) != 0;
-    let checked = flags & (1 << 1) != 0;
-    let num = if flags & (1 << 2) != 0 {
-        let num = String::from_utf8(r.read_bytes()?)?;
-        Some(num)
-    } else {
-        None
-    };
-    let text = RichText::read_from(r)?;
-    let value = if flags & (1 << 3) != 0 {
-        let value = r.read_i32()?;
-        Some(value)
-    } else {
-        None
-    };
-    let r#type = if flags & (1 << 4) != 0 {
-        let r#type = String::from_utf8(r.read_bytes()?)?;
-        Some(r#type)
-    } else {
-        None
-    };
-                Ok(PageListOrderedItem::PageListOrderedItemText { flags, checkbox, checked, num, text, value, r#type })
+                let flags = r.read_i32()?;
+                let checkbox = flags & (1 << 0) != 0;
+                let checked = flags & (1 << 1) != 0;
+                let num = if flags & (1 << 2) != 0 {
+                    let num = String::from_utf8(r.read_bytes()?)?;
+                    Some(num)
+                } else {
+                    None
+                };
+                let text = RichText::read_from(r)?;
+                let value = if flags & (1 << 3) != 0 {
+                    let value = r.read_i32()?;
+                    Some(value)
+                } else {
+                    None
+                };
+                let r#type = if flags & (1 << 4) != 0 {
+                    let r#type = String::from_utf8(r.read_bytes()?)?;
+                    Some(r#type)
+                } else {
+                    None
+                };
+                Ok(PageListOrderedItem::PageListOrderedItemText {
+                    flags,
+                    checkbox,
+                    checked,
+                    num,
+                    text,
+                    value,
+                    r#type,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PageListOrderedItem constructor {other:#x}"
@@ -5330,16 +6692,13 @@ impl PageTableRow {
                 "expected pageTableRow, got {ctor:#x}"
             )));
         }
-    let n = r.read_vector_header()?;
-    let mut cells = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        cells.push(PageTableCell::read_from(r)?);
+        let n = r.read_vector_header()?;
+        let mut cells = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            cells.push(PageTableCell::read_from(r)?);
+        }
+        Ok(PageTableRow { cells })
     }
-        Ok(PageTableRow {
-            cells,
-        })
-    }
-
 }
 
 /// `pageTableCell#34566b6a = PageTableCell`
@@ -5364,30 +6723,30 @@ impl PageTableCell {
                 "expected pageTableCell, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let header = flags & (1 << 0) != 0;
-    let align_center = flags & (1 << 3) != 0;
-    let align_right = flags & (1 << 4) != 0;
-    let valign_middle = flags & (1 << 5) != 0;
-    let valign_bottom = flags & (1 << 6) != 0;
-    let text = if flags & (1 << 7) != 0 {
-        let text = RichText::read_from(r)?;
-        Some(text)
-    } else {
-        None
-    };
-    let colspan = if flags & (1 << 1) != 0 {
-        let colspan = r.read_i32()?;
-        Some(colspan)
-    } else {
-        None
-    };
-    let rowspan = if flags & (1 << 2) != 0 {
-        let rowspan = r.read_i32()?;
-        Some(rowspan)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let header = flags & (1 << 0) != 0;
+        let align_center = flags & (1 << 3) != 0;
+        let align_right = flags & (1 << 4) != 0;
+        let valign_middle = flags & (1 << 5) != 0;
+        let valign_bottom = flags & (1 << 6) != 0;
+        let text = if flags & (1 << 7) != 0 {
+            let text = RichText::read_from(r)?;
+            Some(text)
+        } else {
+            None
+        };
+        let colspan = if flags & (1 << 1) != 0 {
+            let colspan = r.read_i32()?;
+            Some(colspan)
+        } else {
+            None
+        };
+        let rowspan = if flags & (1 << 2) != 0 {
+            let rowspan = r.read_i32()?;
+            Some(rowspan)
+        } else {
+            None
+        };
         Ok(PageTableCell {
             flags,
             header,
@@ -5400,16 +6759,25 @@ impl PageTableCell {
             rowspan,
         })
     }
-
 }
 
 /// Union `PageListItem` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageListItem {
     /// `pageListItemBlocks#63ca67aa`
-    PageListItemBlocks { flags: i32, checkbox: bool, checked: bool, blocks: Vec<PageBlock> },
+    PageListItemBlocks {
+        flags: i32,
+        checkbox: bool,
+        checked: bool,
+        blocks: Vec<PageBlock>,
+    },
     /// `pageListItemText#2f58683c`
-    PageListItemText { flags: i32, checkbox: bool, checked: bool, text: RichText },
+    PageListItemText {
+        flags: i32,
+        checkbox: bool,
+        checked: bool,
+        text: RichText,
+    },
 }
 
 impl PageListItem {
@@ -5417,22 +6785,32 @@ impl PageListItem {
         let ctor = r.read_u32()?;
         match ctor {
             PAGE_LIST_ITEM_BLOCKS_ID => {
-    let flags = r.read_i32()?;
-    let checkbox = flags & (1 << 0) != 0;
-    let checked = flags & (1 << 1) != 0;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-                Ok(PageListItem::PageListItemBlocks { flags, checkbox, checked, blocks })
+                let flags = r.read_i32()?;
+                let checkbox = flags & (1 << 0) != 0;
+                let checked = flags & (1 << 1) != 0;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                Ok(PageListItem::PageListItemBlocks {
+                    flags,
+                    checkbox,
+                    checked,
+                    blocks,
+                })
             }
             PAGE_LIST_ITEM_TEXT_ID => {
-    let flags = r.read_i32()?;
-    let checkbox = flags & (1 << 0) != 0;
-    let checked = flags & (1 << 1) != 0;
-    let text = RichText::read_from(r)?;
-                Ok(PageListItem::PageListItemText { flags, checkbox, checked, text })
+                let flags = r.read_i32()?;
+                let checkbox = flags & (1 << 0) != 0;
+                let checked = flags & (1 << 1) != 0;
+                let text = RichText::read_from(r)?;
+                Ok(PageListItem::PageListItemText {
+                    flags,
+                    checkbox,
+                    checked,
+                    text,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PageListItem constructor {other:#x}"
@@ -5459,26 +6837,26 @@ impl StoryFwdHeader {
                 "expected storyFwdHeader, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let modified = flags & (1 << 3) != 0;
-    let from = if flags & (1 << 0) != 0 {
-        let from = Peer::read_from(r)?;
-        Some(from)
-    } else {
-        None
-    };
-    let from_name = if flags & (1 << 1) != 0 {
-        let from_name = String::from_utf8(r.read_bytes()?)?;
-        Some(from_name)
-    } else {
-        None
-    };
-    let story_id = if flags & (1 << 2) != 0 {
-        let story_id = r.read_i32()?;
-        Some(story_id)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let modified = flags & (1 << 3) != 0;
+        let from = if flags & (1 << 0) != 0 {
+            let from = Peer::read_from(r)?;
+            Some(from)
+        } else {
+            None
+        };
+        let from_name = if flags & (1 << 1) != 0 {
+            let from_name = String::from_utf8(r.read_bytes()?)?;
+            Some(from_name)
+        } else {
+            None
+        };
+        let story_id = if flags & (1 << 2) != 0 {
+            let story_id = r.read_i32()?;
+            Some(story_id)
+        } else {
+            None
+        };
         Ok(StoryFwdHeader {
             flags,
             modified,
@@ -5487,7 +6865,6 @@ impl StoryFwdHeader {
             story_id,
         })
     }
-
 }
 
 /// Union `ChatReactions` (3 constructors).
@@ -5506,21 +6883,22 @@ impl ChatReactions {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_REACTIONS_SOME_ID => {
-    let n = r.read_vector_header()?;
-    let mut reactions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        reactions.push(Reaction::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut reactions = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    reactions.push(Reaction::read_from(r)?);
+                }
                 Ok(ChatReactions::ChatReactionsSome { reactions })
             }
             CHAT_REACTIONS_ALL_ID => {
-    let flags = r.read_i32()?;
-    let allow_custom = flags & (1 << 0) != 0;
-                Ok(ChatReactions::ChatReactionsAll { flags, allow_custom })
+                let flags = r.read_i32()?;
+                let allow_custom = flags & (1 << 0) != 0;
+                Ok(ChatReactions::ChatReactionsAll {
+                    flags,
+                    allow_custom,
+                })
             }
-            CHAT_REACTIONS_NONE_ID => {
-                Ok(ChatReactions::ChatReactionsNone {  })
-            }
+            CHAT_REACTIONS_NONE_ID => Ok(ChatReactions::ChatReactionsNone {}),
             other => Err(Error::Serialization(format!(
                 "unknown ChatReactions constructor {other:#x}"
             ))),
@@ -5544,17 +6922,17 @@ impl InputGroupCall {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_GROUP_CALL_INVITE_MESSAGE_ID => {
-    let msg_id = r.read_i32()?;
+                let msg_id = r.read_i32()?;
                 Ok(InputGroupCall::InputGroupCallInviteMessage { msg_id })
             }
             INPUT_GROUP_CALL_SLUG_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputGroupCall::InputGroupCallSlug { slug })
             }
             INPUT_GROUP_CALL_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputGroupCall::InputGroupCall { id, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -5568,7 +6946,10 @@ impl InputGroupCall {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChannelLocation {
     /// `channelLocation#209b82db`
-    ChannelLocation { geo_point: GeoPoint, address: String },
+    ChannelLocation {
+        geo_point: GeoPoint,
+        address: String,
+    },
     /// `channelLocationEmpty#bfb5ad8b`
     ChannelLocationEmpty,
 }
@@ -5578,13 +6959,11 @@ impl ChannelLocation {
         let ctor = r.read_u32()?;
         match ctor {
             CHANNEL_LOCATION_ID => {
-    let geo_point = GeoPoint::read_from(r)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
+                let geo_point = GeoPoint::read_from(r)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChannelLocation::ChannelLocation { geo_point, address })
             }
-            CHANNEL_LOCATION_EMPTY_ID => {
-                Ok(ChannelLocation::ChannelLocationEmpty {  })
-            }
+            CHANNEL_LOCATION_EMPTY_ID => Ok(ChannelLocation::ChannelLocationEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown ChannelLocation constructor {other:#x}"
             ))),
@@ -5624,55 +7003,55 @@ impl StickerSet {
                 "expected stickerSet, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let archived = flags & (1 << 1) != 0;
-    let official = flags & (1 << 2) != 0;
-    let masks = flags & (1 << 3) != 0;
-    let emojis = flags & (1 << 7) != 0;
-    let text_color = flags & (1 << 9) != 0;
-    let channel_emoji_status = flags & (1 << 10) != 0;
-    let creator = flags & (1 << 11) != 0;
-    let installed_date = if flags & (1 << 0) != 0 {
-        let installed_date = r.read_i32()?;
-        Some(installed_date)
-    } else {
-        None
-    };
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
-    let thumbs = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut thumbs = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            thumbs.push(PhotoSize::read_from(r)?);
-        }
-        Some(thumbs)
-    } else {
-        None
-    };
-    let thumb_dc_id = if flags & (1 << 4) != 0 {
-        let thumb_dc_id = r.read_i32()?;
-        Some(thumb_dc_id)
-    } else {
-        None
-    };
-    let thumb_version = if flags & (1 << 4) != 0 {
-        let thumb_version = r.read_i32()?;
-        Some(thumb_version)
-    } else {
-        None
-    };
-    let thumb_document_id = if flags & (1 << 8) != 0 {
-        let thumb_document_id = r.read_i64()?;
-        Some(thumb_document_id)
-    } else {
-        None
-    };
-    let count = r.read_i32()?;
-    let hash = r.read_i32()?;
-    let access_hash = AccessHash(access_hash);
+        let flags = r.read_i32()?;
+        let archived = flags & (1 << 1) != 0;
+        let official = flags & (1 << 2) != 0;
+        let masks = flags & (1 << 3) != 0;
+        let emojis = flags & (1 << 7) != 0;
+        let text_color = flags & (1 << 9) != 0;
+        let channel_emoji_status = flags & (1 << 10) != 0;
+        let creator = flags & (1 << 11) != 0;
+        let installed_date = if flags & (1 << 0) != 0 {
+            let installed_date = r.read_i32()?;
+            Some(installed_date)
+        } else {
+            None
+        };
+        let id = r.read_i64()?;
+        let access_hash = r.read_i64()?;
+        let title = String::from_utf8(r.read_bytes()?)?;
+        let short_name = String::from_utf8(r.read_bytes()?)?;
+        let thumbs = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut thumbs = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                thumbs.push(PhotoSize::read_from(r)?);
+            }
+            Some(thumbs)
+        } else {
+            None
+        };
+        let thumb_dc_id = if flags & (1 << 4) != 0 {
+            let thumb_dc_id = r.read_i32()?;
+            Some(thumb_dc_id)
+        } else {
+            None
+        };
+        let thumb_version = if flags & (1 << 4) != 0 {
+            let thumb_version = r.read_i32()?;
+            Some(thumb_version)
+        } else {
+            None
+        };
+        let thumb_document_id = if flags & (1 << 8) != 0 {
+            let thumb_document_id = r.read_i64()?;
+            Some(thumb_document_id)
+        } else {
+            None
+        };
+        let count = r.read_i32()?;
+        let hash = r.read_i32()?;
+        let access_hash = AccessHash(access_hash);
         Ok(StickerSet {
             flags,
             archived,
@@ -5695,7 +7074,6 @@ impl StickerSet {
             hash,
         })
     }
-
 }
 
 /// `botInfo#4d8a0299 = BotInfo`
@@ -5722,66 +7100,66 @@ impl BotInfo {
                 "expected botInfo, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let has_preview_medias = flags & (1 << 6) != 0;
-    let user_id = if flags & (1 << 0) != 0 {
-        let user_id = r.read_i64()?;
-        Some(UserId(user_id))
-    } else {
-        None
-    };
-    let description = if flags & (1 << 1) != 0 {
-        let description = String::from_utf8(r.read_bytes()?)?;
-        Some(description)
-    } else {
-        None
-    };
-    let description_photo = if flags & (1 << 4) != 0 {
-        let description_photo = Photo::read_from(r)?;
-        Some(description_photo)
-    } else {
-        None
-    };
-    let description_document = if flags & (1 << 5) != 0 {
-        let description_document = Document::read_from(r)?;
-        Some(description_document)
-    } else {
-        None
-    };
-    let commands = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut commands = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            commands.push(BotCommand::read_from(r)?);
-        }
-        Some(commands)
-    } else {
-        None
-    };
-    let menu_button = if flags & (1 << 3) != 0 {
-        let menu_button = BotMenuButton::read_from(r)?;
-        Some(menu_button)
-    } else {
-        None
-    };
-    let privacy_policy_url = if flags & (1 << 7) != 0 {
-        let privacy_policy_url = String::from_utf8(r.read_bytes()?)?;
-        Some(privacy_policy_url)
-    } else {
-        None
-    };
-    let app_settings = if flags & (1 << 8) != 0 {
-        let app_settings = BotAppSettings::read_from(r)?;
-        Some(app_settings)
-    } else {
-        None
-    };
-    let verifier_settings = if flags & (1 << 9) != 0 {
-        let verifier_settings = BotVerifierSettings::read_from(r)?;
-        Some(verifier_settings)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let has_preview_medias = flags & (1 << 6) != 0;
+        let user_id = if flags & (1 << 0) != 0 {
+            let user_id = r.read_i64()?;
+            Some(UserId(user_id))
+        } else {
+            None
+        };
+        let description = if flags & (1 << 1) != 0 {
+            let description = String::from_utf8(r.read_bytes()?)?;
+            Some(description)
+        } else {
+            None
+        };
+        let description_photo = if flags & (1 << 4) != 0 {
+            let description_photo = Photo::read_from(r)?;
+            Some(description_photo)
+        } else {
+            None
+        };
+        let description_document = if flags & (1 << 5) != 0 {
+            let description_document = Document::read_from(r)?;
+            Some(description_document)
+        } else {
+            None
+        };
+        let commands = if flags & (1 << 2) != 0 {
+            let n = r.read_vector_header()?;
+            let mut commands = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                commands.push(BotCommand::read_from(r)?);
+            }
+            Some(commands)
+        } else {
+            None
+        };
+        let menu_button = if flags & (1 << 3) != 0 {
+            let menu_button = BotMenuButton::read_from(r)?;
+            Some(menu_button)
+        } else {
+            None
+        };
+        let privacy_policy_url = if flags & (1 << 7) != 0 {
+            let privacy_policy_url = String::from_utf8(r.read_bytes()?)?;
+            Some(privacy_policy_url)
+        } else {
+            None
+        };
+        let app_settings = if flags & (1 << 8) != 0 {
+            let app_settings = BotAppSettings::read_from(r)?;
+            Some(app_settings)
+        } else {
+            None
+        };
+        let verifier_settings = if flags & (1 << 9) != 0 {
+            let verifier_settings = BotVerifierSettings::read_from(r)?;
+            Some(verifier_settings)
+        } else {
+            None
+        };
         Ok(BotInfo {
             flags,
             has_preview_medias,
@@ -5796,7 +7174,6 @@ impl BotInfo {
             verifier_settings,
         })
     }
-
 }
 
 /// `botVerifierSettings#b0cd6617 = BotVerifierSettings`
@@ -5817,16 +7194,16 @@ impl BotVerifierSettings {
                 "expected botVerifierSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let can_modify_custom_description = flags & (1 << 1) != 0;
-    let icon = r.read_i64()?;
-    let company = String::from_utf8(r.read_bytes()?)?;
-    let custom_description = if flags & (1 << 0) != 0 {
-        let custom_description = String::from_utf8(r.read_bytes()?)?;
-        Some(custom_description)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let can_modify_custom_description = flags & (1 << 1) != 0;
+        let icon = r.read_i64()?;
+        let company = String::from_utf8(r.read_bytes()?)?;
+        let custom_description = if flags & (1 << 0) != 0 {
+            let custom_description = String::from_utf8(r.read_bytes()?)?;
+            Some(custom_description)
+        } else {
+            None
+        };
         Ok(BotVerifierSettings {
             flags,
             can_modify_custom_description,
@@ -5838,14 +7215,22 @@ impl BotVerifierSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BOT_VERIFIER_SETTINGS_ID);
-    let flags: i32 = if self.can_modify_custom_description { 1 << 1 } else { 0 } | if self.custom_description.is_some() { 1 << 0 } else { 0 };
-    w.write_i32(flags);
-    w.write_i64(self.icon);
-    w.write_bytes(self.company.as_bytes());
-    if let Some(custom_description) = self.custom_description.clone() {
-        w.write_bytes(custom_description.as_bytes());
-    }
+        w.write_u32(BOT_VERIFIER_SETTINGS_ID);
+        let flags: i32 = if self.can_modify_custom_description {
+            1 << 1
+        } else {
+            0
+        } | if self.custom_description.is_some() {
+            1 << 0
+        } else {
+            0
+        };
+        w.write_i32(flags);
+        w.write_i64(self.icon);
+        w.write_bytes(self.company.as_bytes());
+        if let Some(custom_description) = self.custom_description.clone() {
+            w.write_bytes(custom_description.as_bytes());
+        }
     }
 }
 
@@ -5868,37 +7253,37 @@ impl BotAppSettings {
                 "expected botAppSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let placeholder_path = if flags & (1 << 0) != 0 {
-        let placeholder_path = r.read_bytes()?;
-        Some(placeholder_path)
-    } else {
-        None
-    };
-    let background_color = if flags & (1 << 1) != 0 {
-        let background_color = r.read_i32()?;
-        Some(background_color)
-    } else {
-        None
-    };
-    let background_dark_color = if flags & (1 << 2) != 0 {
-        let background_dark_color = r.read_i32()?;
-        Some(background_dark_color)
-    } else {
-        None
-    };
-    let header_color = if flags & (1 << 3) != 0 {
-        let header_color = r.read_i32()?;
-        Some(header_color)
-    } else {
-        None
-    };
-    let header_dark_color = if flags & (1 << 4) != 0 {
-        let header_dark_color = r.read_i32()?;
-        Some(header_dark_color)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let placeholder_path = if flags & (1 << 0) != 0 {
+            let placeholder_path = r.read_bytes()?;
+            Some(placeholder_path)
+        } else {
+            None
+        };
+        let background_color = if flags & (1 << 1) != 0 {
+            let background_color = r.read_i32()?;
+            Some(background_color)
+        } else {
+            None
+        };
+        let background_dark_color = if flags & (1 << 2) != 0 {
+            let background_dark_color = r.read_i32()?;
+            Some(background_dark_color)
+        } else {
+            None
+        };
+        let header_color = if flags & (1 << 3) != 0 {
+            let header_color = r.read_i32()?;
+            Some(header_color)
+        } else {
+            None
+        };
+        let header_dark_color = if flags & (1 << 4) != 0 {
+            let header_dark_color = r.read_i32()?;
+            Some(header_dark_color)
+        } else {
+            None
+        };
         Ok(BotAppSettings {
             flags,
             placeholder_path,
@@ -5911,24 +7296,44 @@ impl BotAppSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BOT_APP_SETTINGS_ID);
-    let flags: i32 = if self.placeholder_path.is_some() { 1 << 0 } else { 0 } | if self.background_color.is_some() { 1 << 1 } else { 0 } | if self.background_dark_color.is_some() { 1 << 2 } else { 0 } | if self.header_color.is_some() { 1 << 3 } else { 0 } | if self.header_dark_color.is_some() { 1 << 4 } else { 0 };
-    w.write_i32(flags);
-    if let Some(placeholder_path) = self.placeholder_path.clone() {
-        w.write_bytes(&placeholder_path);
-    }
-    if let Some(background_color) = self.background_color {
-        w.write_i32(background_color);
-    }
-    if let Some(background_dark_color) = self.background_dark_color {
-        w.write_i32(background_dark_color);
-    }
-    if let Some(header_color) = self.header_color {
-        w.write_i32(header_color);
-    }
-    if let Some(header_dark_color) = self.header_dark_color {
-        w.write_i32(header_dark_color);
-    }
+        w.write_u32(BOT_APP_SETTINGS_ID);
+        let flags: i32 = if self.placeholder_path.is_some() {
+            1 << 0
+        } else {
+            0
+        } | if self.background_color.is_some() {
+            1 << 1
+        } else {
+            0
+        } | if self.background_dark_color.is_some() {
+            1 << 2
+        } else {
+            0
+        } | if self.header_color.is_some() {
+            1 << 3
+        } else {
+            0
+        } | if self.header_dark_color.is_some() {
+            1 << 4
+        } else {
+            0
+        };
+        w.write_i32(flags);
+        if let Some(placeholder_path) = self.placeholder_path.clone() {
+            w.write_bytes(&placeholder_path);
+        }
+        if let Some(background_color) = self.background_color {
+            w.write_i32(background_color);
+        }
+        if let Some(background_dark_color) = self.background_dark_color {
+            w.write_i32(background_dark_color);
+        }
+        if let Some(header_color) = self.header_color {
+            w.write_i32(header_color);
+        }
+        if let Some(header_dark_color) = self.header_dark_color {
+            w.write_i32(header_dark_color);
+        }
     }
 }
 
@@ -5948,16 +7353,12 @@ impl BotMenuButton {
         let ctor = r.read_u32()?;
         match ctor {
             BOT_MENU_BUTTON_ID => {
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(BotMenuButton::BotMenuButton { text, url })
             }
-            BOT_MENU_BUTTON_COMMANDS_ID => {
-                Ok(BotMenuButton::BotMenuButtonCommands {  })
-            }
-            BOT_MENU_BUTTON_DEFAULT_ID => {
-                Ok(BotMenuButton::BotMenuButtonDefault {  })
-            }
+            BOT_MENU_BUTTON_COMMANDS_ID => Ok(BotMenuButton::BotMenuButtonCommands {}),
+            BOT_MENU_BUTTON_DEFAULT_ID => Ok(BotMenuButton::BotMenuButtonDefault {}),
             other => Err(Error::Serialization(format!(
                 "unknown BotMenuButton constructor {other:#x}"
             ))),
@@ -5982,10 +7383,10 @@ impl BotCommand {
                 "expected botCommand, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let ephemeral = flags & (1 << 0) != 0;
-    let command = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
+        let flags = r.read_i32()?;
+        let ephemeral = flags & (1 << 0) != 0;
+        let command = String::from_utf8(r.read_bytes()?)?;
+        let description = String::from_utf8(r.read_bytes()?)?;
         Ok(BotCommand {
             flags,
             ephemeral,
@@ -5996,11 +7397,11 @@ impl BotCommand {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BOT_COMMAND_ID);
-    let flags: i32 = if self.ephemeral { 1 << 0 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.command.as_bytes());
-    w.write_bytes(self.description.as_bytes());
+        w.write_u32(BOT_COMMAND_ID);
+        let flags: i32 = if self.ephemeral { 1 << 0 } else { 0 };
+        w.write_i32(flags);
+        w.write_bytes(self.command.as_bytes());
+        w.write_bytes(self.description.as_bytes());
     }
 }
 
@@ -6026,25 +7427,19 @@ impl InputNotifyPeer {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_NOTIFY_COMMUNITY_ID => {
-    let community = InputChannel::read_from(r)?;
+                let community = InputChannel::read_from(r)?;
                 Ok(InputNotifyPeer::InputNotifyCommunity { community })
             }
             INPUT_NOTIFY_FORUM_TOPIC_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let top_msg_id = r.read_i32()?;
+                let peer = InputPeer::read_from(r)?;
+                let top_msg_id = r.read_i32()?;
                 Ok(InputNotifyPeer::InputNotifyForumTopic { peer, top_msg_id })
             }
-            INPUT_NOTIFY_BROADCASTS_ID => {
-                Ok(InputNotifyPeer::InputNotifyBroadcasts {  })
-            }
-            INPUT_NOTIFY_CHATS_ID => {
-                Ok(InputNotifyPeer::InputNotifyChats {  })
-            }
-            INPUT_NOTIFY_USERS_ID => {
-                Ok(InputNotifyPeer::InputNotifyUsers {  })
-            }
+            INPUT_NOTIFY_BROADCASTS_ID => Ok(InputNotifyPeer::InputNotifyBroadcasts {}),
+            INPUT_NOTIFY_CHATS_ID => Ok(InputNotifyPeer::InputNotifyChats {}),
+            INPUT_NOTIFY_USERS_ID => Ok(InputNotifyPeer::InputNotifyUsers {}),
             INPUT_NOTIFY_PEER_ID => {
-    let peer = InputPeer::read_from(r)?;
+                let peer = InputPeer::read_from(r)?;
                 Ok(InputNotifyPeer::InputNotifyPeer { peer })
             }
             other => Err(Error::Serialization(format!(
@@ -6079,73 +7474,73 @@ impl PeerNotifySettings {
                 "expected peerNotifySettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let show_previews = if flags & (1 << 0) != 0 {
-        let show_previews = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(show_previews)
-    } else {
-        None
-    };
-    let silent = if flags & (1 << 1) != 0 {
-        let silent = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(silent)
-    } else {
-        None
-    };
-    let mute_until = if flags & (1 << 2) != 0 {
-        let mute_until = r.read_i32()?;
-        Some(mute_until)
-    } else {
-        None
-    };
-    let ios_sound = if flags & (1 << 3) != 0 {
-        let ios_sound = NotificationSound::read_from(r)?;
-        Some(ios_sound)
-    } else {
-        None
-    };
-    let android_sound = if flags & (1 << 4) != 0 {
-        let android_sound = NotificationSound::read_from(r)?;
-        Some(android_sound)
-    } else {
-        None
-    };
-    let other_sound = if flags & (1 << 5) != 0 {
-        let other_sound = NotificationSound::read_from(r)?;
-        Some(other_sound)
-    } else {
-        None
-    };
-    let stories_muted = if flags & (1 << 6) != 0 {
-        let stories_muted = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(stories_muted)
-    } else {
-        None
-    };
-    let stories_hide_sender = if flags & (1 << 7) != 0 {
-        let stories_hide_sender = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(stories_hide_sender)
-    } else {
-        None
-    };
-    let stories_ios_sound = if flags & (1 << 8) != 0 {
-        let stories_ios_sound = NotificationSound::read_from(r)?;
-        Some(stories_ios_sound)
-    } else {
-        None
-    };
-    let stories_android_sound = if flags & (1 << 9) != 0 {
-        let stories_android_sound = NotificationSound::read_from(r)?;
-        Some(stories_android_sound)
-    } else {
-        None
-    };
-    let stories_other_sound = if flags & (1 << 10) != 0 {
-        let stories_other_sound = NotificationSound::read_from(r)?;
-        Some(stories_other_sound)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let show_previews = if flags & (1 << 0) != 0 {
+            let show_previews = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(show_previews)
+        } else {
+            None
+        };
+        let silent = if flags & (1 << 1) != 0 {
+            let silent = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(silent)
+        } else {
+            None
+        };
+        let mute_until = if flags & (1 << 2) != 0 {
+            let mute_until = r.read_i32()?;
+            Some(mute_until)
+        } else {
+            None
+        };
+        let ios_sound = if flags & (1 << 3) != 0 {
+            let ios_sound = NotificationSound::read_from(r)?;
+            Some(ios_sound)
+        } else {
+            None
+        };
+        let android_sound = if flags & (1 << 4) != 0 {
+            let android_sound = NotificationSound::read_from(r)?;
+            Some(android_sound)
+        } else {
+            None
+        };
+        let other_sound = if flags & (1 << 5) != 0 {
+            let other_sound = NotificationSound::read_from(r)?;
+            Some(other_sound)
+        } else {
+            None
+        };
+        let stories_muted = if flags & (1 << 6) != 0 {
+            let stories_muted = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(stories_muted)
+        } else {
+            None
+        };
+        let stories_hide_sender = if flags & (1 << 7) != 0 {
+            let stories_hide_sender = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(stories_hide_sender)
+        } else {
+            None
+        };
+        let stories_ios_sound = if flags & (1 << 8) != 0 {
+            let stories_ios_sound = NotificationSound::read_from(r)?;
+            Some(stories_ios_sound)
+        } else {
+            None
+        };
+        let stories_android_sound = if flags & (1 << 9) != 0 {
+            let stories_android_sound = NotificationSound::read_from(r)?;
+            Some(stories_android_sound)
+        } else {
+            None
+        };
+        let stories_other_sound = if flags & (1 << 10) != 0 {
+            let stories_other_sound = NotificationSound::read_from(r)?;
+            Some(stories_other_sound)
+        } else {
+            None
+        };
         Ok(PeerNotifySettings {
             flags,
             show_previews,
@@ -6161,7 +7556,6 @@ impl PeerNotifySettings {
             stories_other_sound,
         })
     }
-
 }
 
 /// Union `NotificationSound` (4 constructors).
@@ -6182,20 +7576,16 @@ impl NotificationSound {
         let ctor = r.read_u32()?;
         match ctor {
             NOTIFICATION_SOUND_RINGTONE_ID => {
-    let id = r.read_i64()?;
+                let id = r.read_i64()?;
                 Ok(NotificationSound::NotificationSoundRingtone { id })
             }
             NOTIFICATION_SOUND_LOCAL_ID => {
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let data = String::from_utf8(r.read_bytes()?)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let data = String::from_utf8(r.read_bytes()?)?;
                 Ok(NotificationSound::NotificationSoundLocal { title, data })
             }
-            NOTIFICATION_SOUND_NONE_ID => {
-                Ok(NotificationSound::NotificationSoundNone {  })
-            }
-            NOTIFICATION_SOUND_DEFAULT_ID => {
-                Ok(NotificationSound::NotificationSoundDefault {  })
-            }
+            NOTIFICATION_SOUND_NONE_ID => Ok(NotificationSound::NotificationSoundNone {}),
+            NOTIFICATION_SOUND_DEFAULT_ID => Ok(NotificationSound::NotificationSoundDefault {}),
             other => Err(Error::Serialization(format!(
                 "unknown NotificationSound constructor {other:#x}"
             ))),
@@ -6207,17 +7597,115 @@ impl NotificationSound {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Chat {
     /// `community#65efe954`
-    Community { flags: i32, creator: bool, left: bool, min: bool, flags2: i32, collapsed_in_dialogs: bool, id: ChatId, access_hash: Option<AccessHash>, title: String, photo: ChatPhoto, date: i32, admin_rights: Option<ChatAdminRights>, default_banned_rights: Option<ChatBannedRights> },
+    Community {
+        flags: i32,
+        creator: bool,
+        left: bool,
+        min: bool,
+        flags2: i32,
+        collapsed_in_dialogs: bool,
+        id: ChatId,
+        access_hash: Option<AccessHash>,
+        title: String,
+        photo: ChatPhoto,
+        date: i32,
+        admin_rights: Option<ChatAdminRights>,
+        default_banned_rights: Option<ChatBannedRights>,
+    },
     /// `communityForbidden#fd3cdab8`
-    CommunityForbidden { flags: i32, id: ChatId, access_hash: Option<AccessHash>, title: String },
+    CommunityForbidden {
+        flags: i32,
+        id: ChatId,
+        access_hash: Option<AccessHash>,
+        title: String,
+    },
     /// `channelForbidden#17d493d5`
-    ChannelForbidden { flags: i32, broadcast: bool, megagroup: bool, monoforum: bool, id: ChatId, access_hash: AccessHash, title: String, until_date: Option<i32> },
+    ChannelForbidden {
+        flags: i32,
+        broadcast: bool,
+        megagroup: bool,
+        monoforum: bool,
+        id: ChatId,
+        access_hash: AccessHash,
+        title: String,
+        until_date: Option<i32>,
+    },
     /// `channel#d49f34c6`
-    Channel { flags: i32, creator: bool, left: bool, broadcast: bool, verified: bool, megagroup: bool, restricted: bool, signatures: bool, min: bool, scam: bool, has_link: bool, has_geo: bool, slowmode_enabled: bool, call_active: bool, call_not_empty: bool, fake: bool, gigagroup: bool, noforwards: bool, join_to_send: bool, join_request: bool, forum: bool, flags2: i32, stories_hidden: bool, stories_hidden_min: bool, stories_unavailable: bool, signature_profiles: bool, autotranslation: bool, broadcast_messages_allowed: bool, monoforum: bool, forum_tabs: bool, id: ChatId, access_hash: Option<AccessHash>, title: String, username: Option<String>, photo: ChatPhoto, date: i32, restriction_reason: Option<Vec<RestrictionReason>>, admin_rights: Option<ChatAdminRights>, banned_rights: Option<ChatBannedRights>, default_banned_rights: Option<ChatBannedRights>, participants_count: Option<i32>, usernames: Option<Vec<Username>>, stories_max_id: Option<RecentStory>, color: Option<PeerColor>, profile_color: Option<PeerColor>, emoji_status: Option<EmojiStatus>, level: Option<i32>, subscription_until_date: Option<i32>, bot_verification_icon: Option<i64>, send_paid_messages_stars: Option<i64>, linked_monoforum_id: Option<i64>, linked_community_id: Option<i64> },
+    Channel {
+        flags: i32,
+        creator: bool,
+        left: bool,
+        broadcast: bool,
+        verified: bool,
+        megagroup: bool,
+        restricted: bool,
+        signatures: bool,
+        min: bool,
+        scam: bool,
+        has_link: bool,
+        has_geo: bool,
+        slowmode_enabled: bool,
+        call_active: bool,
+        call_not_empty: bool,
+        fake: bool,
+        gigagroup: bool,
+        noforwards: bool,
+        join_to_send: bool,
+        join_request: bool,
+        forum: bool,
+        flags2: i32,
+        stories_hidden: bool,
+        stories_hidden_min: bool,
+        stories_unavailable: bool,
+        signature_profiles: bool,
+        autotranslation: bool,
+        broadcast_messages_allowed: bool,
+        monoforum: bool,
+        forum_tabs: bool,
+        id: ChatId,
+        access_hash: Option<AccessHash>,
+        title: String,
+        username: Option<String>,
+        photo: ChatPhoto,
+        date: i32,
+        restriction_reason: Option<Vec<RestrictionReason>>,
+        admin_rights: Option<ChatAdminRights>,
+        banned_rights: Option<ChatBannedRights>,
+        default_banned_rights: Option<ChatBannedRights>,
+        participants_count: Option<i32>,
+        usernames: Option<Vec<Username>>,
+        stories_max_id: Option<RecentStory>,
+        color: Option<PeerColor>,
+        profile_color: Option<PeerColor>,
+        emoji_status: Option<EmojiStatus>,
+        level: Option<i32>,
+        subscription_until_date: Option<i32>,
+        bot_verification_icon: Option<i64>,
+        send_paid_messages_stars: Option<i64>,
+        linked_monoforum_id: Option<i64>,
+        linked_community_id: Option<i64>,
+    },
     /// `chatForbidden#6592a1a7`
     Forbidden { id: ChatId, title: String },
     /// `chat#41cbf256`
-    Chat { flags: i32, creator: bool, left: bool, deactivated: bool, call_active: bool, call_not_empty: bool, noforwards: bool, id: ChatId, title: String, photo: ChatPhoto, participants_count: i32, date: i32, version: i32, migrated_to: Option<InputChannel>, admin_rights: Option<ChatAdminRights>, default_banned_rights: Option<ChatBannedRights> },
+    Chat {
+        flags: i32,
+        creator: bool,
+        left: bool,
+        deactivated: bool,
+        call_active: bool,
+        call_not_empty: bool,
+        noforwards: bool,
+        id: ChatId,
+        title: String,
+        photo: ChatPhoto,
+        participants_count: i32,
+        date: i32,
+        version: i32,
+        migrated_to: Option<InputChannel>,
+        admin_rights: Option<ChatAdminRights>,
+        default_banned_rights: Option<ChatBannedRights>,
+    },
     /// `chatEmpty#29562865`
     Empty { id: ChatId },
 }
@@ -6227,266 +7715,364 @@ impl Chat {
         let ctor = r.read_u32()?;
         match ctor {
             COMMUNITY_ID => {
-    let flags = r.read_i32()?;
-    let flags2 = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let left = flags & (1 << 2) != 0;
-    let min = flags & (1 << 12) != 0;
-    let collapsed_in_dialogs = flags2 & (1 << 20) != 0;
-    let id = r.read_i64()?;
-    let access_hash = if flags & (1 << 13) != 0 {
-        let access_hash = r.read_i64()?;
-        Some(AccessHash(access_hash))
-    } else {
-        None
-    };
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let photo = ChatPhoto::read_from(r)?;
-    let date = r.read_i32()?;
-    let admin_rights = if flags & (1 << 14) != 0 {
-        let admin_rights = ChatAdminRights::read_from(r)?;
-        Some(admin_rights)
-    } else {
-        None
-    };
-    let default_banned_rights = if flags & (1 << 18) != 0 {
-        let default_banned_rights = ChatBannedRights::read_from(r)?;
-        Some(default_banned_rights)
-    } else {
-        None
-    };
-    let id = ChatId(id);
-                Ok(Chat::Community { flags, creator, left, min, flags2, collapsed_in_dialogs, id, access_hash, title, photo, date, admin_rights, default_banned_rights })
+                let flags = r.read_i32()?;
+                let flags2 = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let left = flags & (1 << 2) != 0;
+                let min = flags & (1 << 12) != 0;
+                let collapsed_in_dialogs = flags2 & (1 << 20) != 0;
+                let id = r.read_i64()?;
+                let access_hash = if flags & (1 << 13) != 0 {
+                    let access_hash = r.read_i64()?;
+                    Some(AccessHash(access_hash))
+                } else {
+                    None
+                };
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let photo = ChatPhoto::read_from(r)?;
+                let date = r.read_i32()?;
+                let admin_rights = if flags & (1 << 14) != 0 {
+                    let admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(admin_rights)
+                } else {
+                    None
+                };
+                let default_banned_rights = if flags & (1 << 18) != 0 {
+                    let default_banned_rights = ChatBannedRights::read_from(r)?;
+                    Some(default_banned_rights)
+                } else {
+                    None
+                };
+                let id = ChatId(id);
+                Ok(Chat::Community {
+                    flags,
+                    creator,
+                    left,
+                    min,
+                    flags2,
+                    collapsed_in_dialogs,
+                    id,
+                    access_hash,
+                    title,
+                    photo,
+                    date,
+                    admin_rights,
+                    default_banned_rights,
+                })
             }
             COMMUNITY_FORBIDDEN_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let access_hash = if flags & (1 << 13) != 0 {
-        let access_hash = r.read_i64()?;
-        Some(AccessHash(access_hash))
-    } else {
-        None
-    };
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let id = ChatId(id);
-                Ok(Chat::CommunityForbidden { flags, id, access_hash, title })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let access_hash = if flags & (1 << 13) != 0 {
+                    let access_hash = r.read_i64()?;
+                    Some(AccessHash(access_hash))
+                } else {
+                    None
+                };
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let id = ChatId(id);
+                Ok(Chat::CommunityForbidden {
+                    flags,
+                    id,
+                    access_hash,
+                    title,
+                })
             }
             CHANNEL_FORBIDDEN_ID => {
-    let flags = r.read_i32()?;
-    let broadcast = flags & (1 << 5) != 0;
-    let megagroup = flags & (1 << 8) != 0;
-    let monoforum = flags & (1 << 10) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let until_date = if flags & (1 << 16) != 0 {
-        let until_date = r.read_i32()?;
-        Some(until_date)
-    } else {
-        None
-    };
-    let id = ChatId(id);
-    let access_hash = AccessHash(access_hash);
-                Ok(Chat::ChannelForbidden { flags, broadcast, megagroup, monoforum, id, access_hash, title, until_date })
+                let flags = r.read_i32()?;
+                let broadcast = flags & (1 << 5) != 0;
+                let megagroup = flags & (1 << 8) != 0;
+                let monoforum = flags & (1 << 10) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let until_date = if flags & (1 << 16) != 0 {
+                    let until_date = r.read_i32()?;
+                    Some(until_date)
+                } else {
+                    None
+                };
+                let id = ChatId(id);
+                let access_hash = AccessHash(access_hash);
+                Ok(Chat::ChannelForbidden {
+                    flags,
+                    broadcast,
+                    megagroup,
+                    monoforum,
+                    id,
+                    access_hash,
+                    title,
+                    until_date,
+                })
             }
             0x1c32b11c | CHANNEL_ID => {
-    let flags = r.read_i32()?;
-    let flags2 = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let left = flags & (1 << 2) != 0;
-    let broadcast = flags & (1 << 5) != 0;
-    let verified = flags & (1 << 7) != 0;
-    let megagroup = flags & (1 << 8) != 0;
-    let restricted = flags & (1 << 9) != 0;
-    let signatures = flags & (1 << 11) != 0;
-    let min = flags & (1 << 12) != 0;
-    let scam = flags & (1 << 19) != 0;
-    let has_link = flags & (1 << 20) != 0;
-    let has_geo = flags & (1 << 21) != 0;
-    let slowmode_enabled = flags & (1 << 22) != 0;
-    let call_active = flags & (1 << 23) != 0;
-    let call_not_empty = flags & (1 << 24) != 0;
-    let fake = flags & (1 << 25) != 0;
-    let gigagroup = flags & (1 << 26) != 0;
-    let noforwards = flags & (1 << 27) != 0;
-    let join_to_send = flags & (1 << 28) != 0;
-    let join_request = flags & (1 << 29) != 0;
-    let forum = flags & (1 << 30) != 0;
-    let stories_hidden = flags2 & (1 << 1) != 0;
-    let stories_hidden_min = flags2 & (1 << 2) != 0;
-    let stories_unavailable = flags2 & (1 << 3) != 0;
-    let signature_profiles = flags2 & (1 << 12) != 0;
-    let autotranslation = flags2 & (1 << 15) != 0;
-    let broadcast_messages_allowed = flags2 & (1 << 16) != 0;
-    let monoforum = flags2 & (1 << 17) != 0;
-    let forum_tabs = flags2 & (1 << 19) != 0;
-    let id = r.read_i64()?;
-    let access_hash = if flags & (1 << 13) != 0 {
-        let access_hash = r.read_i64()?;
-        Some(AccessHash(access_hash))
-    } else {
-        None
-    };
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let username = if flags & (1 << 6) != 0 {
-        let username = String::from_utf8(r.read_bytes()?)?;
-        Some(username)
-    } else {
-        None
-    };
-    let photo = ChatPhoto::read_from(r)?;
-    let date = r.read_i32()?;
-    let restriction_reason = if flags & (1 << 9) != 0 {
-        let n = r.read_vector_header()?;
-        let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            restriction_reason.push(RestrictionReason::read_from(r)?);
-        }
-        Some(restriction_reason)
-    } else {
-        None
-    };
-    let admin_rights = if flags & (1 << 14) != 0 {
-        let admin_rights = ChatAdminRights::read_from(r)?;
-        Some(admin_rights)
-    } else {
-        None
-    };
-    let banned_rights = if flags & (1 << 15) != 0 {
-        let banned_rights = ChatBannedRights::read_from(r)?;
-        Some(banned_rights)
-    } else {
-        None
-    };
-    let default_banned_rights = if flags & (1 << 18) != 0 {
-        let default_banned_rights = ChatBannedRights::read_from(r)?;
-        Some(default_banned_rights)
-    } else {
-        None
-    };
-    let participants_count = if flags & (1 << 17) != 0 {
-        let participants_count = r.read_i32()?;
-        Some(participants_count)
-    } else {
-        None
-    };
-    let usernames = if flags2 & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut usernames = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            usernames.push(Username::read_from(r)?);
-        }
-        Some(usernames)
-    } else {
-        None
-    };
-    let stories_max_id = if flags2 & (1 << 4) != 0 {
-        let stories_max_id = RecentStory::read_from(r)?;
-        Some(stories_max_id)
-    } else {
-        None
-    };
-    let color = if flags2 & (1 << 7) != 0 {
-        let color = PeerColor::read_from(r)?;
-        Some(color)
-    } else {
-        None
-    };
-    let profile_color = if flags2 & (1 << 8) != 0 {
-        let profile_color = PeerColor::read_from(r)?;
-        Some(profile_color)
-    } else {
-        None
-    };
-    let emoji_status = if flags2 & (1 << 9) != 0 {
-        let emoji_status = EmojiStatus::read_from(r)?;
-        Some(emoji_status)
-    } else {
-        None
-    };
-    let level = if flags2 & (1 << 10) != 0 {
-        let level = r.read_i32()?;
-        Some(level)
-    } else {
-        None
-    };
-    let subscription_until_date = if flags2 & (1 << 11) != 0 {
-        let subscription_until_date = r.read_i32()?;
-        Some(subscription_until_date)
-    } else {
-        None
-    };
-    let bot_verification_icon = if flags2 & (1 << 13) != 0 {
-        let bot_verification_icon = r.read_i64()?;
-        Some(bot_verification_icon)
-    } else {
-        None
-    };
-    let send_paid_messages_stars = if flags2 & (1 << 14) != 0 {
-        let send_paid_messages_stars = r.read_i64()?;
-        Some(send_paid_messages_stars)
-    } else {
-        None
-    };
-    let linked_monoforum_id = if flags2 & (1 << 18) != 0 {
-        let linked_monoforum_id = r.read_i64()?;
-        Some(linked_monoforum_id)
-    } else {
-        None
-    };
-    let linked_community_id = if flags2 & (1 << 20) != 0 {
-        let linked_community_id = r.read_i64()?;
-        Some(linked_community_id)
-    } else {
-        None
-    };
-    let id = ChatId(id);
-                Ok(Chat::Channel { flags, creator, left, broadcast, verified, megagroup, restricted, signatures, min, scam, has_link, has_geo, slowmode_enabled, call_active, call_not_empty, fake, gigagroup, noforwards, join_to_send, join_request, forum, flags2, stories_hidden, stories_hidden_min, stories_unavailable, signature_profiles, autotranslation, broadcast_messages_allowed, monoforum, forum_tabs, id, access_hash, title, username, photo, date, restriction_reason, admin_rights, banned_rights, default_banned_rights, participants_count, usernames, stories_max_id, color, profile_color, emoji_status, level, subscription_until_date, bot_verification_icon, send_paid_messages_stars, linked_monoforum_id, linked_community_id })
+                let flags = r.read_i32()?;
+                let flags2 = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let left = flags & (1 << 2) != 0;
+                let broadcast = flags & (1 << 5) != 0;
+                let verified = flags & (1 << 7) != 0;
+                let megagroup = flags & (1 << 8) != 0;
+                let restricted = flags & (1 << 9) != 0;
+                let signatures = flags & (1 << 11) != 0;
+                let min = flags & (1 << 12) != 0;
+                let scam = flags & (1 << 19) != 0;
+                let has_link = flags & (1 << 20) != 0;
+                let has_geo = flags & (1 << 21) != 0;
+                let slowmode_enabled = flags & (1 << 22) != 0;
+                let call_active = flags & (1 << 23) != 0;
+                let call_not_empty = flags & (1 << 24) != 0;
+                let fake = flags & (1 << 25) != 0;
+                let gigagroup = flags & (1 << 26) != 0;
+                let noforwards = flags & (1 << 27) != 0;
+                let join_to_send = flags & (1 << 28) != 0;
+                let join_request = flags & (1 << 29) != 0;
+                let forum = flags & (1 << 30) != 0;
+                let stories_hidden = flags2 & (1 << 1) != 0;
+                let stories_hidden_min = flags2 & (1 << 2) != 0;
+                let stories_unavailable = flags2 & (1 << 3) != 0;
+                let signature_profiles = flags2 & (1 << 12) != 0;
+                let autotranslation = flags2 & (1 << 15) != 0;
+                let broadcast_messages_allowed = flags2 & (1 << 16) != 0;
+                let monoforum = flags2 & (1 << 17) != 0;
+                let forum_tabs = flags2 & (1 << 19) != 0;
+                let id = r.read_i64()?;
+                let access_hash = if flags & (1 << 13) != 0 {
+                    let access_hash = r.read_i64()?;
+                    Some(AccessHash(access_hash))
+                } else {
+                    None
+                };
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let username = if flags & (1 << 6) != 0 {
+                    let username = String::from_utf8(r.read_bytes()?)?;
+                    Some(username)
+                } else {
+                    None
+                };
+                let photo = ChatPhoto::read_from(r)?;
+                let date = r.read_i32()?;
+                let restriction_reason = if flags & (1 << 9) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        restriction_reason.push(RestrictionReason::read_from(r)?);
+                    }
+                    Some(restriction_reason)
+                } else {
+                    None
+                };
+                let admin_rights = if flags & (1 << 14) != 0 {
+                    let admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(admin_rights)
+                } else {
+                    None
+                };
+                let banned_rights = if flags & (1 << 15) != 0 {
+                    let banned_rights = ChatBannedRights::read_from(r)?;
+                    Some(banned_rights)
+                } else {
+                    None
+                };
+                let default_banned_rights = if flags & (1 << 18) != 0 {
+                    let default_banned_rights = ChatBannedRights::read_from(r)?;
+                    Some(default_banned_rights)
+                } else {
+                    None
+                };
+                let participants_count = if flags & (1 << 17) != 0 {
+                    let participants_count = r.read_i32()?;
+                    Some(participants_count)
+                } else {
+                    None
+                };
+                let usernames = if flags2 & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut usernames = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        usernames.push(Username::read_from(r)?);
+                    }
+                    Some(usernames)
+                } else {
+                    None
+                };
+                let stories_max_id = if flags2 & (1 << 4) != 0 {
+                    let stories_max_id = RecentStory::read_from(r)?;
+                    Some(stories_max_id)
+                } else {
+                    None
+                };
+                let color = if flags2 & (1 << 7) != 0 {
+                    let color = PeerColor::read_from(r)?;
+                    Some(color)
+                } else {
+                    None
+                };
+                let profile_color = if flags2 & (1 << 8) != 0 {
+                    let profile_color = PeerColor::read_from(r)?;
+                    Some(profile_color)
+                } else {
+                    None
+                };
+                let emoji_status = if flags2 & (1 << 9) != 0 {
+                    let emoji_status = EmojiStatus::read_from(r)?;
+                    Some(emoji_status)
+                } else {
+                    None
+                };
+                let level = if flags2 & (1 << 10) != 0 {
+                    let level = r.read_i32()?;
+                    Some(level)
+                } else {
+                    None
+                };
+                let subscription_until_date = if flags2 & (1 << 11) != 0 {
+                    let subscription_until_date = r.read_i32()?;
+                    Some(subscription_until_date)
+                } else {
+                    None
+                };
+                let bot_verification_icon = if flags2 & (1 << 13) != 0 {
+                    let bot_verification_icon = r.read_i64()?;
+                    Some(bot_verification_icon)
+                } else {
+                    None
+                };
+                let send_paid_messages_stars = if flags2 & (1 << 14) != 0 {
+                    let send_paid_messages_stars = r.read_i64()?;
+                    Some(send_paid_messages_stars)
+                } else {
+                    None
+                };
+                let linked_monoforum_id = if flags2 & (1 << 18) != 0 {
+                    let linked_monoforum_id = r.read_i64()?;
+                    Some(linked_monoforum_id)
+                } else {
+                    None
+                };
+                let linked_community_id = if flags2 & (1 << 20) != 0 {
+                    let linked_community_id = r.read_i64()?;
+                    Some(linked_community_id)
+                } else {
+                    None
+                };
+                let id = ChatId(id);
+                Ok(Chat::Channel {
+                    flags,
+                    creator,
+                    left,
+                    broadcast,
+                    verified,
+                    megagroup,
+                    restricted,
+                    signatures,
+                    min,
+                    scam,
+                    has_link,
+                    has_geo,
+                    slowmode_enabled,
+                    call_active,
+                    call_not_empty,
+                    fake,
+                    gigagroup,
+                    noforwards,
+                    join_to_send,
+                    join_request,
+                    forum,
+                    flags2,
+                    stories_hidden,
+                    stories_hidden_min,
+                    stories_unavailable,
+                    signature_profiles,
+                    autotranslation,
+                    broadcast_messages_allowed,
+                    monoforum,
+                    forum_tabs,
+                    id,
+                    access_hash,
+                    title,
+                    username,
+                    photo,
+                    date,
+                    restriction_reason,
+                    admin_rights,
+                    banned_rights,
+                    default_banned_rights,
+                    participants_count,
+                    usernames,
+                    stories_max_id,
+                    color,
+                    profile_color,
+                    emoji_status,
+                    level,
+                    subscription_until_date,
+                    bot_verification_icon,
+                    send_paid_messages_stars,
+                    linked_monoforum_id,
+                    linked_community_id,
+                })
             }
             CHAT_FORBIDDEN_ID => {
-    let id = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let id = ChatId(id);
+                let id = r.read_i64()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let id = ChatId(id);
                 Ok(Chat::Forbidden { id, title })
             }
             CHAT_ID => {
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let left = flags & (1 << 2) != 0;
-    let deactivated = flags & (1 << 5) != 0;
-    let call_active = flags & (1 << 23) != 0;
-    let call_not_empty = flags & (1 << 24) != 0;
-    let noforwards = flags & (1 << 25) != 0;
-    let id = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let photo = ChatPhoto::read_from(r)?;
-    let participants_count = r.read_i32()?;
-    let date = r.read_i32()?;
-    let version = r.read_i32()?;
-    let migrated_to = if flags & (1 << 6) != 0 {
-        let migrated_to = InputChannel::read_from(r)?;
-        Some(migrated_to)
-    } else {
-        None
-    };
-    let admin_rights = if flags & (1 << 14) != 0 {
-        let admin_rights = ChatAdminRights::read_from(r)?;
-        Some(admin_rights)
-    } else {
-        None
-    };
-    let default_banned_rights = if flags & (1 << 18) != 0 {
-        let default_banned_rights = ChatBannedRights::read_from(r)?;
-        Some(default_banned_rights)
-    } else {
-        None
-    };
-    let id = ChatId(id);
-                Ok(Chat::Chat { flags, creator, left, deactivated, call_active, call_not_empty, noforwards, id, title, photo, participants_count, date, version, migrated_to, admin_rights, default_banned_rights })
+                let flags = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let left = flags & (1 << 2) != 0;
+                let deactivated = flags & (1 << 5) != 0;
+                let call_active = flags & (1 << 23) != 0;
+                let call_not_empty = flags & (1 << 24) != 0;
+                let noforwards = flags & (1 << 25) != 0;
+                let id = r.read_i64()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let photo = ChatPhoto::read_from(r)?;
+                let participants_count = r.read_i32()?;
+                let date = r.read_i32()?;
+                let version = r.read_i32()?;
+                let migrated_to = if flags & (1 << 6) != 0 {
+                    let migrated_to = InputChannel::read_from(r)?;
+                    Some(migrated_to)
+                } else {
+                    None
+                };
+                let admin_rights = if flags & (1 << 14) != 0 {
+                    let admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(admin_rights)
+                } else {
+                    None
+                };
+                let default_banned_rights = if flags & (1 << 18) != 0 {
+                    let default_banned_rights = ChatBannedRights::read_from(r)?;
+                    Some(default_banned_rights)
+                } else {
+                    None
+                };
+                let id = ChatId(id);
+                Ok(Chat::Chat {
+                    flags,
+                    creator,
+                    left,
+                    deactivated,
+                    call_active,
+                    call_not_empty,
+                    noforwards,
+                    id,
+                    title,
+                    photo,
+                    participants_count,
+                    date,
+                    version,
+                    migrated_to,
+                    admin_rights,
+                    default_banned_rights,
+                })
             }
             CHAT_EMPTY_ID => {
-    let id = r.read_i64()?;
-    let id = ChatId(id);
+                let id = r.read_i64()?;
+                let id = ChatId(id);
                 Ok(Chat::Empty { id })
             }
             other => Err(Error::Serialization(format!(
@@ -6500,7 +8086,13 @@ impl Chat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatPhoto {
     /// `chatPhoto#1c6e1c11`
-    ChatPhoto { flags: i32, has_video: bool, photo_id: i64, stripped_thumb: Option<Vec<u8>>, dc_id: i32 },
+    ChatPhoto {
+        flags: i32,
+        has_video: bool,
+        photo_id: i64,
+        stripped_thumb: Option<Vec<u8>>,
+        dc_id: i32,
+    },
     /// `chatPhotoEmpty#37c1011c`
     ChatPhotoEmpty,
 }
@@ -6510,21 +8102,25 @@ impl ChatPhoto {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let has_video = flags & (1 << 0) != 0;
-    let photo_id = r.read_i64()?;
-    let stripped_thumb = if flags & (1 << 1) != 0 {
-        let stripped_thumb = r.read_bytes()?;
-        Some(stripped_thumb)
-    } else {
-        None
-    };
-    let dc_id = r.read_i32()?;
-                Ok(ChatPhoto::ChatPhoto { flags, has_video, photo_id, stripped_thumb, dc_id })
+                let flags = r.read_i32()?;
+                let has_video = flags & (1 << 0) != 0;
+                let photo_id = r.read_i64()?;
+                let stripped_thumb = if flags & (1 << 1) != 0 {
+                    let stripped_thumb = r.read_bytes()?;
+                    Some(stripped_thumb)
+                } else {
+                    None
+                };
+                let dc_id = r.read_i32()?;
+                Ok(ChatPhoto::ChatPhoto {
+                    flags,
+                    has_video,
+                    photo_id,
+                    stripped_thumb,
+                    dc_id,
+                })
             }
-            CHAT_PHOTO_EMPTY_ID => {
-                Ok(ChatPhoto::ChatPhotoEmpty {  })
-            }
+            CHAT_PHOTO_EMPTY_ID => Ok(ChatPhoto::ChatPhotoEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown ChatPhoto constructor {other:#x}"
             ))),

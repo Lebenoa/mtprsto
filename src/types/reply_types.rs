@@ -1,10 +1,25 @@
 //! Reply-surface types (SPEC §7): message entities, reply markups,
-//! document attributes, photo sizes, ChatFull/ChannelFull, DialogFolder,
-//! and named chat admin/banned rights.
+//! document attributes, photo sizes, `ChatFull`/`ChannelFull`,
+//! `DialogFolder`, and named chat admin/banned rights.
 //!
 //! All constructor IDs verified against the Layer 223 schema (2026-08).
 
-use super::*;
+use super::Peer;
+use super::constructors::{
+    CHANNEL_FULL, CHAT_BANNED_RIGHTS, CHAT_FULL, DIALOG_FOLDER, DOCUMENT_ATTRIBUTE_ANIMATED,
+    DOCUMENT_ATTRIBUTE_AUDIO, DOCUMENT_ATTRIBUTE_CUSTOM_EMOJI, DOCUMENT_ATTRIBUTE_FILENAME,
+    DOCUMENT_ATTRIBUTE_HAS_STICKERS, DOCUMENT_ATTRIBUTE_IMAGE_SIZE, DOCUMENT_ATTRIBUTE_STICKER,
+    DOCUMENT_ATTRIBUTE_VIDEO, FOLDER, KEYBOARD_BUTTON, KEYBOARD_BUTTON_CALLBACK,
+    KEYBOARD_BUTTON_ROW, KEYBOARD_BUTTON_STYLE, KEYBOARD_BUTTON_URL, MESSAGE_ENTITY_BANK_CARD,
+    MESSAGE_ENTITY_BLOCKQUOTE, MESSAGE_ENTITY_BOLD, MESSAGE_ENTITY_BOT_COMMAND,
+    MESSAGE_ENTITY_CASHTAG, MESSAGE_ENTITY_CODE, MESSAGE_ENTITY_CUSTOM_EMOJI, MESSAGE_ENTITY_EMAIL,
+    MESSAGE_ENTITY_HASHTAG, MESSAGE_ENTITY_ITALIC, MESSAGE_ENTITY_MENTION,
+    MESSAGE_ENTITY_MENTION_NAME, MESSAGE_ENTITY_PHONE, MESSAGE_ENTITY_PRE, MESSAGE_ENTITY_SPOILER,
+    MESSAGE_ENTITY_STRIKE, MESSAGE_ENTITY_TEXT_URL, MESSAGE_ENTITY_UNDERLINE, MESSAGE_ENTITY_URL,
+    PHOTO_PATH_SIZE, PHOTO_SIZE, PHOTO_SIZE_EMPTY, PHOTO_SIZE_PROGRESSIVE, PHOTO_STRIPPED_SIZE,
+    REPLY_INLINE_MARKUP, REPLY_KEYBOARD_FORCE_REPLY, REPLY_KEYBOARD_HIDE,
+    REPLY_KEYBOARD_MARKUP_223, VECTOR, VIDEO_SIZE,
+};
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 
@@ -21,7 +36,7 @@ pub struct MessageEntityFull {
 }
 
 /// Named message entity kinds (previously only `Unknown(u32)` existed).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageEntityKind {
     Mention,
     Hashtag,
@@ -34,14 +49,22 @@ pub enum MessageEntityKind {
     Strike,
     Code,
     /// `messageEntityPre` — code block with a language tag.
-    Pre { language: String },
-    TextUrl { url: String },
+    Pre {
+        language: String,
+    },
+    TextUrl {
+        url: String,
+    },
     /// `messageEntityMentionName` — inline mention of a user by id.
-    MentionName { user_id: i64 },
+    MentionName {
+        user_id: i64,
+    },
     Phone,
     Cashtag,
     Spoiler,
-    CustomEmoji { document_id: i64 },
+    CustomEmoji {
+        document_id: i64,
+    },
     Blockquote,
     BankCard,
     Unknown(u32),
@@ -67,11 +90,15 @@ impl MessageEntityKind {
             MESSAGE_ENTITY_TEXT_URL => Self::TextUrl {
                 url: String::from_utf8(r.read_bytes()?)?,
             },
-            MESSAGE_ENTITY_MENTION_NAME => Self::MentionName { user_id: r.read_i64()? },
+            MESSAGE_ENTITY_MENTION_NAME => Self::MentionName {
+                user_id: r.read_i64()?,
+            },
             MESSAGE_ENTITY_PHONE => Self::Phone,
             MESSAGE_ENTITY_CASHTAG => Self::Cashtag,
             MESSAGE_ENTITY_SPOILER => Self::Spoiler,
-            MESSAGE_ENTITY_CUSTOM_EMOJI => Self::CustomEmoji { document_id: r.read_i64()? },
+            MESSAGE_ENTITY_CUSTOM_EMOJI => Self::CustomEmoji {
+                document_id: r.read_i64()?,
+            },
             MESSAGE_ENTITY_BLOCKQUOTE => Self::Blockquote, // flags already consumed by caller
             MESSAGE_ENTITY_BANK_CARD => Self::BankCard,
             other => Self::Unknown(other),
@@ -80,6 +107,12 @@ impl MessageEntityKind {
 }
 
 /// Read a `Vector<MessageEntity>`.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the payload is not a `Vector`
+/// constructor or an entity fails to decode.
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)] // `count.max(0)` is non-negative by construction
 pub fn read_message_entities(r: &mut TLReader) -> Result<Vec<MessageEntityFull>> {
     let vec_ctor = r.read_u32()?;
     if vec_ctor != VECTOR {
@@ -98,7 +131,11 @@ pub fn read_message_entities(r: &mut TLReader) -> Result<Vec<MessageEntityFull>>
         let offset = r.read_i32()?;
         let length = r.read_i32()?;
         let kind = MessageEntityKind::read_tail(ctor, r)?;
-        out.push(MessageEntityFull { offset, length, kind });
+        out.push(MessageEntityFull {
+            offset,
+            length,
+            kind,
+        });
     }
     Ok(out)
 }
@@ -109,7 +146,7 @@ pub fn read_message_entities(r: &mut TLReader) -> Result<Vec<MessageEntityFull>>
 // ===========================================================================
 
 /// A keyboard button (subset: text, url, callback).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyboardButtonKind {
     /// `keyboardButton` — plain text button.
     Text { text: String },
@@ -122,7 +159,7 @@ pub enum KeyboardButtonKind {
 }
 
 /// One row of buttons.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardButtonRow {
     pub buttons: Vec<KeyboardButtonKind>,
 }
@@ -134,7 +171,11 @@ pub enum IncomingReplyMarkup {
     HideKeyboard { selective: bool },
     /// `replyKeyboardForceReply#86b40b08 flags:# single_use:flags.1?true
     ///  selective:flags.2?true placeholder:flags.3?string`
-    ForceReply { single_use: bool, selective: bool, placeholder: Option<String> },
+    ForceReply {
+        single_use: bool,
+        selective: bool,
+        placeholder: Option<String>,
+    },
     /// `replyKeyboardMarkup#85dd99d1 flags:# resize:flags.0?true
     ///  single_use:flags.1?true selective:flags.2?true persistent:flags.4?true
     ///  rows:Vector<KeyboardButtonRow> placeholder:flags.3?string`
@@ -192,6 +233,12 @@ fn read_keyboard_button(ctor: u32, r: &mut TLReader) -> Result<KeyboardButtonKin
 }
 
 /// Read a `Vector<KeyboardButtonRow>`.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when a row/button constructor or a
+/// vector header does not match the expected shape.
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)] // `*.max(0)` counts are non-negative by construction
 fn read_button_rows(r: &mut TLReader) -> Result<Vec<KeyboardButtonRow>> {
     let vec_ctor = r.read_u32()?;
     if vec_ctor != VECTOR {
@@ -228,12 +275,19 @@ fn read_button_rows(r: &mut TLReader) -> Result<Vec<KeyboardButtonRow>> {
 
 /// Read any `ReplyMarkup` payload (ctor already consumed by the caller is
 /// NOT supported — pass the full remaining buffer with ctor first).
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the constructor is not a
+/// recognized `ReplyMarkup` or a nested payload fails to decode.
 pub fn read_reply_markup(r: &mut TLReader) -> Result<IncomingReplyMarkup> {
     let ctor = r.read_u32()?;
     Ok(match ctor {
         REPLY_KEYBOARD_HIDE => {
             let flags = r.read_i32()?;
-            IncomingReplyMarkup::HideKeyboard { selective: flags & (1 << 2) != 0 }
+            IncomingReplyMarkup::HideKeyboard {
+                selective: flags & (1 << 2) != 0,
+            }
         }
         REPLY_KEYBOARD_FORCE_REPLY => {
             let flags = r.read_i32()?;
@@ -272,7 +326,7 @@ pub fn read_reply_markup(r: &mut TLReader) -> Result<IncomingReplyMarkup> {
         other => {
             return Err(Error::Serialization(format!(
                 "unknown ReplyMarkup constructor {other:#x}"
-            )))
+            )));
         }
     })
 }
@@ -282,6 +336,8 @@ pub fn read_reply_markup(r: &mut TLReader) -> Result<IncomingReplyMarkup> {
 // ===========================================================================
 
 /// `DocumentAttribute` variants relevant to file metadata.
+// Video carries an f64 duration — Eq (and hashing) are impossible for it.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentAttribute {
     /// `documentAttributeImageSize#6c37c15c w:int h:int`
@@ -319,6 +375,14 @@ pub enum DocumentAttribute {
 }
 
 /// Read one `DocumentAttribute` (ctor included).
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] for unknown constructors and for
+/// nested payloads this parser does not support (e.g. a non-empty
+/// `InputStickerSet`).
+#[allow(clippy::too_many_lines)] // one arm per schema ctor keeps the wire layout auditable
+#[allow(clippy::unreadable_literal)] // schema-verbatim constructor hex
 pub fn read_document_attribute(r: &mut TLReader) -> Result<DocumentAttribute> {
     let ctor = r.read_u32()?;
     Ok(match ctor {
@@ -339,7 +403,10 @@ pub fn read_document_attribute(r: &mut TLReader) -> Result<DocumentAttribute> {
                     "non-empty InputStickerSet ({set_ctor:#x}) not supported yet"
                 )));
             }
-            DocumentAttribute::Sticker { alt, mask: flags & (1 << 1) != 0 }
+            DocumentAttribute::Sticker {
+                alt,
+                mask: flags & (1 << 1) != 0,
+            }
         }
         DOCUMENT_ATTRIBUTE_VIDEO => {
             let flags = r.read_i32()?;
@@ -423,12 +490,18 @@ pub fn read_document_attribute(r: &mut TLReader) -> Result<DocumentAttribute> {
         other => {
             return Err(Error::Serialization(format!(
                 "unknown DocumentAttribute constructor {other:#x}"
-            )))
+            )));
         }
     })
 }
 
 /// Read a `Vector<DocumentAttribute>`.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the vector header is missing or
+/// an attribute fails to decode.
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)] // `count.max(0)` is non-negative by construction
 pub fn read_document_attributes(r: &mut TLReader) -> Result<Vec<DocumentAttribute>> {
     let vec_ctor = r.read_u32()?;
     if vec_ctor != VECTOR {
@@ -449,14 +522,24 @@ pub fn read_document_attributes(r: &mut TLReader) -> Result<Vec<DocumentAttribut
 // ===========================================================================
 
 /// Full `PhotoSize` union (previously stubbed).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PhotoSizeFull {
     /// `photoSize#75c78e60 type:string w:int h:int size:int`
-    Size { type_: String, w: i32, h: i32, size: i32 },
+    Size {
+        type_: String,
+        w: i32,
+        h: i32,
+        size: i32,
+    },
     /// `photoStrippedSize#e0b0bc2e type:string bytes:bytes`
     Stripped { type_: String, bytes: Vec<u8> },
     /// `photoSizeProgressive#fa3efb95 type:string w:int h:int sizes:Vector<int>`
-    Progressive { type_: String, w: i32, h: i32, sizes: Vec<i32> },
+    Progressive {
+        type_: String,
+        w: i32,
+        h: i32,
+        sizes: Vec<i32>,
+    },
     /// `photoPathSize#d8214d41 type:string bytes:bytes`
     Path { type_: String, bytes: Vec<u8> },
     /// `photoSizeEmpty#e17e23c type:string`
@@ -464,6 +547,12 @@ pub enum PhotoSizeFull {
 }
 
 /// Read one `PhotoSize` (ctor included).
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] for unknown `PhotoSize` constructors
+/// or a malformed progressive-size vector.
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)] // `count.max(0)` is non-negative by construction
 pub fn read_photo_size(r: &mut TLReader) -> Result<PhotoSizeFull> {
     let ctor = r.read_u32()?;
     Ok(match ctor {
@@ -504,15 +593,21 @@ pub fn read_photo_size(r: &mut TLReader) -> Result<PhotoSizeFull> {
         other => {
             return Err(Error::Serialization(format!(
                 "unknown PhotoSize constructor {other:#x}"
-            )))
+            )));
         }
     })
 }
 
 /// Skip one `VideoSize` element (ctor included) to stay stream-aligned.
-/// `videoSize#de33b094 flags:# type:string w:int h:int size:int
+///
+/// Schema: `videoSize#de33b094 flags:# type:string w:int h:int size:int
 /// video_start_ts:flags.0?double`; the markup variants are rare — fail
 /// loudly on those.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the constructor is not the plain
+/// `videoSize` shape.
 pub fn skip_video_size(r: &mut TLReader) -> Result<()> {
     let ctor = r.read_u32()?;
     match ctor {
@@ -533,7 +628,12 @@ pub fn skip_video_size(r: &mut TLReader) -> Result<()> {
     }
 }
 
-/// Skip `Vector<VideoSize>` (video_thumbs flags.1).
+/// Skip `Vector<VideoSize>` (`video_thumbs` `flags.1`).
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] if any element is not a plain
+/// `videoSize`.
 pub fn skip_video_sizes(r: &mut TLReader) -> Result<()> {
     let n = r.read_vector_header()?;
     for _ in 0..n {
@@ -543,6 +643,12 @@ pub fn skip_video_sizes(r: &mut TLReader) -> Result<()> {
 }
 
 /// Read a `Vector<PhotoSize>`.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the vector header is missing or
+/// a size fails to decode.
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)] // `count.max(0)` is non-negative by construction
 pub fn read_photo_sizes(r: &mut TLReader) -> Result<Vec<PhotoSizeFull>> {
     let vec_ctor = r.read_u32()?;
     if vec_ctor != VECTOR {
@@ -563,61 +669,158 @@ pub fn read_photo_sizes(r: &mut TLReader) -> Result<Vec<PhotoSizeFull>> {
 // ===========================================================================
 
 /// `chatAdminRights#5fb224d5` — named flag accessors.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChatAdminRightsFull {
     pub flags: i32,
 }
 
 impl ChatAdminRightsFull {
-    pub fn from_flags(flags: i32) -> Self {
+    #[must_use]
+    pub const fn from_flags(flags: i32) -> Self {
         Self { flags }
     }
-    pub fn change_info(&self) -> bool { self.flags & (1 << 0) != 0 }
-    pub fn post_messages(&self) -> bool { self.flags & (1 << 1) != 0 }
-    pub fn edit_messages(&self) -> bool { self.flags & (1 << 2) != 0 }
-    pub fn delete_messages(&self) -> bool { self.flags & (1 << 3) != 0 }
-    pub fn ban_users(&self) -> bool { self.flags & (1 << 4) != 0 }
-    pub fn invite_users(&self) -> bool { self.flags & (1 << 5) != 0 }
-    pub fn pin_messages(&self) -> bool { self.flags & (1 << 7) != 0 }
-    pub fn add_admins(&self) -> bool { self.flags & (1 << 9) != 0 }
-    pub fn anonymous(&self) -> bool { self.flags & (1 << 10) != 0 }
-    pub fn manage_call(&self) -> bool { self.flags & (1 << 11) != 0 }
-    pub fn other(&self) -> bool { self.flags & (1 << 12) != 0 }
-    pub fn manage_topics(&self) -> bool { self.flags & (1 << 13) != 0 }
-    pub fn post_stories(&self) -> bool { self.flags & (1 << 14) != 0 }
-    pub fn edit_stories(&self) -> bool { self.flags & (1 << 15) != 0 }
-    pub fn delete_stories(&self) -> bool { self.flags & (1 << 16) != 0 }
+    #[must_use]
+    pub const fn change_info(&self) -> bool {
+        self.flags & (1 << 0) != 0
+    }
+    #[must_use]
+    pub const fn post_messages(&self) -> bool {
+        self.flags & (1 << 1) != 0
+    }
+    #[must_use]
+    pub const fn edit_messages(&self) -> bool {
+        self.flags & (1 << 2) != 0
+    }
+    #[must_use]
+    pub const fn delete_messages(&self) -> bool {
+        self.flags & (1 << 3) != 0
+    }
+    #[must_use]
+    pub const fn ban_users(&self) -> bool {
+        self.flags & (1 << 4) != 0
+    }
+    #[must_use]
+    pub const fn invite_users(&self) -> bool {
+        self.flags & (1 << 5) != 0
+    }
+    #[must_use]
+    pub const fn pin_messages(&self) -> bool {
+        self.flags & (1 << 7) != 0
+    }
+    #[must_use]
+    pub const fn add_admins(&self) -> bool {
+        self.flags & (1 << 9) != 0
+    }
+    #[must_use]
+    pub const fn anonymous(&self) -> bool {
+        self.flags & (1 << 10) != 0
+    }
+    #[must_use]
+    pub const fn manage_call(&self) -> bool {
+        self.flags & (1 << 11) != 0
+    }
+    #[must_use]
+    pub const fn other(&self) -> bool {
+        self.flags & (1 << 12) != 0
+    }
+    #[must_use]
+    pub const fn manage_topics(&self) -> bool {
+        self.flags & (1 << 13) != 0
+    }
+    #[must_use]
+    pub const fn post_stories(&self) -> bool {
+        self.flags & (1 << 14) != 0
+    }
+    #[must_use]
+    pub const fn edit_stories(&self) -> bool {
+        self.flags & (1 << 15) != 0
+    }
+    #[must_use]
+    pub const fn delete_stories(&self) -> bool {
+        self.flags & (1 << 16) != 0
+    }
 }
 
 /// `chatBannedRights#9f120418` — named flag accessors.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChatBannedRightsFull {
     pub flags: i32,
     pub until_date: i32,
 }
 
 impl ChatBannedRightsFull {
-    pub fn from_flags(flags: i32, until_date: i32) -> Self {
+    #[must_use]
+    pub const fn from_flags(flags: i32, until_date: i32) -> Self {
         Self { flags, until_date }
     }
-    pub fn view_messages(&self) -> bool { self.flags & (1 << 0) != 0 }
-    pub fn send_messages(&self) -> bool { self.flags & (1 << 1) != 0 }
-    pub fn send_media(&self) -> bool { self.flags & (1 << 2) != 0 }
-    pub fn send_stickers(&self) -> bool { self.flags & (1 << 3) != 0 }
-    pub fn send_gifs(&self) -> bool { self.flags & (1 << 4) != 0 }
-    pub fn send_games(&self) -> bool { self.flags & (1 << 5) != 0 }
-    pub fn send_inline(&self) -> bool { self.flags & (1 << 6) != 0 }
-    pub fn embed_links(&self) -> bool { self.flags & (1 << 7) != 0 }
-    pub fn send_polls(&self) -> bool { self.flags & (1 << 8) != 0 }
-    pub fn change_info(&self) -> bool { self.flags & (1 << 10) != 0 }
-    pub fn invite_users(&self) -> bool { self.flags & (1 << 15) != 0 }
-    pub fn pin_messages(&self) -> bool { self.flags & (1 << 17) != 0 }
-    pub fn manage_topics(&self) -> bool { self.flags & (1 << 18) != 0 }
-    pub fn send_photos(&self) -> bool { self.flags & (1 << 19) != 0 }
-    pub fn send_videos(&self) -> bool { self.flags & (1 << 20) != 0 }
+    #[must_use]
+    pub const fn view_messages(&self) -> bool {
+        self.flags & (1 << 0) != 0
+    }
+    #[must_use]
+    pub const fn send_messages(&self) -> bool {
+        self.flags & (1 << 1) != 0
+    }
+    #[must_use]
+    pub const fn send_media(&self) -> bool {
+        self.flags & (1 << 2) != 0
+    }
+    #[must_use]
+    pub const fn send_stickers(&self) -> bool {
+        self.flags & (1 << 3) != 0
+    }
+    #[must_use]
+    pub const fn send_gifs(&self) -> bool {
+        self.flags & (1 << 4) != 0
+    }
+    #[must_use]
+    pub const fn send_games(&self) -> bool {
+        self.flags & (1 << 5) != 0
+    }
+    #[must_use]
+    pub const fn send_inline(&self) -> bool {
+        self.flags & (1 << 6) != 0
+    }
+    #[must_use]
+    pub const fn embed_links(&self) -> bool {
+        self.flags & (1 << 7) != 0
+    }
+    #[must_use]
+    pub const fn send_polls(&self) -> bool {
+        self.flags & (1 << 8) != 0
+    }
+    #[must_use]
+    pub const fn change_info(&self) -> bool {
+        self.flags & (1 << 10) != 0
+    }
+    #[must_use]
+    pub const fn invite_users(&self) -> bool {
+        self.flags & (1 << 15) != 0
+    }
+    #[must_use]
+    pub const fn pin_messages(&self) -> bool {
+        self.flags & (1 << 17) != 0
+    }
+    #[must_use]
+    pub const fn manage_topics(&self) -> bool {
+        self.flags & (1 << 18) != 0
+    }
+    #[must_use]
+    pub const fn send_photos(&self) -> bool {
+        self.flags & (1 << 19) != 0
+    }
+    #[must_use]
+    pub const fn send_videos(&self) -> bool {
+        self.flags & (1 << 20) != 0
+    }
 }
 
 /// Read `chatBannedRights#9f120418` (ctor included).
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the constructor is not
+/// `chatBannedRights`.
 pub fn read_chat_banned_rights(r: &mut TLReader) -> Result<ChatBannedRightsFull> {
     let ctor = r.read_u32()?;
     if ctor != CHAT_BANNED_RIGHTS {
@@ -637,9 +840,10 @@ pub fn read_chat_banned_rights(r: &mut TLReader) -> Result<ChatBannedRightsFull>
 
 /// Parsed `chatFull#2633421b` / `channelFull#e4e0b29d`.
 ///
-/// Vector-typed and deeply-nested members (participants, bot_info, call…)
-/// are captured as "not parsed yet" markers; scalars and strings that
-/// callers actually need are fully populated.
+/// Vector-typed and deeply-nested members (participants, `bot_info`,
+/// call…) are captured as "not parsed yet" markers; scalars and strings
+/// that callers actually need are fully populated.
+#[allow(clippy::struct_excessive_bools)] // bools mirror the schema's verbatim flag fields
 #[derive(Debug, Clone)]
 pub struct ChatFullInfo {
     pub is_channel: bool,
@@ -661,7 +865,7 @@ pub struct ChatFullInfo {
     pub linked_chat_id: Option<i64>,
     pub pts: Option<i32>,
     /// `true` when the raw TL tail contained members this parser does not
-    /// model (call/requests_pending/stories/...).
+    /// model (call/`requests_pending`/stories/...).
     pub has_unparsed_tail: bool,
 }
 
@@ -671,6 +875,11 @@ pub struct ChatFullInfo {
 /// Fields this parser does not consume are skipped in wire order using the
 /// schema's flag layout, and `has_unparsed_tail` reports whether any such
 /// tail existed.
+///
+/// # Errors
+///
+/// Returns [`Error::Serialization`] when the constructor is neither
+/// `chatFull` nor `channelFull`.
 pub fn read_chat_full(r: &mut TLReader) -> Result<ChatFullInfo> {
     let ctor = r.read_u32()?;
     match ctor {
@@ -682,7 +891,7 @@ pub fn read_chat_full(r: &mut TLReader) -> Result<ChatFullInfo> {
     }
 }
 
-/// Read `chatFull#2633421b` body. ChatParticipants (which immediately
+/// Read `chatFull#2633421b` body. `ChatParticipants` (which immediately
 /// follows `about`) has a variable layout, so parsing stops at `about`;
 /// everything after is reported via `has_unparsed_tail`.
 fn read_chat_full_plain(r: &mut TLReader) -> Result<ChatFullInfo> {
@@ -694,7 +903,6 @@ fn read_chat_full_plain(r: &mut TLReader) -> Result<ChatFullInfo> {
     // still locate the fields AFTER it, which is impossible positionally.
     // ChatParticipants has a variable layout, so chatFull is parsed only up
     // to `about`; everything after is reported as unparsed.
-    let _can_set_username = flags & (1 << 7) != 0;
     let pinned_msg_id = None;
 
     Ok(ChatFullInfo {
@@ -751,10 +959,26 @@ fn read_channel_full(r: &mut TLReader) -> Result<ChatFullInfo> {
     let _ = flags2;
     let id = r.read_i64()?;
     let about = String::from_utf8(r.read_bytes()?)?;
-    let participants_count = if flags & (1 << 0) != 0 { Some(r.read_i32()?) } else { None };
-    let admins_count = if flags & (1 << 1) != 0 { Some(r.read_i32()?) } else { None };
-    let banned_count = if flags & (1 << 2) != 0 { Some(r.read_i32()?) } else { None };
-    let online_count = if flags & (1 << 13) != 0 { Some(r.read_i32()?) } else { None };
+    let participants_count = if flags & (1 << 0) != 0 {
+        Some(r.read_i32()?)
+    } else {
+        None
+    };
+    let admins_count = if flags & (1 << 1) != 0 {
+        Some(r.read_i32()?)
+    } else {
+        None
+    };
+    let banned_count = if flags & (1 << 2) != 0 {
+        Some(r.read_i32()?)
+    } else {
+        None
+    };
+    let online_count = if flags & (1 << 13) != 0 {
+        Some(r.read_i32()?)
+    } else {
+        None
+    };
     let read_inbox_max_id = r.read_i32()?;
     let read_outbox_max_id = r.read_i32()?;
     let unread_count = r.read_i32()?;
@@ -801,6 +1025,11 @@ pub struct DialogFolderFull {
 
 impl DialogFolderFull {
     /// Read a `dialogFolder#71bd134c` payload (ctor included).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when the dialog or nested folder
+    /// constructor does not match.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         if ctor != DIALOG_FOLDER {
@@ -817,10 +1046,10 @@ impl DialogFolderFull {
                 "expected folder, got {folder_ctor:#x}"
             )));
         }
-        let folder_flags = r.read_i32()?;
+        // folder:Folder flags — bit 3 only marks an optional photo; nothing to skip.
+        let _folder_flags = r.read_i32()?;
         let folder_id = r.read_i32()?;
         let folder_title = String::from_utf8(r.read_bytes()?)?;
-        let _has_folder_photo = folder_flags & (1 << 3) != 0;
 
         Ok(Self {
             pinned: flags & (1 << 2) != 0,

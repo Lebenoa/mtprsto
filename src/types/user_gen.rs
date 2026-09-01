@@ -7,10 +7,17 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const USER_PROFILE_PHOTO_ID: u32 = 0x82d1f706;
 pub const USER_PROFILE_PHOTO_EMPTY_ID: u32 = 0x4f11bae1;
@@ -37,7 +44,14 @@ pub const USER_EMPTY_ID: u32 = 0xd3bc4b7a;
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserProfilePhoto {
     /// `userProfilePhoto#82d1f706`
-    Photo { flags: i32, has_video: bool, personal: bool, photo_id: i64, stripped_thumb: Option<Vec<u8>>, dc_id: i32 },
+    Photo {
+        flags: i32,
+        has_video: bool,
+        personal: bool,
+        photo_id: i64,
+        stripped_thumb: Option<Vec<u8>>,
+        dc_id: i32,
+    },
     /// `userProfilePhotoEmpty#4f11bae1`
     Empty,
 }
@@ -47,22 +61,27 @@ impl UserProfilePhoto {
         let ctor = r.read_u32()?;
         match ctor {
             USER_PROFILE_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let has_video = flags & (1 << 0) != 0;
-    let personal = flags & (1 << 2) != 0;
-    let photo_id = r.read_i64()?;
-    let stripped_thumb = if flags & (1 << 1) != 0 {
-        let stripped_thumb = r.read_bytes()?;
-        Some(stripped_thumb)
-    } else {
-        None
-    };
-    let dc_id = r.read_i32()?;
-                Ok(UserProfilePhoto::Photo { flags, has_video, personal, photo_id, stripped_thumb, dc_id })
+                let flags = r.read_i32()?;
+                let has_video = flags & (1 << 0) != 0;
+                let personal = flags & (1 << 2) != 0;
+                let photo_id = r.read_i64()?;
+                let stripped_thumb = if flags & (1 << 1) != 0 {
+                    let stripped_thumb = r.read_bytes()?;
+                    Some(stripped_thumb)
+                } else {
+                    None
+                };
+                let dc_id = r.read_i32()?;
+                Ok(UserProfilePhoto::Photo {
+                    flags,
+                    has_video,
+                    personal,
+                    photo_id,
+                    stripped_thumb,
+                    dc_id,
+                })
             }
-            USER_PROFILE_PHOTO_EMPTY_ID => {
-                Ok(UserProfilePhoto::Empty {  })
-            }
+            USER_PROFILE_PHOTO_EMPTY_ID => Ok(UserProfilePhoto::Empty {}),
             other => Err(Error::Serialization(format!(
                 "unknown UserProfilePhoto constructor {other:#x}"
             ))),
@@ -92,31 +111,29 @@ impl UserStatus {
         let ctor = r.read_u32()?;
         match ctor {
             USER_STATUS_LAST_MONTH_ID => {
-    let flags = r.read_i32()?;
-    let by_me = flags & (1 << 0) != 0;
+                let flags = r.read_i32()?;
+                let by_me = flags & (1 << 0) != 0;
                 Ok(UserStatus::LastMonth { flags, by_me })
             }
             USER_STATUS_LAST_WEEK_ID => {
-    let flags = r.read_i32()?;
-    let by_me = flags & (1 << 0) != 0;
+                let flags = r.read_i32()?;
+                let by_me = flags & (1 << 0) != 0;
                 Ok(UserStatus::LastWeek { flags, by_me })
             }
             USER_STATUS_RECENTLY_ID => {
-    let flags = r.read_i32()?;
-    let by_me = flags & (1 << 0) != 0;
+                let flags = r.read_i32()?;
+                let by_me = flags & (1 << 0) != 0;
                 Ok(UserStatus::Recently { flags, by_me })
             }
             USER_STATUS_OFFLINE_ID => {
-    let was_online = r.read_i32()?;
+                let was_online = r.read_i32()?;
                 Ok(UserStatus::Offline { was_online })
             }
             USER_STATUS_ONLINE_ID => {
-    let expires = r.read_i32()?;
+                let expires = r.read_i32()?;
                 Ok(UserStatus::Online { expires })
             }
-            USER_STATUS_EMPTY_ID => {
-                Ok(UserStatus::Empty {  })
-            }
+            USER_STATUS_EMPTY_ID => Ok(UserStatus::Empty {}),
             other => Err(Error::Serialization(format!(
                 "unknown UserStatus constructor {other:#x}"
             ))),
@@ -128,7 +145,61 @@ impl UserStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub enum User {
     /// `user#b1b8cc83`
-    User { flags: i32, self_: bool, contact: bool, mutual_contact: bool, deleted: bool, bot: bool, bot_chat_history: bool, bot_nochats: bool, verified: bool, restricted: bool, min: bool, bot_inline_geo: bool, support: bool, scam: bool, apply_min_photo: bool, fake: bool, bot_attach_menu: bool, premium: bool, attach_menu_enabled: bool, flags2: i32, bot_can_edit: bool, close_friend: bool, stories_hidden: bool, stories_unavailable: bool, contact_require_premium: bool, bot_business: bool, bot_has_main_app: bool, bot_forum_view: bool, bot_forum_can_manage_topics: bool, bot_can_manage_bots: bool, bot_guestchat: bool, bot_guard: bool, id: UserId, access_hash: Option<AccessHash>, first_name: Option<String>, last_name: Option<String>, username: Option<String>, phone: Option<String>, photo: Option<UserProfilePhoto>, status: Option<UserStatus>, bot_info_version: Option<i32>, restriction_reason: Option<Vec<RestrictionReason>>, bot_inline_placeholder: Option<String>, lang_code: Option<String>, emoji_status: Option<EmojiStatus>, usernames: Option<Vec<Username>>, stories_max_id: Option<RecentStory>, color: Option<PeerColor>, profile_color: Option<PeerColor>, bot_active_users: Option<i32>, bot_verification_icon: Option<i64>, send_paid_messages_stars: Option<i64>, linked_community_id: Option<i64> },
+    User {
+        flags: i32,
+        self_: bool,
+        contact: bool,
+        mutual_contact: bool,
+        deleted: bool,
+        bot: bool,
+        bot_chat_history: bool,
+        bot_nochats: bool,
+        verified: bool,
+        restricted: bool,
+        min: bool,
+        bot_inline_geo: bool,
+        support: bool,
+        scam: bool,
+        apply_min_photo: bool,
+        fake: bool,
+        bot_attach_menu: bool,
+        premium: bool,
+        attach_menu_enabled: bool,
+        flags2: i32,
+        bot_can_edit: bool,
+        close_friend: bool,
+        stories_hidden: bool,
+        stories_unavailable: bool,
+        contact_require_premium: bool,
+        bot_business: bool,
+        bot_has_main_app: bool,
+        bot_forum_view: bool,
+        bot_forum_can_manage_topics: bool,
+        bot_can_manage_bots: bool,
+        bot_guestchat: bool,
+        bot_guard: bool,
+        id: UserId,
+        access_hash: Option<AccessHash>,
+        first_name: Option<String>,
+        last_name: Option<String>,
+        username: Option<String>,
+        phone: Option<String>,
+        photo: Option<UserProfilePhoto>,
+        status: Option<UserStatus>,
+        bot_info_version: Option<i32>,
+        restriction_reason: Option<Vec<RestrictionReason>>,
+        bot_inline_placeholder: Option<String>,
+        lang_code: Option<String>,
+        emoji_status: Option<EmojiStatus>,
+        usernames: Option<Vec<Username>>,
+        stories_max_id: Option<RecentStory>,
+        color: Option<PeerColor>,
+        profile_color: Option<PeerColor>,
+        bot_active_users: Option<i32>,
+        bot_verification_icon: Option<i64>,
+        send_paid_messages_stars: Option<i64>,
+        linked_community_id: Option<i64>,
+    },
     /// `userEmpty#d3bc4b7a`
     Empty { id: UserId },
 }
@@ -138,173 +209,227 @@ impl User {
         let ctor = r.read_u32()?;
         match ctor {
             0x31774388 | USER_ID => {
-    let flags = r.read_i32()?;
-    let flags2 = r.read_i32()?;
-    let self_ = flags & (1 << 10) != 0;
-    let contact = flags & (1 << 11) != 0;
-    let mutual_contact = flags & (1 << 12) != 0;
-    let deleted = flags & (1 << 13) != 0;
-    let bot = flags & (1 << 14) != 0;
-    let bot_chat_history = flags & (1 << 15) != 0;
-    let bot_nochats = flags & (1 << 16) != 0;
-    let verified = flags & (1 << 17) != 0;
-    let restricted = flags & (1 << 18) != 0;
-    let min = flags & (1 << 20) != 0;
-    let bot_inline_geo = flags & (1 << 21) != 0;
-    let support = flags & (1 << 23) != 0;
-    let scam = flags & (1 << 24) != 0;
-    let apply_min_photo = flags & (1 << 25) != 0;
-    let fake = flags & (1 << 26) != 0;
-    let bot_attach_menu = flags & (1 << 27) != 0;
-    let premium = flags & (1 << 28) != 0;
-    let attach_menu_enabled = flags & (1 << 29) != 0;
-    let bot_can_edit = flags2 & (1 << 1) != 0;
-    let close_friend = flags2 & (1 << 2) != 0;
-    let stories_hidden = flags2 & (1 << 3) != 0;
-    let stories_unavailable = flags2 & (1 << 4) != 0;
-    let contact_require_premium = flags2 & (1 << 10) != 0;
-    let bot_business = flags2 & (1 << 11) != 0;
-    let bot_has_main_app = flags2 & (1 << 13) != 0;
-    let bot_forum_view = flags2 & (1 << 16) != 0;
-    let bot_forum_can_manage_topics = flags2 & (1 << 17) != 0;
-    let bot_can_manage_bots = flags2 & (1 << 18) != 0;
-    let bot_guestchat = flags2 & (1 << 19) != 0;
-    let bot_guard = flags2 & (1 << 20) != 0;
-    let id = r.read_i64()?;
-    let access_hash = if flags & (1 << 0) != 0 {
-        let access_hash = r.read_i64()?;
-        Some(AccessHash(access_hash))
-    } else {
-        None
-    };
-    let first_name = if flags & (1 << 1) != 0 {
-        let first_name = String::from_utf8(r.read_bytes()?)?;
-        Some(first_name)
-    } else {
-        None
-    };
-    let last_name = if flags & (1 << 2) != 0 {
-        let last_name = String::from_utf8(r.read_bytes()?)?;
-        Some(last_name)
-    } else {
-        None
-    };
-    let username = if flags & (1 << 3) != 0 {
-        let username = String::from_utf8(r.read_bytes()?)?;
-        Some(username)
-    } else {
-        None
-    };
-    let phone = if flags & (1 << 4) != 0 {
-        let phone = String::from_utf8(r.read_bytes()?)?;
-        Some(phone)
-    } else {
-        None
-    };
-    let photo = if flags & (1 << 5) != 0 {
-        let photo = UserProfilePhoto::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let status = if flags & (1 << 6) != 0 {
-        let status = UserStatus::read_from(r)?;
-        Some(status)
-    } else {
-        None
-    };
-    let bot_info_version = if flags & (1 << 14) != 0 {
-        let bot_info_version = r.read_i32()?;
-        Some(bot_info_version)
-    } else {
-        None
-    };
-    let restriction_reason = if flags & (1 << 18) != 0 {
-        let n = r.read_vector_header()?;
-        let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            restriction_reason.push(RestrictionReason::read_from(r)?);
-        }
-        Some(restriction_reason)
-    } else {
-        None
-    };
-    let bot_inline_placeholder = if flags & (1 << 19) != 0 {
-        let bot_inline_placeholder = String::from_utf8(r.read_bytes()?)?;
-        Some(bot_inline_placeholder)
-    } else {
-        None
-    };
-    let lang_code = if flags & (1 << 22) != 0 {
-        let lang_code = String::from_utf8(r.read_bytes()?)?;
-        Some(lang_code)
-    } else {
-        None
-    };
-    let emoji_status = if flags & (1 << 30) != 0 {
-        let emoji_status = EmojiStatus::read_from(r)?;
-        Some(emoji_status)
-    } else {
-        None
-    };
-    let usernames = if flags2 & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut usernames = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            usernames.push(Username::read_from(r)?);
-        }
-        Some(usernames)
-    } else {
-        None
-    };
-    let stories_max_id = if flags2 & (1 << 5) != 0 {
-        let stories_max_id = RecentStory::read_from(r)?;
-        Some(stories_max_id)
-    } else {
-        None
-    };
-    let color = if flags2 & (1 << 8) != 0 {
-        let color = PeerColor::read_from(r)?;
-        Some(color)
-    } else {
-        None
-    };
-    let profile_color = if flags2 & (1 << 9) != 0 {
-        let profile_color = PeerColor::read_from(r)?;
-        Some(profile_color)
-    } else {
-        None
-    };
-    let bot_active_users = if flags2 & (1 << 12) != 0 {
-        let bot_active_users = r.read_i32()?;
-        Some(bot_active_users)
-    } else {
-        None
-    };
-    let bot_verification_icon = if flags2 & (1 << 14) != 0 {
-        let bot_verification_icon = r.read_i64()?;
-        Some(bot_verification_icon)
-    } else {
-        None
-    };
-    let send_paid_messages_stars = if flags2 & (1 << 15) != 0 {
-        let send_paid_messages_stars = r.read_i64()?;
-        Some(send_paid_messages_stars)
-    } else {
-        None
-    };
-    let linked_community_id = if flags2 & (1 << 21) != 0 {
-        let linked_community_id = r.read_i64()?;
-        Some(linked_community_id)
-    } else {
-        None
-    };
-    let id = UserId(id);
-                Ok(User::User { flags, self_, contact, mutual_contact, deleted, bot, bot_chat_history, bot_nochats, verified, restricted, min, bot_inline_geo, support, scam, apply_min_photo, fake, bot_attach_menu, premium, attach_menu_enabled, flags2, bot_can_edit, close_friend, stories_hidden, stories_unavailable, contact_require_premium, bot_business, bot_has_main_app, bot_forum_view, bot_forum_can_manage_topics, bot_can_manage_bots, bot_guestchat, bot_guard, id, access_hash, first_name, last_name, username, phone, photo, status, bot_info_version, restriction_reason, bot_inline_placeholder, lang_code, emoji_status, usernames, stories_max_id, color, profile_color, bot_active_users, bot_verification_icon, send_paid_messages_stars, linked_community_id })
+                let flags = r.read_i32()?;
+                let flags2 = r.read_i32()?;
+                let self_ = flags & (1 << 10) != 0;
+                let contact = flags & (1 << 11) != 0;
+                let mutual_contact = flags & (1 << 12) != 0;
+                let deleted = flags & (1 << 13) != 0;
+                let bot = flags & (1 << 14) != 0;
+                let bot_chat_history = flags & (1 << 15) != 0;
+                let bot_nochats = flags & (1 << 16) != 0;
+                let verified = flags & (1 << 17) != 0;
+                let restricted = flags & (1 << 18) != 0;
+                let min = flags & (1 << 20) != 0;
+                let bot_inline_geo = flags & (1 << 21) != 0;
+                let support = flags & (1 << 23) != 0;
+                let scam = flags & (1 << 24) != 0;
+                let apply_min_photo = flags & (1 << 25) != 0;
+                let fake = flags & (1 << 26) != 0;
+                let bot_attach_menu = flags & (1 << 27) != 0;
+                let premium = flags & (1 << 28) != 0;
+                let attach_menu_enabled = flags & (1 << 29) != 0;
+                let bot_can_edit = flags2 & (1 << 1) != 0;
+                let close_friend = flags2 & (1 << 2) != 0;
+                let stories_hidden = flags2 & (1 << 3) != 0;
+                let stories_unavailable = flags2 & (1 << 4) != 0;
+                let contact_require_premium = flags2 & (1 << 10) != 0;
+                let bot_business = flags2 & (1 << 11) != 0;
+                let bot_has_main_app = flags2 & (1 << 13) != 0;
+                let bot_forum_view = flags2 & (1 << 16) != 0;
+                let bot_forum_can_manage_topics = flags2 & (1 << 17) != 0;
+                let bot_can_manage_bots = flags2 & (1 << 18) != 0;
+                let bot_guestchat = flags2 & (1 << 19) != 0;
+                let bot_guard = flags2 & (1 << 20) != 0;
+                let id = r.read_i64()?;
+                let access_hash = if flags & (1 << 0) != 0 {
+                    let access_hash = r.read_i64()?;
+                    Some(AccessHash(access_hash))
+                } else {
+                    None
+                };
+                let first_name = if flags & (1 << 1) != 0 {
+                    let first_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(first_name)
+                } else {
+                    None
+                };
+                let last_name = if flags & (1 << 2) != 0 {
+                    let last_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(last_name)
+                } else {
+                    None
+                };
+                let username = if flags & (1 << 3) != 0 {
+                    let username = String::from_utf8(r.read_bytes()?)?;
+                    Some(username)
+                } else {
+                    None
+                };
+                let phone = if flags & (1 << 4) != 0 {
+                    let phone = String::from_utf8(r.read_bytes()?)?;
+                    Some(phone)
+                } else {
+                    None
+                };
+                let photo = if flags & (1 << 5) != 0 {
+                    let photo = UserProfilePhoto::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let status = if flags & (1 << 6) != 0 {
+                    let status = UserStatus::read_from(r)?;
+                    Some(status)
+                } else {
+                    None
+                };
+                let bot_info_version = if flags & (1 << 14) != 0 {
+                    let bot_info_version = r.read_i32()?;
+                    Some(bot_info_version)
+                } else {
+                    None
+                };
+                let restriction_reason = if flags & (1 << 18) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        restriction_reason.push(RestrictionReason::read_from(r)?);
+                    }
+                    Some(restriction_reason)
+                } else {
+                    None
+                };
+                let bot_inline_placeholder = if flags & (1 << 19) != 0 {
+                    let bot_inline_placeholder = String::from_utf8(r.read_bytes()?)?;
+                    Some(bot_inline_placeholder)
+                } else {
+                    None
+                };
+                let lang_code = if flags & (1 << 22) != 0 {
+                    let lang_code = String::from_utf8(r.read_bytes()?)?;
+                    Some(lang_code)
+                } else {
+                    None
+                };
+                let emoji_status = if flags & (1 << 30) != 0 {
+                    let emoji_status = EmojiStatus::read_from(r)?;
+                    Some(emoji_status)
+                } else {
+                    None
+                };
+                let usernames = if flags2 & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut usernames = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        usernames.push(Username::read_from(r)?);
+                    }
+                    Some(usernames)
+                } else {
+                    None
+                };
+                let stories_max_id = if flags2 & (1 << 5) != 0 {
+                    let stories_max_id = RecentStory::read_from(r)?;
+                    Some(stories_max_id)
+                } else {
+                    None
+                };
+                let color = if flags2 & (1 << 8) != 0 {
+                    let color = PeerColor::read_from(r)?;
+                    Some(color)
+                } else {
+                    None
+                };
+                let profile_color = if flags2 & (1 << 9) != 0 {
+                    let profile_color = PeerColor::read_from(r)?;
+                    Some(profile_color)
+                } else {
+                    None
+                };
+                let bot_active_users = if flags2 & (1 << 12) != 0 {
+                    let bot_active_users = r.read_i32()?;
+                    Some(bot_active_users)
+                } else {
+                    None
+                };
+                let bot_verification_icon = if flags2 & (1 << 14) != 0 {
+                    let bot_verification_icon = r.read_i64()?;
+                    Some(bot_verification_icon)
+                } else {
+                    None
+                };
+                let send_paid_messages_stars = if flags2 & (1 << 15) != 0 {
+                    let send_paid_messages_stars = r.read_i64()?;
+                    Some(send_paid_messages_stars)
+                } else {
+                    None
+                };
+                let linked_community_id = if flags2 & (1 << 21) != 0 {
+                    let linked_community_id = r.read_i64()?;
+                    Some(linked_community_id)
+                } else {
+                    None
+                };
+                let id = UserId(id);
+                Ok(User::User {
+                    flags,
+                    self_,
+                    contact,
+                    mutual_contact,
+                    deleted,
+                    bot,
+                    bot_chat_history,
+                    bot_nochats,
+                    verified,
+                    restricted,
+                    min,
+                    bot_inline_geo,
+                    support,
+                    scam,
+                    apply_min_photo,
+                    fake,
+                    bot_attach_menu,
+                    premium,
+                    attach_menu_enabled,
+                    flags2,
+                    bot_can_edit,
+                    close_friend,
+                    stories_hidden,
+                    stories_unavailable,
+                    contact_require_premium,
+                    bot_business,
+                    bot_has_main_app,
+                    bot_forum_view,
+                    bot_forum_can_manage_topics,
+                    bot_can_manage_bots,
+                    bot_guestchat,
+                    bot_guard,
+                    id,
+                    access_hash,
+                    first_name,
+                    last_name,
+                    username,
+                    phone,
+                    photo,
+                    status,
+                    bot_info_version,
+                    restriction_reason,
+                    bot_inline_placeholder,
+                    lang_code,
+                    emoji_status,
+                    usernames,
+                    stories_max_id,
+                    color,
+                    profile_color,
+                    bot_active_users,
+                    bot_verification_icon,
+                    send_paid_messages_stars,
+                    linked_community_id,
+                })
             }
             USER_EMPTY_ID => {
-    let id = r.read_i64()?;
-    let id = UserId(id);
+                let id = r.read_i64()?;
+                let id = UserId(id);
                 Ok(User::Empty { id })
             }
             other => Err(Error::Serialization(format!(
@@ -320,9 +445,22 @@ pub enum PeerColor {
     /// `inputPeerColorCollectible#b8ea86a9`
     InputPeerColorCollectible { collectible_id: i64 },
     /// `peerColorCollectible#b9c0639a`
-    PeerColorCollectible { flags: i32, collectible_id: i64, gift_emoji_id: i64, background_emoji_id: i64, accent_color: i32, colors: Vec<i32>, dark_accent_color: Option<i32>, dark_colors: Option<Vec<i32>> },
+    PeerColorCollectible {
+        flags: i32,
+        collectible_id: i64,
+        gift_emoji_id: i64,
+        background_emoji_id: i64,
+        accent_color: i32,
+        colors: Vec<i32>,
+        dark_accent_color: Option<i32>,
+        dark_colors: Option<Vec<i32>>,
+    },
     /// `peerColor#b54b5acf`
-    PeerColor { flags: i32, color: Option<i32>, background_emoji_id: Option<i64> },
+    PeerColor {
+        flags: i32,
+        color: Option<i32>,
+        background_emoji_id: Option<i64>,
+    },
 }
 
 impl PeerColor {
@@ -330,53 +468,66 @@ impl PeerColor {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PEER_COLOR_COLLECTIBLE_ID => {
-    let collectible_id = r.read_i64()?;
+                let collectible_id = r.read_i64()?;
                 Ok(PeerColor::InputPeerColorCollectible { collectible_id })
             }
             PEER_COLOR_COLLECTIBLE_ID => {
-    let flags = r.read_i32()?;
-    let collectible_id = r.read_i64()?;
-    let gift_emoji_id = r.read_i64()?;
-    let background_emoji_id = r.read_i64()?;
-    let accent_color = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut colors = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        colors.push(r.read_i32()?);
-    }
-    let dark_accent_color = if flags & (1 << 0) != 0 {
-        let dark_accent_color = r.read_i32()?;
-        Some(dark_accent_color)
-    } else {
-        None
-    };
-    let dark_colors = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut dark_colors = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            dark_colors.push(r.read_i32()?);
-        }
-        Some(dark_colors)
-    } else {
-        None
-    };
-                Ok(PeerColor::PeerColorCollectible { flags, collectible_id, gift_emoji_id, background_emoji_id, accent_color, colors, dark_accent_color, dark_colors })
+                let flags = r.read_i32()?;
+                let collectible_id = r.read_i64()?;
+                let gift_emoji_id = r.read_i64()?;
+                let background_emoji_id = r.read_i64()?;
+                let accent_color = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    colors.push(r.read_i32()?);
+                }
+                let dark_accent_color = if flags & (1 << 0) != 0 {
+                    let dark_accent_color = r.read_i32()?;
+                    Some(dark_accent_color)
+                } else {
+                    None
+                };
+                let dark_colors = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut dark_colors = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        dark_colors.push(r.read_i32()?);
+                    }
+                    Some(dark_colors)
+                } else {
+                    None
+                };
+                Ok(PeerColor::PeerColorCollectible {
+                    flags,
+                    collectible_id,
+                    gift_emoji_id,
+                    background_emoji_id,
+                    accent_color,
+                    colors,
+                    dark_accent_color,
+                    dark_colors,
+                })
             }
             PEER_COLOR_ID => {
-    let flags = r.read_i32()?;
-    let color = if flags & (1 << 0) != 0 {
-        let color = r.read_i32()?;
-        Some(color)
-    } else {
-        None
-    };
-    let background_emoji_id = if flags & (1 << 1) != 0 {
-        let background_emoji_id = r.read_i64()?;
-        Some(background_emoji_id)
-    } else {
-        None
-    };
-                Ok(PeerColor::PeerColor { flags, color, background_emoji_id })
+                let flags = r.read_i32()?;
+                let color = if flags & (1 << 0) != 0 {
+                    let color = r.read_i32()?;
+                    Some(color)
+                } else {
+                    None
+                };
+                let background_emoji_id = if flags & (1 << 1) != 0 {
+                    let background_emoji_id = r.read_i64()?;
+                    Some(background_emoji_id)
+                } else {
+                    None
+                };
+                Ok(PeerColor::PeerColor {
+                    flags,
+                    color,
+                    background_emoji_id,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PeerColor constructor {other:#x}"
@@ -401,14 +552,14 @@ impl RecentStory {
                 "expected recentStory, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let live = flags & (1 << 0) != 0;
-    let max_id = if flags & (1 << 1) != 0 {
-        let max_id = r.read_i32()?;
-        Some(max_id)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let live = flags & (1 << 0) != 0;
+        let max_id = if flags & (1 << 1) != 0 {
+            let max_id = r.read_i32()?;
+            Some(max_id)
+        } else {
+            None
+        };
         Ok(RecentStory {
             flags,
             live,
@@ -418,12 +569,13 @@ impl RecentStory {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(RECENT_STORY_ID);
-    let flags: i32 = if self.live { 1 << 0 } else { 0 } | if self.max_id.is_some() { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    if let Some(max_id) = self.max_id {
-        w.write_i32(max_id);
-    }
+        w.write_u32(RECENT_STORY_ID);
+        let flags: i32 =
+            if self.live { 1 << 0 } else { 0 } | if self.max_id.is_some() { 1 << 1 } else { 0 };
+        w.write_i32(flags);
+        if let Some(max_id) = self.max_id {
+            w.write_i32(max_id);
+        }
     }
 }
 
@@ -444,10 +596,10 @@ impl Username {
                 "expected username, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let editable = flags & (1 << 0) != 0;
-    let active = flags & (1 << 1) != 0;
-    let username = String::from_utf8(r.read_bytes()?)?;
+        let flags = r.read_i32()?;
+        let editable = flags & (1 << 0) != 0;
+        let active = flags & (1 << 1) != 0;
+        let username = String::from_utf8(r.read_bytes()?)?;
         Ok(Username {
             flags,
             editable,
@@ -458,10 +610,11 @@ impl Username {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(USERNAME_ID);
-    let flags: i32 = if self.editable { 1 << 0 } else { 0 } | if self.active { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.username.as_bytes());
+        w.write_u32(USERNAME_ID);
+        let flags: i32 =
+            if self.editable { 1 << 0 } else { 0 } | if self.active { 1 << 1 } else { 0 };
+        w.write_i32(flags);
+        w.write_bytes(self.username.as_bytes());
     }
 }
 
@@ -469,11 +622,31 @@ impl Username {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EmojiStatus {
     /// `inputEmojiStatusCollectible#07141dbf`
-    InputEmojiStatusCollectible { flags: i32, collectible_id: i64, until: Option<i32> },
+    InputEmojiStatusCollectible {
+        flags: i32,
+        collectible_id: i64,
+        until: Option<i32>,
+    },
     /// `emojiStatusCollectible#7184603b`
-    EmojiStatusCollectible { flags: i32, collectible_id: i64, document_id: i64, title: String, slug: String, pattern_document_id: i64, center_color: i32, edge_color: i32, pattern_color: i32, text_color: i32, until: Option<i32> },
+    EmojiStatusCollectible {
+        flags: i32,
+        collectible_id: i64,
+        document_id: i64,
+        title: String,
+        slug: String,
+        pattern_document_id: i64,
+        center_color: i32,
+        edge_color: i32,
+        pattern_color: i32,
+        text_color: i32,
+        until: Option<i32>,
+    },
     /// `emojiStatus#e7ff068a`
-    EmojiStatus { flags: i32, document_id: i64, until: Option<i32> },
+    EmojiStatus {
+        flags: i32,
+        document_id: i64,
+        until: Option<i32>,
+    },
     /// `emojiStatusEmpty#2de11aae`
     EmojiStatusEmpty,
 }
@@ -483,49 +656,67 @@ impl EmojiStatus {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_EMOJI_STATUS_COLLECTIBLE_ID => {
-    let flags = r.read_i32()?;
-    let collectible_id = r.read_i64()?;
-    let until = if flags & (1 << 0) != 0 {
-        let until = r.read_i32()?;
-        Some(until)
-    } else {
-        None
-    };
-                Ok(EmojiStatus::InputEmojiStatusCollectible { flags, collectible_id, until })
+                let flags = r.read_i32()?;
+                let collectible_id = r.read_i64()?;
+                let until = if flags & (1 << 0) != 0 {
+                    let until = r.read_i32()?;
+                    Some(until)
+                } else {
+                    None
+                };
+                Ok(EmojiStatus::InputEmojiStatusCollectible {
+                    flags,
+                    collectible_id,
+                    until,
+                })
             }
             EMOJI_STATUS_COLLECTIBLE_ID => {
-    let flags = r.read_i32()?;
-    let collectible_id = r.read_i64()?;
-    let document_id = r.read_i64()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
-    let pattern_document_id = r.read_i64()?;
-    let center_color = r.read_i32()?;
-    let edge_color = r.read_i32()?;
-    let pattern_color = r.read_i32()?;
-    let text_color = r.read_i32()?;
-    let until = if flags & (1 << 0) != 0 {
-        let until = r.read_i32()?;
-        Some(until)
-    } else {
-        None
-    };
-                Ok(EmojiStatus::EmojiStatusCollectible { flags, collectible_id, document_id, title, slug, pattern_document_id, center_color, edge_color, pattern_color, text_color, until })
+                let flags = r.read_i32()?;
+                let collectible_id = r.read_i64()?;
+                let document_id = r.read_i64()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                let pattern_document_id = r.read_i64()?;
+                let center_color = r.read_i32()?;
+                let edge_color = r.read_i32()?;
+                let pattern_color = r.read_i32()?;
+                let text_color = r.read_i32()?;
+                let until = if flags & (1 << 0) != 0 {
+                    let until = r.read_i32()?;
+                    Some(until)
+                } else {
+                    None
+                };
+                Ok(EmojiStatus::EmojiStatusCollectible {
+                    flags,
+                    collectible_id,
+                    document_id,
+                    title,
+                    slug,
+                    pattern_document_id,
+                    center_color,
+                    edge_color,
+                    pattern_color,
+                    text_color,
+                    until,
+                })
             }
             EMOJI_STATUS_ID => {
-    let flags = r.read_i32()?;
-    let document_id = r.read_i64()?;
-    let until = if flags & (1 << 0) != 0 {
-        let until = r.read_i32()?;
-        Some(until)
-    } else {
-        None
-    };
-                Ok(EmojiStatus::EmojiStatus { flags, document_id, until })
+                let flags = r.read_i32()?;
+                let document_id = r.read_i64()?;
+                let until = if flags & (1 << 0) != 0 {
+                    let until = r.read_i32()?;
+                    Some(until)
+                } else {
+                    None
+                };
+                Ok(EmojiStatus::EmojiStatus {
+                    flags,
+                    document_id,
+                    until,
+                })
             }
-            EMOJI_STATUS_EMPTY_ID => {
-                Ok(EmojiStatus::EmojiStatusEmpty {  })
-            }
+            EMOJI_STATUS_EMPTY_ID => Ok(EmojiStatus::EmojiStatusEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown EmojiStatus constructor {other:#x}"
             ))),
@@ -549,9 +740,9 @@ impl RestrictionReason {
                 "expected restrictionReason, got {ctor:#x}"
             )));
         }
-    let platform = String::from_utf8(r.read_bytes()?)?;
-    let reason = String::from_utf8(r.read_bytes()?)?;
-    let text = String::from_utf8(r.read_bytes()?)?;
+        let platform = String::from_utf8(r.read_bytes()?)?;
+        let reason = String::from_utf8(r.read_bytes()?)?;
+        let text = String::from_utf8(r.read_bytes()?)?;
         Ok(RestrictionReason {
             platform,
             reason,
@@ -561,9 +752,9 @@ impl RestrictionReason {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(RESTRICTION_REASON_ID);
-    w.write_bytes(self.platform.as_bytes());
-    w.write_bytes(self.reason.as_bytes());
-    w.write_bytes(self.text.as_bytes());
+        w.write_u32(RESTRICTION_REASON_ID);
+        w.write_bytes(self.platform.as_bytes());
+        w.write_bytes(self.reason.as_bytes());
+        w.write_bytes(self.text.as_bytes());
     }
 }

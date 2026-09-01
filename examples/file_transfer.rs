@@ -19,7 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let mut args = std::env::args().skip(1);
-    let bot_token = args.next().expect("usage: file_transfer <BOT_TOKEN> <PEER> <PATH>");
+    let bot_token = args
+        .next()
+        .expect("usage: file_transfer <BOT_TOKEN> <PEER> <PATH>");
     let peer = args.next().expect("missing <PEER>");
     let path = args.next().expect("missing <PATH>");
 
@@ -54,7 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Download it back: fetch the sent message, pull the Document's file
     // location and size, then download through the configured parallelism.
-    let messages = client.messages(&peer).await.page_size(10).collect(10).await?;
+    let messages = client
+        .messages(&peer)
+        .await
+        .page_size(10)
+        .collect(10)
+        .await?;
     let sent = messages
         .iter()
         .find(|m| m.id == msg_id)
@@ -78,7 +85,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let downloaded = client.download(&location, size).await?;
     let original = std::fs::read(&path)?;
     if downloaded == original {
-        println!("✓ downloaded {} bytes, content matches the original", downloaded.len());
+        println!(
+            "✓ downloaded {} bytes, content matches the original",
+            downloaded.len()
+        );
     } else {
         return Err(format!(
             "download mismatch: {} bytes vs {} original",

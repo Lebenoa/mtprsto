@@ -1,6 +1,23 @@
-//! Message, MessageFull, ReplyHeader, MessageAction, MessageMedia, MessageEntity.
+//! `Message`, `MessageFull`, `ReplyHeader`, `MessageAction`, `MessageMedia`,
+//! `MessageEntity`.
 
-use super::*;
+use super::constructors::{
+    MESSAGE, MESSAGE_ACTION_CHANNEL_CREATE, MESSAGE_ACTION_CHAT_ADD_USER,
+    MESSAGE_ACTION_CHAT_CREATE, MESSAGE_ACTION_CHAT_DELETE_USER, MESSAGE_ACTION_CHAT_EDIT_TITLE,
+    MESSAGE_ACTION_CHAT_JOINED_BY_LINK, MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST,
+    MESSAGE_ACTION_CONTACT_SIGN_UP, MESSAGE_ACTION_EMPTY, MESSAGE_ACTION_GAME_SCORE,
+    MESSAGE_ACTION_HISTORY_CLEAR, MESSAGE_ACTION_PIN_MESSAGE, MESSAGE_EMPTY, MESSAGE_MEDIA_CONTACT,
+    MESSAGE_MEDIA_DICE, MESSAGE_MEDIA_DOCUMENT, MESSAGE_MEDIA_EMPTY, MESSAGE_MEDIA_GAME,
+    MESSAGE_MEDIA_GEO, MESSAGE_MEDIA_GEO_LIVE, MESSAGE_MEDIA_GIVEAWAY,
+    MESSAGE_MEDIA_GIVEAWAY_RESULTS, MESSAGE_MEDIA_INVOICE, MESSAGE_MEDIA_PAID_MEDIA,
+    MESSAGE_MEDIA_PHOTO, MESSAGE_MEDIA_POLL, MESSAGE_MEDIA_STORY, MESSAGE_MEDIA_VENUE,
+    MESSAGE_MEDIA_WEB_PAGE, MESSAGE_REPLY_HEADER, MESSAGE_REPLY_HEADER_V225,
+    MESSAGE_REPLY_STORY_HEADER, MESSAGE_SERVICE,
+};
+use super::{
+    Document, DocumentId, GeoPoint, IncomingReplyMarkup, MessageEntityKind, MsgId, Peer, Photo,
+    PhotoId, UserId, WebPage,
+};
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 #[allow(unused_imports)]
@@ -48,44 +65,50 @@ pub struct MessageFull {
 }
 
 impl Message {
+    #[must_use]
     pub fn id(&self) -> MsgId {
         match self {
-            Message::Message(full) => full.id,
-            Message::Empty { id } | Message::Service { id, .. } => *id,
+            Self::Message(full) => full.id,
+            Self::Empty { id } | Self::Service { id, .. } => *id,
         }
     }
 
+    #[must_use]
     pub fn text(&self) -> &str {
         match self {
-            Message::Message(full) => &full.message,
+            Self::Message(full) => &full.message,
             _ => "",
         }
     }
 
+    #[must_use]
     pub fn peer_id(&self) -> &Peer {
         match self {
-            Message::Message(full) => &full.peer_id,
-            Message::Service { peer_id, .. } => peer_id,
-            Message::Empty { .. } => &Peer::None,
+            Self::Message(full) => &full.peer_id,
+            Self::Service { peer_id, .. } => peer_id,
+            Self::Empty { .. } => &Peer::None,
         }
     }
 
+    #[must_use]
     pub fn from_id(&self) -> Option<&Peer> {
         match self {
-            Message::Message(full) => full.from_id.as_ref(),
-            Message::Service { from_id, .. } => from_id.as_ref(),
-            _ => None,
+            Self::Message(full) => full.from_id.as_ref(),
+            Self::Service { from_id, .. } => from_id.as_ref(),
+            Self::Empty { .. } => None,
         }
     }
 
+    #[must_use]
     pub fn media(&self) -> Option<&MessageMedia> {
         match self {
-            Message::Message(full) => full.media.as_ref(),
+            Self::Message(full) => full.media.as_ref(),
             _ => None,
         }
     }
 
     /// The document behind the message, when it carries one.
+    #[must_use]
     pub fn document(&self) -> Option<Document> {
         match self.media() {
             Some(MessageMedia::Document { document, .. }) => Some(document.clone()),
@@ -93,11 +116,20 @@ impl Message {
         }
     }
 
+    /// # Errors
+    ///
+    /// Forwards [`Error::Serialization`] from [`Self::read_from`].
     pub fn parse_from_bytes(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         Self::read_from(&mut r)
     }
 
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] for unknown constructors, for
+    /// conditionals this library does not model, and for nested payloads
+    /// that fail to decode.
+    #[allow(clippy::too_many_lines)] // one arm per schema ctor with every conditional in wire order
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
@@ -107,7 +139,7 @@ impl Message {
                 // message:string is REQUIRED, conditionals interleaved.
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
-                let id = MsgId(r.read_i32()? as i64);
+                let id = MsgId(i64::from(r.read_i32()?));
                 let from_id = if flags & (1 << 8) != 0 {
                     Some(Peer::read_from(r)?)
                 } else {
@@ -161,7 +193,11 @@ impl Message {
                 let entities = if flags & (1 << 7) != 0 {
                     super::reply_types::read_message_entities(r)?
                         .into_iter()
-                        .map(|e| MessageEntity { offset: e.offset, length: e.length, kind: MessageEntityType::Known(e.kind) })
+                        .map(|e| MessageEntity {
+                            offset: e.offset,
+                            length: e.length,
+                            kind: MessageEntityType::Known(e.kind),
+                        })
                         .collect()
                 } else {
                     Vec::new()
@@ -241,17 +277,29 @@ impl Message {
                 }
                 let post = flags & (1 << 14) != 0;
                 let edit_hide = flags & (1 << 21) != 0;
-                Ok(Message::Message(Box::new(MessageFull {
-                    id, from_id, peer_id, date, message: message_text,
-                    media, reply_markup, entities, views, edit_date,
-                    post, grouped_id, via_bot_id, reply_to, edit_hide,
+                Ok(Self::Message(Box::new(MessageFull {
+                    id,
+                    from_id,
+                    peer_id,
+                    date,
+                    message: message_text,
+                    media,
+                    reply_markup,
+                    entities,
+                    views,
+                    edit_date,
+                    post,
+                    grouped_id,
+                    via_bot_id,
+                    reply_to,
+                    edit_hide,
                 })))
             }
             MESSAGE_EMPTY => {
                 // messageEmpty#90a6ca84 flags:# id:int peer_id:flags.0?Peer
                 let _flags = r.read_i32()?;
-                let id = MsgId(r.read_i32()? as i64);
-                Ok(Message::Empty { id })
+                let id = MsgId(i64::from(r.read_i32()?));
+                Ok(Self::Empty { id })
             }
             MESSAGE_SERVICE => {
                 // messageService#7a800e0a flags:# (no flags2) id:int
@@ -259,7 +307,7 @@ impl Message {
                 //   reply_to:flags.3?MessageReplyHeader date:int
                 //   action:MessageAction reactions:flags.20? ttl_period:flags.25?int
                 let flags = r.read_i32()?;
-                let id = MsgId(r.read_i32()? as i64);
+                let id = MsgId(i64::from(r.read_i32()?));
                 let from_id = if flags & (1 << 8) != 0 {
                     Some(Peer::read_from(r)?)
                 } else {
@@ -284,8 +332,13 @@ impl Message {
                 if flags & (1 << 25) != 0 {
                     let _ttl_period = r.read_i32()?;
                 }
-                Ok(Message::Service {
-                    id, from_id, peer_id, date, action, reply_to,
+                Ok(Self::Service {
+                    id,
+                    from_id,
+                    peer_id,
+                    date,
+                    action,
+                    reply_to,
                 })
             }
             other => Err(Error::Serialization(format!(
@@ -295,7 +348,7 @@ impl Message {
     }
 }
 
-/// Reply header (reply_to_msg_id, reply_to_peer_id, etc.).
+/// Reply header (`reply_to_msg_id`, `reply_to_peer_id`, etc.).
 #[derive(Debug, Clone)]
 pub struct ReplyHeader {
     pub reply_to_msg_id: MsgId,
@@ -305,6 +358,12 @@ pub struct ReplyHeader {
 
 impl ReplyHeader {
     /// messageReplyHeader#6917560b (layer 223).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] for unknown constructors, story
+    /// replies, a missing `reply_to_msg_id`, and nested payloads this
+    /// parser does not support.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         if ctor == MESSAGE_REPLY_STORY_HEADER {
@@ -322,10 +381,11 @@ impl ReplyHeader {
             )));
         }
         let flags = r.read_i32()?;
-        let mut reply_to_msg_id = None;
-        if flags & (1 << 4) != 0 {
-            reply_to_msg_id = Some(MsgId(r.read_i32()? as i64));
-        }
+        let reply_to_msg_id = if flags & (1 << 4) != 0 {
+            Some(MsgId(i64::from(r.read_i32()?)))
+        } else {
+            None
+        };
         let reply_to_peer_id = if flags & (1 << 0) != 0 {
             Some(Peer::read_from(r)?)
         } else {
@@ -340,7 +400,7 @@ impl ReplyHeader {
             let _reply_media = crate::types::MessageMedia::read_from(r)?;
         }
         let reply_to_top_id = if flags & (1 << 1) != 0 {
-            Some(MsgId(r.read_i32()? as i64))
+            Some(MsgId(i64::from(r.read_i32()?)))
         } else {
             None
         };
@@ -359,7 +419,7 @@ impl ReplyHeader {
         if flags & (1 << 12) != 0 {
             let _poll_option = r.read_bytes()?;
         }
-        Ok(ReplyHeader {
+        Ok(Self {
             reply_to_msg_id: reply_to_msg_id
                 .ok_or_else(|| Error::Serialization("reply header without msg id".into()))?,
             reply_to_peer_id,
@@ -372,15 +432,32 @@ impl ReplyHeader {
 #[derive(Debug, Clone)]
 pub enum MessageAction {
     Empty,
-    MessageActionChatCreate { title: String, users: Vec<UserId> },
-    MessageActionChatEditTitle { title: String },
-    MessageActionChatAddUser { users: Vec<UserId> },
-    MessageActionChatDeleteUser { user_id: UserId },
-    MessageActionChatJoinedByLink { inviter_id: UserId, via_link: bool },
-    MessageActionChannelCreate { title: String },
+    MessageActionChatCreate {
+        title: String,
+        users: Vec<UserId>,
+    },
+    MessageActionChatEditTitle {
+        title: String,
+    },
+    MessageActionChatAddUser {
+        users: Vec<UserId>,
+    },
+    MessageActionChatDeleteUser {
+        user_id: UserId,
+    },
+    MessageActionChatJoinedByLink {
+        inviter_id: UserId,
+        via_link: bool,
+    },
+    MessageActionChannelCreate {
+        title: String,
+    },
     MessageActionPinMessage,
     MessageActionHistoryClear,
-    MessageActionGameScore { game_id: i64, score: i32 },
+    MessageActionGameScore {
+        game_id: i64,
+        score: i32,
+    },
     MessageActionPaymentSentMe {
         currency: String,
         total_amount: i64,
@@ -394,14 +471,21 @@ pub enum MessageAction {
 }
 
 impl MessageAction {
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when a recognized action's payload
+    /// fails to decode; unknown actions drain the frame and become
+    /// [`MessageAction::Other`].
+    #[allow(clippy::cast_sign_loss, clippy::as_conversions)] // TL vector header: length-prefixed i32 count, non-negative on well-formed frames
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE_ACTION_EMPTY => Ok(MessageAction::Empty),
-            MESSAGE_ACTION_HISTORY_CLEAR => Ok(MessageAction::MessageActionHistoryClear),
-            MESSAGE_ACTION_PIN_MESSAGE => Ok(MessageAction::MessageActionPinMessage),
-            MESSAGE_ACTION_CONTACT_SIGN_UP => Ok(MessageAction::Other),
-            MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST => Ok(MessageAction::Other),
+            MESSAGE_ACTION_EMPTY => Ok(Self::Empty),
+            MESSAGE_ACTION_HISTORY_CLEAR => Ok(Self::MessageActionHistoryClear),
+            MESSAGE_ACTION_PIN_MESSAGE => Ok(Self::MessageActionPinMessage),
+            MESSAGE_ACTION_CONTACT_SIGN_UP | MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST => {
+                Ok(Self::Other)
+            }
             MESSAGE_ACTION_CHAT_CREATE => {
                 // messageActionChatCreate#bd47cbad title:string users:Vector<long>
                 let title = String::from_utf8(r.read_bytes()?)?;
@@ -410,11 +494,11 @@ impl MessageAction {
                 for _ in 0..n {
                     users.push(UserId(r.read_i64()?));
                 }
-                Ok(MessageAction::MessageActionChatCreate { title, users })
+                Ok(Self::MessageActionChatCreate { title, users })
             }
             MESSAGE_ACTION_CHAT_EDIT_TITLE => {
                 let title = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageAction::MessageActionChatEditTitle { title })
+                Ok(Self::MessageActionChatEditTitle { title })
             }
             MESSAGE_ACTION_CHAT_ADD_USER => {
                 let n = r.read_vector_header()?;
@@ -422,28 +506,26 @@ impl MessageAction {
                 for _ in 0..n {
                     users.push(UserId(r.read_i64()?));
                 }
-                Ok(MessageAction::MessageActionChatAddUser { users })
+                Ok(Self::MessageActionChatAddUser { users })
             }
-            MESSAGE_ACTION_CHAT_DELETE_USER => {
-                Ok(MessageAction::MessageActionChatDeleteUser {
-                    user_id: UserId(r.read_i64()?),
-                })
-            }
+            MESSAGE_ACTION_CHAT_DELETE_USER => Ok(Self::MessageActionChatDeleteUser {
+                user_id: UserId(r.read_i64()?),
+            }),
             MESSAGE_ACTION_CHAT_JOINED_BY_LINK => {
                 // inviter_id:long
-                Ok(MessageAction::MessageActionChatJoinedByLink {
+                Ok(Self::MessageActionChatJoinedByLink {
                     inviter_id: UserId(r.read_i64()?),
                     via_link: true,
                 })
             }
             MESSAGE_ACTION_CHANNEL_CREATE => {
                 let title = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageAction::MessageActionChannelCreate { title })
+                Ok(Self::MessageActionChannelCreate { title })
             }
             MESSAGE_ACTION_GAME_SCORE => {
                 let game_id = r.read_i64()?;
                 let score = r.read_i32()?;
-                Ok(MessageAction::MessageActionGameScore { game_id, score })
+                Ok(Self::MessageActionGameScore { game_id, score })
             }
             _ => {
                 // Unknown action: no safe way to know its length — drain the
@@ -452,7 +534,7 @@ impl MessageAction {
                 while r.remaining() > 0 {
                     let _ = r.read_i32()?;
                 }
-                Ok(MessageAction::Other)
+                Ok(Self::Other)
             }
         }
     }
@@ -463,19 +545,47 @@ impl MessageAction {
 #[allow(clippy::large_enum_variant)]
 pub enum MessageMedia {
     None,
-    Photo { photo: Photo },
-    Geo { geo: GeoPoint },
-    Contact { user_id: UserId, first_name: String, last_name: String, phone_number: String, vcard: String },
-    Document { document: Document, caption: String },
-    WebPage { webpage: WebPage },
+    Photo {
+        photo: Photo,
+    },
+    Geo {
+        geo: GeoPoint,
+    },
+    Contact {
+        user_id: UserId,
+        first_name: String,
+        last_name: String,
+        phone_number: String,
+        vcard: String,
+    },
+    Document {
+        document: Document,
+        caption: String,
+    },
+    WebPage {
+        webpage: WebPage,
+    },
     VoiceCall {},
-    Game { game: String },
+    Game {
+        game: String,
+    },
     Poll {},
-    Dice { value: i32, emoticon: String },
+    Dice {
+        value: i32,
+        emoticon: String,
+    },
     /// `messageMediaVenue` — geo plus a human-readable place name.
-    Venue { geo: GeoPoint, title: String, address: String },
+    Venue {
+        geo: GeoPoint,
+        title: String,
+        address: String,
+    },
     /// `messageMediaGeoLive` — live location.
-    GeoLive { geo: GeoPoint, heading: Option<i32>, period: i32 },
+    GeoLive {
+        geo: GeoPoint,
+        heading: Option<i32>,
+        period: i32,
+    },
     /// Recognized but variable-length media (poll, invoice, story,
     /// giveaway, paid media, game). Presence is known; the payload is not
     /// modelled.
@@ -485,10 +595,16 @@ pub enum MessageMedia {
 }
 
 impl MessageMedia {
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when a recognized media payload
+    /// fails to decode or carries a conditional this parser does not
+    /// support; unrecognized constructors come back as [`Self::Unknown`].
+    #[allow(clippy::too_many_lines)] // one arm per schema ctor with every conditional in wire order
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE_MEDIA_EMPTY => Ok(MessageMedia::None),
+            MESSAGE_MEDIA_EMPTY => Ok(Self::None),
             MESSAGE_MEDIA_PHOTO => {
                 // messageMediaPhoto#e216eb63 flags:# spoiler:flags.3?true
                 //   live_photo:flags.4?true photo:flags.0?Photo
@@ -505,7 +621,7 @@ impl MessageMedia {
                 if flags & (1 << 4) != 0 {
                     Document::read_from(r)?; // live_photo video
                 }
-                Ok(MessageMedia::Photo { photo })
+                Ok(Self::Photo { photo })
             }
             MESSAGE_MEDIA_DOCUMENT => {
                 // messageMediaDocument#52d8ccd9 flags:# nopremium:flags.3?true
@@ -535,7 +651,7 @@ impl MessageMedia {
                 if flags & (1 << 2) != 0 {
                     let _ttl_seconds = r.read_i32()?;
                 }
-                Ok(MessageMedia::Document {
+                Ok(Self::Document {
                     document: document.unwrap_or(Document::Empty { id: DocumentId(0) }),
                     caption: String::new(),
                 })
@@ -544,11 +660,11 @@ impl MessageMedia {
                 // messageMediaWebPage#ddf10c3b flags:# webpage:WebPage
                 let _flags = r.read_i32()?;
                 let webpage = WebPage::read_from(r)?;
-                Ok(MessageMedia::WebPage { webpage })
+                Ok(Self::WebPage { webpage })
             }
             MESSAGE_MEDIA_GEO => {
                 let geo = GeoPoint::read_from(r)?;
-                Ok(MessageMedia::Geo { geo })
+                Ok(Self::Geo { geo })
             }
             MESSAGE_MEDIA_DICE => {
                 // messageMediaDice#8cbec07 flags:# value:int emoticon:string
@@ -561,7 +677,7 @@ impl MessageMedia {
                         "messageMediaDice game_outcome not supported".into(),
                     ));
                 }
-                Ok(MessageMedia::Dice { value, emoticon })
+                Ok(Self::Dice { value, emoticon })
             }
             MESSAGE_MEDIA_VENUE => {
                 let geo = GeoPoint::read_from(r)?;
@@ -570,7 +686,7 @@ impl MessageMedia {
                 let _provider = String::from_utf8(r.read_bytes()?)?;
                 let _venue_id = String::from_utf8(r.read_bytes()?)?;
                 let _venue_type = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageMedia::Venue {
+                Ok(Self::Venue {
                     geo,
                     title,
                     address,
@@ -588,7 +704,11 @@ impl MessageMedia {
                 if flags & (1 << 1) != 0 {
                     let _ = r.read_i32()?; // proximity_notification_radius
                 }
-                Ok(MessageMedia::GeoLive { geo, heading, period })
+                Ok(Self::GeoLive {
+                    geo,
+                    heading,
+                    period,
+                })
             }
             MESSAGE_MEDIA_CONTACT => {
                 let phone_number = String::from_utf8(r.read_bytes()?)?;
@@ -596,7 +716,7 @@ impl MessageMedia {
                 let last_name = String::from_utf8(r.read_bytes()?)?;
                 let vcard = String::from_utf8(r.read_bytes()?)?;
                 let user_id = UserId(r.read_i64()?);
-                Ok(MessageMedia::Contact {
+                Ok(Self::Contact {
                     user_id,
                     first_name,
                     last_name,
@@ -604,18 +724,22 @@ impl MessageMedia {
                     vcard,
                 })
             }
-            MESSAGE_MEDIA_POLL | MESSAGE_MEDIA_INVOICE | MESSAGE_MEDIA_STORY
-            | MESSAGE_MEDIA_GIVEAWAY | MESSAGE_MEDIA_GIVEAWAY_RESULTS
-            | MESSAGE_MEDIA_PAID_MEDIA | MESSAGE_MEDIA_GAME => {
+            MESSAGE_MEDIA_POLL
+            | MESSAGE_MEDIA_INVOICE
+            | MESSAGE_MEDIA_STORY
+            | MESSAGE_MEDIA_GIVEAWAY
+            | MESSAGE_MEDIA_GIVEAWAY_RESULTS
+            | MESSAGE_MEDIA_PAID_MEDIA
+            | MESSAGE_MEDIA_GAME => {
                 // Variable-length nested payloads without per-field skip
                 // support. Mark as present-but-unsupported; the enclosing
                 // message parse completes because we stop consuming here.
-                Ok(MessageMedia::Unsupported)
+                Ok(Self::Unsupported)
             }
             other => {
                 // Do NOT drain the reader (old behaviour corrupted the
                 // stream); surface the ctor to the caller instead.
-                Ok(MessageMedia::Unknown(other))
+                Ok(Self::Unknown(other))
             }
         }
     }

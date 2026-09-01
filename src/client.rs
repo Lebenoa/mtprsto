@@ -1,4 +1,4 @@
-//! High-level Telegram MTProto client.
+//! High-level Telegram `MTProto` client.
 //!
 //! `Client` composes the connection pool, session persistence, and
 //! typed RPC invoke into a single ergonomic entry point.
@@ -21,15 +21,23 @@
 //! # Ok(())
 //! }
 //! ```
+//!
+//! `Client` is shared by reference: clone an `Arc<Client>` per task and
+//! fan out; connection lifecycle is interior to the type.
 
 use crate::api::TelegramClient;
 use crate::error::{Error, Result};
 use crate::mtproto::MtProtoSession;
 use crate::pool::{PoolConfig, ProtocolConfig, SenderPool};
-use crate::session::{SessionData, SessionStorage, SessionStore};
-use crate::types::{self, *};
-use crate::serialize::{TLReader, TLWriter};
 use crate::rpc;
+use crate::serialize::{TLReader, TLWriter};
+use crate::session::{SessionData, SessionStorage, SessionStore};
+use crate::types::{
+    self, AccessHash, CONTACTS_FOUND, CONTACTS_RESOLVE_USERNAME, CONTACTS_RESOLVED_PEER, ChannelId,
+    Chat, ChatId, Dialogs, INPUT_PEER_EMPTY, INPUT_USER_SELF, InputChannel, InputPeer,
+    MESSAGES_DELETE_MESSAGES, MESSAGES_GET_DIALOGS, MESSAGES_SEND_MESSAGE, MsgId, State,
+    USERS_GET_FULL_USER, User, UserId,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -37,6 +45,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use tokio::sync::RwLock;
 
 /// Configuration builder for `Client`.
+#[must_use]
 pub struct ClientConfig {
     api_id: Option<i32>,
     api_hash: Option<String>,
@@ -51,6 +60,9 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Start building a new client configuration.
+    // PoolConfig/ProtocolConfig/DownloadConfig do not expose const
+    // Default constructors yet.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new() -> Self {
         Self {
             api_id: None,
@@ -65,7 +77,7 @@ impl ClientConfig {
     }
 
     /// Set the API ID from my.telegram.org.
-    pub fn api_id(mut self, id: i32) -> Self {
+    pub const fn api_id(mut self, id: i32) -> Self {
         self.api_id = Some(id);
         self
     }
@@ -86,7 +98,7 @@ impl ClientConfig {
     /// migrates to the nearest DC (`help.getNearestDc`) before
     /// authorizing; setting this skips that auto-selection (use it for
     /// test DCs like 201 or pinned deployments).
-    pub fn dc_id(mut self, id: i32) -> Self {
+    pub const fn dc_id(mut self, id: i32) -> Self {
         self.dc_id = Some(id);
         self
     }
@@ -100,6 +112,10 @@ impl ClientConfig {
     }
 
     /// Set pool configuration.
+    // ClientConfig is `#[must_use]` at the type level, so per-method
+    // `#[must_use]` is redundant (double_must_use); the builder chain
+    // is not const-constructible because PoolConfig carries Vec fields.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn pool_config(mut self, config: PoolConfig) -> Self {
         self.pool = config;
         self
@@ -107,18 +123,25 @@ impl ClientConfig {
 
     /// Set protocol-level knobs: keepalive/ack/salt timers and
     /// anti-fingerprinting random padding (see [`ProtocolConfig`]).
+    #[allow(clippy::missing_const_for_fn)] // same reason as pool_config
     pub fn protocol_config(mut self, config: ProtocolConfig) -> Self {
         self.protocol = config;
         self
     }
 
     /// Set download configuration (parallel range fetching, SPEC BS-5).
+    #[allow(clippy::missing_const_for_fn)] // same reason as pool_config
     pub fn download_config(mut self, config: crate::file::DownloadConfig) -> Self {
         self.download = config;
         self
     }
 
     /// Build the client.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the session storage cannot be initialized
+    /// (the default-file path needs a home or temp directory).
     pub fn build(self) -> Result<Client> {
         let session_store: Box<dyn SessionStorage> = if let Some(custom) = self.session_storage {
             custom
@@ -131,19 +154,25 @@ impl ClientConfig {
             let home = std::env::var_os("USERPROFILE")
                 .or_else(|| std::env::var_os("HOME"))
                 .map(PathBuf::from);
-            match home {
-                Some(h) => Box::new(SessionStore::new(h.join(".mtprsto").join("session.json")))
-                    as Box<dyn SessionStorage>,
-                None => {
+            // `Option::map_or_else` keeps this a single expression (clippy
+            // option_if_let_else / single_match_else). The `as` casts are
+            // dyn coercions (as_conversions): statement-level allow.
+            #[allow(clippy::as_conversions)]
+            home.map_or_else(
+                || {
                     let fallback = std::env::temp_dir().join("mtprsto_session.json");
                     tracing::warn!(
                         "no home directory found — session in {}: the auth key will \
                          not survive between runs reliably",
                         fallback.display()
                     );
-                    Box::new(SessionStore::new(fallback))
-                }
-            }
+                    Box::new(SessionStore::new(fallback)) as Box<dyn SessionStorage>
+                },
+                |h| {
+                    Box::new(SessionStore::new(h.join(".mtprsto").join("session.json")))
+                        as Box<dyn SessionStorage>
+                },
+            )
         };
 
         Ok(Client {
@@ -170,7 +199,7 @@ impl Default for ClientConfig {
     }
 }
 
-/// High-level MTProto client.
+/// High-level `MTProto` client.
 ///
 /// Shared by reference: every method takes `&self`, so callers can clone
 /// an `Arc<Client>` and fan out. Connection lifecycle is interior — the
@@ -209,7 +238,7 @@ impl Client {
     }
 
     /// Get the API ID.
-    pub fn api_id(&self) -> Option<i32> {
+    pub const fn api_id(&self) -> Option<i32> {
         self.api_id
     }
 
@@ -219,17 +248,21 @@ impl Client {
     }
 
     /// Get the DC ID.
+    #[must_use]
     pub fn dc_id(&self) -> i32 {
         self.dc_id.load(Ordering::Relaxed)
     }
 
     /// Check if the client is connected (auth key established).
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // atomic load is not const-stable
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
     }
 
     /// Get the download configuration in use (SPEC BS-5).
-    pub fn download_config(&self) -> &crate::file::DownloadConfig {
+    #[must_use]
+    pub const fn download_config(&self) -> &crate::file::DownloadConfig {
         &self.download_config
     }
 
@@ -243,32 +276,38 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// Returns transport/protocol errors from the pool, or
-    /// [`Error::Other`] when the media is served from a CDN (not yet
-    /// supported).
+    /// Returns an error when the client is not connected, plus
+    /// transport/protocol errors from the pool, or [`Error::Other`]
+    /// when the media is served from a CDN (not yet supported).
     pub async fn download(
         &self,
         location: &crate::types::FileLocation,
         size: Option<u64>,
     ) -> Result<Vec<u8>> {
-        let pool = self.pool_handle().ok_or(Error::Other(
-            "download requires a connected client — call connect() first".into(),
-        ))?;
+        let Some(pool) = self.pool_handle() else {
+            return Err(Error::Other(
+                "download requires a connected client — call connect() first".into(),
+            ));
+        };
         match size {
             Some(size) => {
-                crate::file::download_parallel(pool.clone(), location, size, &self.download_config)
-                    .await
+                crate::file::download_parallel(pool, location, size, &self.download_config).await
             }
-            None => crate::file::download(pool.clone(), location).await,
+            None => crate::file::download(pool, location).await,
         }
     }
 
-    /// Connect to Telegram (create auth key via DH handshake if no session exists)
-    /// and open a SenderPool.
+    /// Connect to Telegram (create auth key via DH handshake if no session
+    /// exists) and open a `SenderPool`.
     ///
     /// Idempotent and safe to call from any task holding `&self`: a second
     /// caller arriving mid-handshake waits on the connect lock and then
     /// finds the pool already up.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport/protocol errors from the handshake and pool
+    /// construction, plus session-storage failures.
     // NOTE: the span context comes from the `#[tracing::instrument]` below —
     // do NOT `.entered()` a manual span here: an `EnteredSpan` is !Send and
     // holding it across the awaits inside this function poisons every
@@ -282,6 +321,10 @@ impl Client {
     /// Connect body. Callers must hold [`Client::connect_lock`] — pool
     /// construction and the DC decision must not race `authorize_bot`'s
     /// migration.
+    // The session-store write guard is held only for load/describe/save
+    // calls; clippy cannot see that through the macro-expanded drop
+    // points (significant_drop_tightening).
+    #[allow(clippy::significant_drop_tightening)]
     async fn connect_inner(&self) -> Result<()> {
         // A concurrent connect got here first: keep the live pool.
         if self.is_connected() {
@@ -324,9 +367,7 @@ impl Client {
             && let Some(cached) = data.cached_key(dc_id)
         {
             let auth_key = data.decode_cached_key(&cached)?;
-            tracing::info!(
-                "reusing cached auth key for DC {dc_id} — no DH handshake",
-            );
+            tracing::info!("reusing cached auth key for DC {dc_id} — no DH handshake",);
             self.start_pool(MtProtoSession::new(auth_key, cached.server_salt))
                 .await?;
             self.persist_current_salt().await?;
@@ -366,11 +407,8 @@ impl Client {
         // Save the new session, carrying over the key cache (and the
         // user/peer caches) from any previously loaded session file.
         if let Some(session) = &tg_client.session {
-            let mut data = SessionData::from_auth_key(
-                &session.auth_key,
-                session.server_salt,
-                dc_id,
-            );
+            let mut data =
+                SessionData::from_auth_key(&session.auth_key, session.server_salt, dc_id);
             if let Some(old) = &session_data {
                 data.keys = old.keys.clone();
                 data.user_id = old.user_id;
@@ -399,7 +437,14 @@ impl Client {
             self.pool_config.clone(),
             self.protocol_config.clone(),
         ));
-        Arc::get_mut(&mut pool).expect("pool freshly created").connect().await?;
+        // The Arc is freshly created and not yet shared; this cannot fail.
+        #[allow(clippy::expect_used)]
+        {
+            Arc::get_mut(&mut pool)
+                .expect("pool freshly created")
+                .connect()
+                .await?;
+        }
         *self
             .pool
             .write()
@@ -416,6 +461,9 @@ impl Client {
 
     /// Persist the (possibly server-refreshed) salt so the next boot
     /// starts with a current value.
+    // Same store-guard reasoning as `connect_inner` (macro-expanded drop
+    // points hide the actual guard extent from clippy).
+    #[allow(clippy::significant_drop_tightening)]
     async fn persist_current_salt(&self) -> Result<()> {
         let Some(pool) = self.pool_handle() else {
             return Ok(());
@@ -430,10 +478,7 @@ impl Client {
                 cached.server_salt = current_salt;
             }
             if fresh.server_salt != data.server_salt
-                || fresh
-                    .keys
-                    .get(&dc_id)
-                    .map(|c| c.server_salt)
+                || fresh.keys.get(&dc_id).map(|c| c.server_salt)
                     != data.keys.get(&dc_id).map(|c| c.server_salt)
             {
                 SessionStorage::save(&mut *store, &fresh)?;
@@ -444,6 +489,11 @@ impl Client {
     }
 
     /// Authorize as a bot using a bot token.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the session lacks an auth key, the token is
+    /// rejected, or the DC migration loop does not settle.
     #[tracing::instrument(name = "mtprsto::authorize_bot", skip(self, bot_token), err)]
     pub async fn authorize_bot(&self, bot_token: &str) -> Result<()> {
         // Migration below rewires dc_id/pool — the lifecycle connect()
@@ -511,6 +561,11 @@ impl Client {
     /// Send a text message to a peer.
     ///
     /// `peer` can be a user ID, chat ID, channel ID, or username string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the peer cannot be resolved or the message
+    /// fails to send.
     #[tracing::instrument(name = "mtprsto::send", skip(self, text), fields(peer = peer), err)]
     pub async fn send(&self, peer: &str, text: &str) -> Result<MsgId> {
         let input_peer = self.resolve_peer(peer).await?;
@@ -520,27 +575,40 @@ impl Client {
     /// Send a text message to an already-resolved [`InputPeer`] — the
     /// object form of [`Client::send`] for callers that carry their own
     /// `InputPeer::Channel` (e.g. from a `-100…` id + access hash).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response is not a
+    /// recognizable sent-message update.
     pub async fn send_to_peer(&self, input_peer: &InputPeer, text: &str) -> Result<MsgId> {
-        let result = self.invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
-            // messages.sendMessage#545cd15a flags:# ... peer:InputPeer
-            // reply_to:flags.0?InputReplyTo message:string random_id:long ...
-            let flags: i32 = 0;
-            w.write_i32(flags);
+        let result = self
+            .invoke_with_method(MESSAGES_SEND_MESSAGE, |w| {
+                // messages.sendMessage#545cd15a flags:# ... peer:InputPeer
+                // reply_to:flags.0?InputReplyTo message:string random_id:long ...
+                let flags: i32 = 0;
+                w.write_i32(flags);
 
-            // Write the input peer
-            input_peer.write_to(w);
-            // Message text
-            w.write_bytes(text.as_bytes());
+                // Write the input peer
+                input_peer.write_to(w);
+                // Message text
+                w.write_bytes(text.as_bytes());
 
-            // random_id:long (required by layer 223)
-            w.write_i64(rand::random::<i64>());
+                // random_id:long (required by layer 223)
+                w.write_i64(rand::random::<i64>());
 
-            // reply_markup (none)
-            Ok(())
-        }).await?;
+                // reply_markup (none)
+                Ok(())
+            })
+            .await?;
 
         if std::env::var("MTPRSTO_DEBUG").is_ok() {
-            println!("DEBUG send result ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+            // debug-only dump of the raw response prefix; any RPC payload
+            // is at least a 4-byte constructor word, so this cannot panic
+            println!(
+                "DEBUG send result ({}b): {:02x?}",
+                result.len(),
+                result.get(..result.len().min(160))
+            );
         }
         // Response is UpdateShortSentMessage or a full Updates object;
         // both carry the new message id.
@@ -561,18 +629,23 @@ impl Client {
                 }
                 Err(Error::Protocol("sendMessage returned no message id".into()))
             }
-            types::Updates::UpdateShort { update: types::Update::NewMessage { message, .. }, .. } => {
-                Ok(message.id())
-            }
+            types::Updates::UpdateShort {
+                update: types::Update::NewMessage { message, .. },
+                ..
+            } => Ok(message.id()),
             other => Err(Error::Protocol(format!(
-                "unexpected sendMessage response: {:?}", other
+                "unexpected sendMessage response: {other:?}"
             ))),
         }
     }
 
     /// Field-by-field skip of `userFull#6cbe645` (layer 225). Heavy
-    /// unsupported unions (BotInfo, WallPaper, PeerStories, business
-    /// settings, TextWithEntities) fail loudly rather than desync.
+    /// unsupported unions (`BotInfo`, `WallPaper`, `PeerStories`,
+    /// business settings, `TextWithEntities`) fail loudly rather than
+    /// desync.
+    // Too many lines: one monolithic field-order walk over `userFull`;
+    // splitting it would spread the wire layout across helpers.
+    #[allow(clippy::too_many_lines)]
     fn skip_user_full(r: &mut TLReader) -> Result<()> {
         use crate::types::{Document as TlDocument, Photo as TlPhoto};
 
@@ -782,6 +855,11 @@ impl Client {
     }
 
     /// Get your own user info (users.getFullUser with self).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response is not a
+    /// recognizable user payload.
     #[tracing::instrument(name = "mtprsto::get_me", skip(self), err)]
     pub async fn get_me(&self) -> Result<User> {
         let mut w = TLWriter::new();
@@ -795,6 +873,10 @@ impl Client {
     }
 
     /// Parse `messages.dialogs` / `messages.dialogsSlice` into [`Dialogs`].
+    // Vector counts come from `read_vector_header` and every cast below is
+    // a loop bound over bytes the server just wrote — lengths are
+    // non-negative by TL framing.
+    #[allow(clippy::as_conversions, clippy::cast_sign_loss)]
     fn parse_dialogs(data: &[u8]) -> Result<Dialogs> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
@@ -838,7 +920,12 @@ impl Client {
                     users.push(types::User::read_from(&mut r)?);
                 }
 
-                Ok(Dialogs { dialogs, messages, users, chats })
+                Ok(Dialogs {
+                    dialogs,
+                    messages,
+                    users,
+                    chats,
+                })
             }
             types::MESSAGES_DIALOGS_NOT_MODIFIED => Err(Error::Protocol(
                 "get_dialogs: server returned dialogsNotModified — pass a real hash".into(),
@@ -854,6 +941,11 @@ impl Client {
     /// Also persists every channel access hash the answer carries into
     /// the session peer cache — that cache is what makes `-100…` id
     /// resolution (`resolve_peer`) work without a username.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response is not a
+    /// recognizable dialogs payload.
     #[tracing::instrument(name = "mtprsto::get_dialogs", skip(self), err)]
     pub async fn get_dialogs(&self) -> Result<Dialogs> {
         let mut w = TLWriter::new();
@@ -870,7 +962,11 @@ impl Client {
         for chat in &dialogs.chats {
             // NOTE: generated Chat::Channel carries `id: ChatId` (codegen
             // quirk) — the numeric value is the channel id either way.
-            if let types::Chat::Channel { id: types::ChatId(cid), access_hash: Some(hash), .. } = chat
+            if let types::Chat::Channel {
+                id: types::ChatId(cid),
+                access_hash: Some(hash),
+                ..
+            } = chat
             {
                 self.persist_peer_hash(&InputPeer::Channel {
                     channel_id: ChannelId(*cid),
@@ -902,6 +998,11 @@ impl Client {
     }
 
     /// Get the current state (pts, qts, date, seq).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response is not an
+    /// `updates.state` payload.
     pub async fn get_state(&self) -> Result<State> {
         let mut w = TLWriter::new();
         w.write_u32(types::UPDATES_GET_STATE);
@@ -911,6 +1012,11 @@ impl Client {
 
     /// Fetch missed updates since `state` (SPEC §6 pts/seq gap recovery).
     /// Returns updates to re-dispatch through the dispatcher.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response cannot be
+    /// parsed as `updates.difference`.
     pub async fn get_difference(&self, state: &State) -> Result<types::Difference> {
         let payload = rpc::build_get_difference(state.pts, state.date, state.qts);
         let result = self.invoke_raw(payload).await?;
@@ -918,6 +1024,11 @@ impl Client {
     }
 
     /// Fetch missed channel updates (SPEC §6, `UpdateChannelTooLong` path).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the response cannot be
+    /// parsed as `updates.channelDifference`.
     pub async fn get_channel_difference(
         &self,
         channel: &InputChannel,
@@ -941,6 +1052,12 @@ impl Client {
     ///
     /// Returns `None` if the pump is already running or the client is not
     /// connected.
+    // Too many lines: the spawned pump body (state polling, gap
+    // detection, channel resync) is one cohesive loop and reads better
+    // unsplit. The std Mutex guard is dropped at fn end by design —
+    // the sender slot must stay registered (significant_drop_tightening
+    // cannot model the intent).
+    #[allow(clippy::too_many_lines, clippy::significant_drop_tightening)]
     pub fn updates(
         &self,
         poll_interval_secs: u64,
@@ -959,9 +1076,8 @@ impl Client {
         *update_task = Some(feed_tx);
         let pool = std::sync::Arc::clone(&pool);
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                std::time::Duration::from_secs(poll_interval_secs.max(1)),
-            );
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(poll_interval_secs.max(1)));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             let mut dispatcher = dispatcher;
             let mut last_pts = 0i32;
@@ -976,14 +1092,13 @@ impl Client {
                 interval.tick().await;
 
                 // Poll state to observe server-side pts drift.
-                let state = match pool
+                let Some(state) = pool
                     .send_rpc(&rpc::build_get_state())
                     .await
                     .ok()
-                    .and_then(|bytes| Client::parse_state(&bytes).ok())
-                {
-                    Some(s) => s,
-                    None => continue,
+                    .and_then(|bytes| Self::parse_state(&bytes).ok())
+                else {
+                    continue;
                 };
                 dispatcher.set_qts(state.qts);
 
@@ -1010,7 +1125,9 @@ impl Client {
                         && let Ok(diff) = types::ChannelDifference::parse(&bytes)
                     {
                         let (messages, other_updates, chats, new_pts) = match diff {
-                            types::ChannelDifference::Empty { pts, .. } => (Vec::new(), Vec::new(), Vec::new(), pts),
+                            types::ChannelDifference::Empty { pts, .. } => {
+                                (Vec::new(), Vec::new(), Vec::new(), pts)
+                            }
                             types::ChannelDifference::Difference {
                                 pts,
                                 new_messages,
@@ -1027,7 +1144,12 @@ impl Client {
                             } => (new_messages, other_updates, chats, pts),
                         };
                         for chat in chats {
-                            if let types::Chat::Channel { id, access_hash: Some(h), .. } = chat {
+                            if let types::Chat::Channel {
+                                id,
+                                access_hash: Some(h),
+                                ..
+                            } = chat
+                            {
                                 channel_hashes.insert(id.0, h.0);
                             }
                         }
@@ -1053,10 +1175,12 @@ impl Client {
                     }
                 }
 
-                if have_pts && state.pts > last_pts + 1 {
+                // Gap detected — recover the missed range. `state.pts >
+                // last_pts` was checked above; the +1 walk stays within
+                // the observed range.
+                if have_pts && state.pts > last_pts.saturating_add(1) {
                     // Gap detected — recover the missed range.
-                    let payload =
-                        rpc::build_get_difference(last_pts, state.date, state.qts);
+                    let payload = rpc::build_get_difference(last_pts, state.date, state.qts);
                     if let Ok(bytes) = pool.send_rpc(&payload).await
                         && let Ok(types::Difference::Difference {
                             new_messages,
@@ -1065,29 +1189,34 @@ impl Client {
                             ..
                         }) = types::Difference::parse(&bytes)
                     {
-                            for chat in chats {
-                                if let types::Chat::Channel { id, access_hash: Some(h), .. } = chat {
-                                    channel_hashes.insert(id.0, h.0);
-                                }
+                        for chat in chats {
+                            if let types::Chat::Channel {
+                                id,
+                                access_hash: Some(h),
+                                ..
+                            } = chat
+                            {
+                                channel_hashes.insert(id.0, h.0);
                             }
-                            for msg in new_messages {
-                                dispatcher.process_updates(types::Updates::UpdateShort {
-                                    update: types::Update::NewMessage {
-                                        message: msg,
-                                        pts: last_pts + 1,
-                                        pts_count: 1,
-                                    },
-                                    date: state.date,
-                                    seq: state.seq,
-                                });
-                            }
-                            for u in other_updates {
-                                dispatcher.process_updates(types::Updates::UpdateShort {
-                                    update: u,
-                                    date: state.date,
-                                    seq: state.seq,
-                                });
-                            }
+                        }
+                        for msg in new_messages {
+                            dispatcher.process_updates(types::Updates::UpdateShort {
+                                update: types::Update::NewMessage {
+                                    message: msg,
+                                    pts: last_pts.saturating_add(1),
+                                    pts_count: 1,
+                                },
+                                date: state.date,
+                                seq: state.seq,
+                            });
+                        }
+                        for u in other_updates {
+                            dispatcher.process_updates(types::Updates::UpdateShort {
+                                update: u,
+                                date: state.date,
+                                seq: state.seq,
+                            });
+                        }
                     }
                 }
 
@@ -1100,6 +1229,15 @@ impl Client {
     }
 
     /// Delete messages by ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC fails or the pool is not connected.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the message-id vector exceeds `i32::MAX` entries —
+    /// unreachable in practice (the wire frame would overflow long before).
     #[tracing::instrument(name = "mtprsto::delete_messages", skip(self, msg_ids), err)]
     pub async fn delete_messages(&self, msg_ids: &[MsgId]) -> Result<()> {
         let mut w = TLWriter::new();
@@ -1107,12 +1245,29 @@ impl Client {
         w.write_i32(0); // flags (no revoke)
 
         // Vector<int> of message IDs
-        w.write_u32(0x1cb5c415); // VECTOR
-        w.write_i32(msg_ids.len() as i32);
-        for id in msg_ids {
-            w.write_i32(id.0 as i32);
+        w.write_u32(0x1cb5_c415); // VECTOR
+        // Vector count is bounded by the slice length; message ids are
+        // non-negative by TL int encoding here.
+        #[allow(
+            clippy::as_conversions,
+            clippy::cast_sign_loss,
+            clippy::cast_possible_truncation
+        )] // Telegram ids are int32 on the wire; MsgId widens library-side
+        #[allow(clippy::expect_used)] // 2^31 message ids in one RPC is absurd
+        {
+            w.write_i32(
+                msg_ids
+                    .len()
+                    .try_into()
+                    .expect("message-id vector fits i32"),
+            );
+            for id in msg_ids {
+                // Telegram message ids are int32 on the wire; MsgId
+                // widens them to i64 library-side.
+                w.write_i32(id.0 as i32);
+            }
         }
-
+        // ids.length() > i32::MAX is absurd
         let _ = self.invoke_raw(w.into_bytes()).await?;
         Ok(())
     }
@@ -1121,14 +1276,24 @@ impl Client {
     ///
     /// Delegates to `SenderPool::send_rpc` which handles encryption,
     /// transport framing, decryption, and acks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the pool is missing (not connected) or the
+    /// RPC fails.
     pub async fn invoke_raw(&self, method_bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let pool = self.pool_handle().ok_or(Error::Other(
-            "invoke_raw requires a connected pool — call connect() first".into(),
-        ))?;
+        let pool = self.pool_handle().ok_or_else(|| {
+            Error::Other("invoke_raw requires a connected pool — call connect() first".into())
+        })?;
         pool.send_rpc(&method_bytes).await
     }
 
     /// Helper: invoke a method with a builder closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the builder rejects the request or the RPC
+    /// fails.
     pub(crate) async fn invoke_with_method<F>(&self, method_id: u32, build: F) -> Result<Vec<u8>>
     where
         F: FnOnce(&mut TLWriter) -> Result<()>,
@@ -1140,14 +1305,23 @@ impl Client {
     }
 
     /// Snapshot of the connected pool (ergonomics module).
+    ///
+    /// # Panics
+    ///
+    /// Panics when called before [`Client::connect`] — there is no pool
+    /// to hand out yet; this is a programming error, not a runtime
+    /// condition.
+    // Unreachable via public API: builders check `connected`; the panic
+    // is a deliberate fail-fast for misuse.
+    #[allow(clippy::panic)]
     pub fn pool(&self) -> Arc<SenderPool> {
-        // Unreachable via public API: builders check `connected`.
         self.pool_handle()
             .unwrap_or_else(|| panic!("pool accessed before connect()"))
     }
 
     /// Lock-free pool snapshot: callers hold their own `Arc` clone, so
     /// the read guard never spans an await.
+    #[allow(clippy::missing_const_for_fn)] // lock guard clone is not const
     fn pool_handle(&self) -> Option<Arc<SenderPool>> {
         self.pool
             .read()
@@ -1155,17 +1329,32 @@ impl Client {
             .clone()
     }
 
-
-    /// Resolve a peer string to an InputPeer.
+    /// Resolve a peer string to an `InputPeer`.
     ///
     /// Supports:
-    /// - Numeric user/chat/channel ID (positive = user, negative = chat/group)
-    /// - Username string (resolves via contacts.resolveUsername, caching the
-    ///   access hash for the process lifetime)
+    /// - Numeric user/chat/channel ID (positive = user, negative =
+    ///   chat/group)
+    /// - Username string (resolves via `contacts.resolveUsername`,
+    ///   caching the access hash for the process lifetime)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a malformed id, an unresolvable channel
+    /// (not a member), or repeated RPC failure.
+    // The `-100…` branch walks persisted peer caches and server chat
+    // vectors; it is too long to split without losing the lookup-order
+    // narrative (cache → bootstrap → cache-again).
+    #[allow(clippy::too_many_lines)]
     pub async fn resolve_peer(&self, peer: &str) -> Result<InputPeer> {
         if let Ok(id) = peer.parse::<i64>() {
+            // `id == i64::MIN` is rejected below before any negation, so
+            // all sign flips in this branch are overflow-free.
+            #[allow(clippy::arithmetic_side_effects)]
             if id > 0 {
-                Ok(InputPeer::User { user_id: UserId(id), access_hash: AccessHash(0) })
+                Ok(InputPeer::User {
+                    user_id: UserId(id),
+                    access_hash: AccessHash(0),
+                })
             } else if id == i64::MIN {
                 Err(Error::Other("invalid chat id".into()))
             } else if format!("{id}").starts_with("-100") {
@@ -1204,19 +1393,31 @@ impl Client {
                 if std::env::var("MTPRSTO_DEBUG").is_ok() {
                     println!("DEBUG getChannels bootstrap returned {} chats", chats.len());
                     for c in &chats {
-                        if let Chat::Channel { id, access_hash, .. } = c {
-                            println!("  debug: chat id={} access_hash={:?}", id.0, access_hash.map(|h| h.0));
+                        if let Chat::Channel {
+                            id, access_hash, ..
+                        } = c
+                        {
+                            println!(
+                                "  debug: chat id={} access_hash={:?}",
+                                id.0,
+                                access_hash.map(|h| h.0)
+                            );
                         }
                     }
                 }
-                let chat = chats.iter().find_map(|c| match c {
-                    Chat::Channel { id, access_hash, .. } if id.0 == channel_id =>
-                        Some((id.0, access_hash.map(|h| h.0).unwrap_or(0))),
-                    _ => None,
-                })
-                .ok_or_else(|| {
-                    Error::Other(format!("channel {channel_id} not found — is this account a member?"))
-                })?;
+                let chat = chats
+                    .iter()
+                    .find_map(|c| match c {
+                        Chat::Channel {
+                            id, access_hash, ..
+                        } if id.0 == channel_id => Some((id.0, access_hash.map_or(0, |h| h.0))),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        Error::Other(format!(
+                            "channel {channel_id} not found — is this account a member?"
+                        ))
+                    })?;
                 let peer = InputPeer::Channel {
                     channel_id: ChannelId(chat.0),
                     access_hash: AccessHash(chat.1),
@@ -1225,7 +1426,9 @@ impl Client {
                 self.persist_peer_hash(&peer).await;
                 Ok(peer)
             } else {
-                Ok(InputPeer::Chat { chat_id: ChatId(-id) })
+                Ok(InputPeer::Chat {
+                    chat_id: ChatId(-id),
+                })
             }
         } else {
             self.resolve_username(peer).await
@@ -1236,6 +1439,11 @@ impl Client {
     /// `InputPeer` via `contacts.resolveUsername`. The returned peer carries
     /// the access hash needed for subsequent RPCs; results are cached in
     /// [`Client::peer_cache`] keyed by the lowercased username.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty username, repeated RPC failure, or a
+    /// response that does not carry a resolvable peer.
     #[tracing::instrument(name = "mtprsto::resolve_username", skip(self, username), err)]
     pub async fn resolve_username(&self, username: &str) -> Result<InputPeer> {
         let uname = username.trim_start_matches('@');
@@ -1257,13 +1465,15 @@ impl Client {
         // an Updates/updateShort container instead of the plain
         // resolvedPeer/found shape; a retry gets the normal response.
         for attempt in 0..3u32 {
-            let result = self.invoke_with_method(CONTACTS_RESOLVE_USERNAME, |w| {
-                // contacts.resolveUsername#725afbbc flags:# username:string
-                //   referer:flags.0?string
-                w.write_i32(0); // flags (no referer)
-                w.write_bytes(uname.as_bytes());
-                Ok(())
-            }).await;
+            let result = self
+                .invoke_with_method(CONTACTS_RESOLVE_USERNAME, |w| {
+                    // contacts.resolveUsername#725afbbc flags:# username:string
+                    //   referer:flags.0?string
+                    w.write_i32(0); // flags (no referer)
+                    w.write_bytes(uname.as_bytes());
+                    Ok(())
+                })
+                .await;
 
             let result = match result {
                 Ok(r) => r,
@@ -1271,7 +1481,14 @@ impl Client {
             };
 
             if std::env::var("MTPRSTO_DEBUG").is_ok() {
-                println!("DEBUG resolved ({}b): {:02x?}", result.len(), &result[..result.len().min(160)]);
+                // debug-only dump of the raw response prefix; any RPC
+                // payload is at least a 4-byte constructor word, so this
+                // cannot panic
+                println!(
+                    "DEBUG resolved ({}b): {:02x?}",
+                    result.len(),
+                    result.get(..result.len().min(160))
+                );
             }
             // Parse under the lock; drop it before the await below — the
             // guard is a blocking std lock and must never span it.
@@ -1290,13 +1507,21 @@ impl Client {
                 Err(Error::Protocol(msg))
                     if msg.contains("wrapped in updates container") && attempt < 2 =>
                 {
-                    tracing::warn!("resolveUsername answer wrapped (attempt {})", attempt + 1);
+                    tracing::warn!(
+                        "resolveUsername answer wrapped (attempt {})",
+                        attempt.saturating_add(1)
+                    );
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                 }
                 Err(e) => return Err(e),
             }
         }
-        unreachable!("retry loop returns on every path")
+        // Loop body returns on success and on every non-retryable error;
+        // the last retry falling through means all three attempts hit the
+        // wrapped-container path.
+        Err(Error::Protocol(
+            "resolveUsername answer stayed wrapped after retries".into(),
+        ))
     }
 
     /// Persist a resolved peer's access hash into the session store
@@ -1304,8 +1529,14 @@ impl Client {
     /// ops don't need a `channels.getChannels` round trip per boot).
     pub(crate) async fn persist_peer_hash(&self, peer: &InputPeer) {
         let (id, hash) = match peer {
-            InputPeer::User { user_id, access_hash } => (user_id.0, access_hash.0),
-            InputPeer::Channel { channel_id, access_hash } => (channel_id.0, access_hash.0),
+            InputPeer::User {
+                user_id,
+                access_hash,
+            } => (user_id.0, access_hash.0),
+            InputPeer::Channel {
+                channel_id,
+                access_hash,
+            } => (channel_id.0, access_hash.0),
             _ => return,
         };
         let mut store = self.session_store.write().await;
@@ -1319,6 +1550,9 @@ impl Client {
 
     /// Parse a `contacts.found` response into an `InputPeer`, storing
     /// access hashes for the matched user/channel in `cache`.
+    // Vector counts come from `read_vector_header` — non-negative by TL
+    // framing; this is a wire-shape walk best kept in one piece.
+    #[allow(clippy::as_conversions, clippy::cast_sign_loss, clippy::too_many_lines)]
     fn parse_resolved_peer(
         data: &[u8],
         key: &str,
@@ -1385,51 +1619,58 @@ impl Client {
             if let Some(u) = user.username()
                 && u.eq_ignore_ascii_case(&key)
             {
-                    let id = user.id();
-                    let peer = InputPeer::User {
-                        user_id: id,
-                        access_hash: user.access_hash().ok_or_else(|| {
-                            Error::Protocol(format!(
-                                "resolved @{key} to user {} without access hash", id.0
-                            ))
-                        })?,
-                    };
-                    cache.insert(key.to_string(), peer.clone());
-                    return Ok(peer);
+                let id = user.id();
+                let peer = InputPeer::User {
+                    user_id: id,
+                    access_hash: user.access_hash().ok_or_else(|| {
+                        Error::Protocol(format!(
+                            "resolved @{key} to user {} without access hash",
+                            id.0
+                        ))
+                    })?,
+                };
+                cache.insert(key, peer.clone());
+                return Ok(peer);
             }
         }
         for chat in &chats {
             let (id, access_hash, username) = match chat {
-                types::Chat::Channel { id, access_hash, username, .. } => {
-                    (id.0, *access_hash, username.as_deref())
-                }
+                types::Chat::Channel {
+                    id,
+                    access_hash,
+                    username,
+                    ..
+                } => (id.0, *access_hash, username.as_deref()),
                 _ => continue,
             };
             if let Some(u) = username
                 && u.eq_ignore_ascii_case(&key)
             {
-                    let hash = access_hash.ok_or_else(|| {
-                        Error::Protocol(format!(
-                            "resolved @{key} to channel {id} without access hash"
-                        ))
-                    })?;
-                    let peer = InputPeer::Channel {
-                        channel_id: ChannelId(id),
-                        access_hash: hash,
-                    };
-                    cache.insert(key.to_string(), peer.clone());
-                    return Ok(peer);
+                let hash = access_hash.ok_or_else(|| {
+                    Error::Protocol(format!(
+                        "resolved @{key} to channel {id} without access hash"
+                    ))
+                })?;
+                let peer = InputPeer::Channel {
+                    channel_id: ChannelId(id),
+                    access_hash: hash,
+                };
+                cache.insert(key, peer.clone());
+                return Ok(peer);
             }
         }
         // No direct username match: the server may still have returned
         // exactly one usable peer (min-user form strips usernames).
-        if results.len() == 1 {
-            let peer = match &results[0] {
+        if let [result] = &results[..] {
+            let peer = match result {
                 types::Peer::User { user_id } => {
                     let user = users.iter().find(|u| u.id() == *user_id);
+                    // method-path form satisfies redundant_closure_for_method_calls
+                    #[allow(clippy::redundant_closure_for_method_calls)]
+                    let access_hash = user.and_then(|u| u.access_hash());
                     InputPeer::User {
                         user_id: *user_id,
-                        access_hash: user.and_then(|u| u.access_hash()).ok_or_else(|| {
+                        access_hash: access_hash.ok_or_else(|| {
                             Error::Protocol(format!(
                                 "resolved @{key} to user {} without access hash",
                                 user_id.0
@@ -1438,27 +1679,31 @@ impl Client {
                     }
                 }
                 types::Peer::Channel { channel_id } => {
-                    let chat = chats.iter().find(|c| matches!(c,
-                        types::Chat::Channel { id, .. } if id.0 == channel_id.0));
+                    let chat = chats.iter().find(|c| {
+                        matches!(c,
+                        types::Chat::Channel { id, .. } if id.0 == channel_id.0)
+                    });
                     InputPeer::Channel {
                         channel_id: *channel_id,
-                        access_hash: chat.and_then(|c| match c {
-                            types::Chat::Channel { access_hash, .. } => *access_hash,
-                            _ => None,
-                        }).ok_or_else(|| Error::Protocol(format!(
-                            "resolved @{key} to channel {} without access hash",
-                            channel_id.0
-                        )))?,
+                        access_hash: chat
+                            .and_then(|c| match c {
+                                types::Chat::Channel { access_hash, .. } => *access_hash,
+                                _ => None,
+                            })
+                            .ok_or_else(|| {
+                                Error::Protocol(format!(
+                                    "resolved @{key} to channel {} without access hash",
+                                    channel_id.0
+                                ))
+                            })?,
                     }
                 }
-                types::Peer::Chat { chat_id } => {
-                    InputPeer::Chat { chat_id: *chat_id }
+                types::Peer::Chat { chat_id } => InputPeer::Chat { chat_id: *chat_id },
+                types::Peer::None => {
+                    return Err(Error::Protocol("resolveUsername returned PeerNone".into()));
                 }
-                types::Peer::None => return Err(Error::Protocol(
-                    "resolveUsername returned PeerNone".into(),
-                )),
             };
-            cache.insert(key.to_string(), peer.clone());
+            cache.insert(key, peer.clone());
             return Ok(peer);
         }
         Err(Error::Other(format!("username @{key} not found")))
@@ -1471,6 +1716,10 @@ impl Client {
     ///
     /// Off by default; calling this twice replaces nothing (idempotent per
     /// client instance is the caller's job).
+    ///
+    /// # Panics
+    ///
+    /// Never panics — the scaler exits quietly when the pool is absent.
     #[tracing::instrument(name = "mtprsto::adaptive_scaler", skip(self))]
     pub fn spawn_adaptive_scaler(&self, interval_secs: u64) {
         let Some(pool) = self.pool_handle() else {
@@ -1479,9 +1728,8 @@ impl Client {
         let min = self.pool_config.min_connections;
         let max = self.pool_config.max_connections;
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(
-                std::time::Duration::from_secs(interval_secs.max(1)),
-            );
+            let mut tick =
+                tokio::time::interval(std::time::Duration::from_secs(interval_secs.max(1)));
             loop {
                 tick.tick().await;
                 let have = pool.connection_count();
@@ -1504,10 +1752,7 @@ impl Client {
     /// RPC failure; decoding failures surface as
     /// [`Error::Protocol`]/[`Error::Serialization`].
     #[tracing::instrument(name = "mtprsto::invoke", skip_all, err)]
-    pub async fn invoke<T: crate::ergonomics::TlResult>(
-        &self,
-        method_bytes: Vec<u8>,
-    ) -> Result<T> {
+    pub async fn invoke<T: crate::ergonomics::TlResult>(&self, method_bytes: Vec<u8>) -> Result<T> {
         let raw = self.invoke_raw(method_bytes).await?;
         T::from_rpc_result(&raw)
     }
@@ -1517,6 +1762,13 @@ impl Client {
     ///
     /// `peer` accepts the same forms as [`Client::send`] (numeric id or
     /// `@username`).
+    ///
+    /// # Panics
+    ///
+    /// Panics when the peer cannot be resolved: fluent builders have no
+    /// error channel before send, so a bad peer is a caller bug surfaced
+    /// as a fail-fast panic.
+    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
     pub async fn message(
         &self,
         peer: &str,
@@ -1530,6 +1782,13 @@ impl Client {
     /// `client.send_file(peer, path).caption("hi").send().await?`.
     ///
     /// Uploads the file (chunked) and sends it as a document message.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the peer cannot be resolved: fluent builders have no
+    /// error channel before send, so a bad peer is a caller bug surfaced
+    /// as a fail-fast panic.
+    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
     pub async fn send_file(
         &self,
         peer: &str,
@@ -1541,10 +1800,14 @@ impl Client {
 
     /// Start a history iterator over a peer's recent messages:
     /// `client.messages(peer).take(10).collect().await?`.
-    pub async fn messages(
-        &self,
-        peer: &str,
-    ) -> crate::ergonomics::MessagesIter<'_> {
+    ///
+    /// # Panics
+    ///
+    /// Panics when the peer cannot be resolved: fluent builders have no
+    /// error channel before first use, so a bad peer is a caller bug
+    /// surfaced as a fail-fast panic.
+    #[allow(clippy::expect_used)] // fail-fast documented in # Panics
+    pub async fn messages(&self, peer: &str) -> crate::ergonomics::MessagesIter<'_> {
         let peer = self.resolve_peer(peer).await.expect("peer resolution");
         crate::ergonomics::MessagesIter::new(self, peer)
     }
@@ -1576,67 +1839,68 @@ fn peer_debug(peer: &InputPeer) -> String {
 }
 
 /// Extract the `messages` vector from a `messages.Messages*` response.
+// Per-constructor headers differ, but the tail walk is shared; the
+// header parse stays inline to keep the wire layout visible.
+#[allow(clippy::too_many_lines)]
 fn parse_history_messages(data: &[u8]) -> Result<Vec<crate::types::MessageFull>> {
     let mut r = TLReader::new(data);
     let ctor = r.read_u32()?;
-    if ctor != types::MESSAGES_MESSAGES && ctor != types::MESSAGES_MESSAGES_SLICE
+    if ctor != types::MESSAGES_MESSAGES
+        && ctor != types::MESSAGES_MESSAGES_SLICE
         && ctor != types::MESSAGES_CHANNEL_MESSAGES
     {
         return Err(Error::Protocol(format!(
             "unexpected getHistory response constructor {ctor:#x}"
         )));
     }
-    match ctor {
-        types::MESSAGES_MESSAGES_SLICE => {
-            // messagesSlice#5f206716 flags:# inexact:flags.1?true count:int
-            //   next_rate:flags.0?int offset_id_offset:flags.2?int
-            //   search_flood:flags.3?SearchPostsFlood messages topics chats users
-            let flags = r.read_i32()?;
-            let _count = r.read_i32()?;
-            if flags & (1 << 0) != 0 {
-                let _next_rate = r.read_i32()?;
-            }
-            if flags & (1 << 2) != 0 {
-                let _offset_id_offset = r.read_i32()?;
-            }
-            if flags & (1 << 3) != 0 {
-                return Err(Error::Protocol(
-                    "messagesSlice carries search_flood (SearchPostsFlood) — not supported"
-                        .into(),
-                ));
-            }
-            read_messages_tail(&mut r)
+    // messagesSlice#5f206716 flags:# inexact:flags.1?true count:int
+    //   next_rate:flags.0?int offset_id_offset:flags.2?int
+    //   search_flood:flags.3?SearchPostsFlood messages topics chats users
+    if ctor == types::MESSAGES_MESSAGES_SLICE {
+        let flags = r.read_i32()?;
+        let _count = r.read_i32()?;
+        if flags & (1 << 0) != 0 {
+            let _next_rate = r.read_i32()?;
         }
-        types::MESSAGES_CHANNEL_MESSAGES => {
-            // channelMessages#c776ba4e flags:# inexact:flags.1?true pts:int
-            //   count:int offset_id_offset:flags.2?int messages topics chats users
-            let flags = r.read_i32()?;
-            let _pts = r.read_i32()?;
-            let _count = r.read_i32()?;
-            if flags & (1 << 2) != 0 {
-                let _offset_id_offset = r.read_i32()?;
-            }
-            read_messages_tail(&mut r)
+        if flags & (1 << 2) != 0 {
+            let _offset_id_offset = r.read_i32()?;
         }
-        _ => {
-            // messages.messages#1d73e7ea messages topics chats users
-            read_messages_tail(&mut r)
+        if flags & (1 << 3) != 0 {
+            return Err(Error::Protocol(
+                "messagesSlice carries search_flood (SearchPostsFlood) — not supported".into(),
+            ));
         }
     }
+    // channelMessages#c776ba4e flags:# inexact:flags.1?true pts:int
+    //   count:int offset_id_offset:flags.2?int messages topics chats users
+    if ctor == types::MESSAGES_CHANNEL_MESSAGES {
+        let flags = r.read_i32()?;
+        let _pts = r.read_i32()?;
+        let _count = r.read_i32()?;
+        if flags & (1 << 2) != 0 {
+            let _offset_id_offset = r.read_i32()?;
+        }
+    }
+    // messages.messages#1d73e7ea has no header fields.
+    read_messages_tail(&mut r)
 }
 
 /// Shared tail of messages.Messages*: messages, topics, chats, users.
 /// Returns the parsed non-empty/non-service messages.
-fn read_messages_tail(
-    r: &mut TLReader,
-) -> Result<Vec<crate::types::MessageFull>> {
+// Vector counts come from `read_vector_header` — non-negative by TL
+// framing; the cast below only right-sizes the capacity hint.
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
+fn read_messages_tail(r: &mut TLReader) -> Result<Vec<crate::types::MessageFull>> {
     let count = r.read_vector_header()?;
-    let mut out = Vec::with_capacity(count as usize);
+    let mut out = Vec::with_capacity(count.max(0) as usize);
     for _ in 0..count {
         match crate::types::Message::read_from(r)? {
             crate::types::Message::Message(full) => out.push(*full),
-            crate::types::Message::Empty { .. } => {}
-            crate::types::Message::Service { .. } => {}
+            crate::types::Message::Empty { .. } | crate::types::Message::Service { .. } => {}
         }
     }
     // topics:Vector<ForumTopic> — rare in plain history fetches; must be
@@ -1659,6 +1923,8 @@ fn read_messages_tail(
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap/expect/panic are the idiomatic failure modes here.
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
 
     #[test]
@@ -1696,7 +1962,7 @@ mod tests {
         }
     }
 
-    /// Build a users.userFull container bytes and check get_me parsing.
+    /// Build a `users.userFull` container bytes and check `get_me` parsing.
     #[test]
     fn test_parse_user_container() {
         let mut w = TLWriter::new();
@@ -1785,7 +2051,7 @@ mod tests {
         w.write_i32(77); // pts (flags.0)
         // draftMessageEmpty#1b0c841a flags:# date:flags.0?int — the draft
         // shape the live server sends in getDialogs responses
-        w.write_u32(0x1b0c841a);
+        w.write_u32(0x1b0c_841a);
         w.write_i32(0); // draft flags (no date)
         // messages:Vector<Message> — one empty message
         // (messageEmpty#90a6ca84 flags:int id:int). Forwarded / reacted /
@@ -1808,9 +2074,17 @@ mod tests {
             Err(e) => panic!("parse_dialogs failed: {e}"),
         };
         assert_eq!(dialogs.dialogs.len(), 2);
-        assert_eq!(dialogs.dialogs[0].peer, types::Peer::User { user_id: UserId(42) });
-        assert_eq!(dialogs.dialogs[0].top_message, MsgId(10));
-        assert_eq!(dialogs.dialogs[1].pts, Some(77));
+        let [dialog_a, dialog_b] = dialogs.dialogs.as_slice() else {
+            panic!("expected exactly two dialogs");
+        };
+        assert_eq!(
+            dialog_a.peer,
+            types::Peer::User {
+                user_id: UserId(42)
+            }
+        );
+        assert_eq!(dialog_a.top_message, MsgId(10));
+        assert_eq!(dialog_b.pts, Some(77));
         assert_eq!(dialogs.messages.len(), 1);
     }
 
@@ -1842,7 +2116,10 @@ mod tests {
         let mut cache = HashMap::new();
         let peer = Client::parse_resolved_peer(&w.into_bytes(), "Durov", &mut cache).unwrap();
         match peer {
-            InputPeer::User { user_id, access_hash } => {
+            InputPeer::User {
+                user_id,
+                access_hash,
+            } => {
                 assert_eq!(user_id, UserId(4242));
                 assert_eq!(access_hash, AccessHash(9999));
             }
@@ -1860,14 +2137,14 @@ mod tests {
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1); // results
         w.write_u32(types::PEER_CHANNEL);
-        w.write_i64(-1001234);
+        w.write_i64(-100_1234);
         w.write_u32(crate::serialize::VECTOR);
         w.write_i32(1); // chats
         w.write_u32(types::CHANNEL); // channel#d49f34c6
         let flags = (1 << 6) | (1 << 13); // username + access_hash
         w.write_i32(flags);
         w.write_i32(0); // flags2
-        w.write_i64(-1001234); // id
+        w.write_i64(-100_1234); // id
         w.write_i64(5555); // access_hash (flags.13)
         w.write_bytes(b"testchannel"); // title
         w.write_bytes(b"TestChannel"); // username (flags.6)
@@ -1881,8 +2158,11 @@ mod tests {
         let peer =
             Client::parse_resolved_peer(&w.into_bytes(), "@testchannel", &mut cache).unwrap();
         match peer {
-            InputPeer::Channel { channel_id, access_hash } => {
-                assert_eq!(channel_id, ChannelId(-1001234));
+            InputPeer::Channel {
+                channel_id,
+                access_hash,
+            } => {
+                assert_eq!(channel_id, ChannelId(-100_1234));
                 assert_eq!(access_hash, AccessHash(5555));
             }
             other => panic!("expected channel peer, got {other:?}"),

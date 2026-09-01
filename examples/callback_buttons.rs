@@ -22,9 +22,8 @@
 //! The example reads the bot's recent messages, lists the inline buttons
 //! found on the newest one, and presses the first callback button.
 
-use mtprsto::types::{IncomingReplyMarkup, KeyboardButtonKind};
 use mtprsto::Client;
-
+use mtprsto::types::{IncomingReplyMarkup, KeyboardButtonKind};
 
 /// Default to the demo's saved user session when no path is given:
 /// the demo's `--user-phone` login writes it to %TEMP%/mtprsto_demo_session.json.
@@ -72,12 +71,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("connected with user session");
 
     // Read the newest messages from the bot chat.
-    let messages = client.messages(&bot).await.page_size(10).collect(10).await?;
+    let messages = client
+        .messages(&bot)
+        .await
+        .page_size(10)
+        .collect(10)
+        .await?;
     println!("fetched {} message(s) from {bot}", messages.len());
 
     // Find the newest message with an inline keyboard.
     for msg in &messages {
-        let Some(markup) = &msg.reply_markup else { continue };
+        let Some(markup) = &msg.reply_markup else {
+            continue;
+        };
         let IncomingReplyMarkup::Inline { rows } = markup else {
             continue; // reply keyboards can't be "pressed"
         };
@@ -107,9 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Press the first callback button (user-side action).
         if let Some((text, data)) = first_callback {
             println!("pressing \"{text}\"...");
-            let answer = client
-                .get_bot_callback_answer(&bot, msg.id, &data)
-                .await?;
+            let answer = client.get_bot_callback_answer(&bot, msg.id, &data).await?;
             println!(
                 "bot answered: alert={} message={:?} url={:?}",
                 answer.alert, answer.message, answer.url
@@ -119,6 +123,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    println!("no inline keyboards found in the last {} messages", messages.len());
+    println!(
+        "no inline keyboards found in the last {} messages",
+        messages.len()
+    );
     Ok(())
 }

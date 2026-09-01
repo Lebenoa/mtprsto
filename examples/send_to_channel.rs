@@ -21,7 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let mut args = std::env::args().skip(1);
-    let channel_id = args.next().expect("usage: send_to_channel <CHANNEL_ID> [TEXT] [FILE]");
+    let channel_id = args
+        .next()
+        .expect("usage: send_to_channel <CHANNEL_ID> [TEXT] [FILE]");
     let text = args.next().unwrap_or_else(|| "hello from mtprsto".into());
     let file = args.next();
 

@@ -51,7 +51,8 @@ struct PtsState {
 }
 
 impl PtsState {
-    fn new() -> Self {
+    #[must_use]
+    pub(crate) const fn new() -> Self {
         Self {
             pts: 0,
             seq: 0,
@@ -65,18 +66,22 @@ impl PtsState {
     /// In Telegram, `pts` is the state counter BEFORE the update,
     /// and `pts_count` is how much it advances. So the update
     /// matches our expected next state when `pts == self.pts`.
-    fn is_ahead(&self, pts: i32, _pts_count: i32) -> bool {
+    #[must_use]
+    pub(crate) const fn is_ahead(&self, pts: i32, _pts_count: i32) -> bool {
         pts == self.pts
     }
 
     /// Check if we have a gap (update's pts is behind ours).
-    fn is_behind(&self, pts: i32, _pts_count: i32) -> bool {
+    #[must_use]
+    pub(crate) const fn is_behind(&self, pts: i32, _pts_count: i32) -> bool {
         pts < self.pts
     }
 
     /// Update the tracked pts after processing an update.
-    fn advance(&mut self, pts: i32, pts_count: i32) {
-        self.pts = pts + pts_count;
+    const fn advance(&mut self, pts: i32, pts_count: i32) {
+        // pts counters are bounded by Telegram's update windows; the
+        // server order (and clippy) are informed this cannot wrap
+        self.pts = pts.saturating_add(pts_count);
     }
 }
 
@@ -106,6 +111,7 @@ pub struct UpdateDispatcher {
 
 impl UpdateDispatcher {
     /// Create a new update dispatcher.
+    #[must_use]
     pub fn new() -> Self {
         let (sender, _receiver) = mpsc::unbounded_channel();
         Self {
@@ -121,6 +127,7 @@ impl UpdateDispatcher {
     }
 
     /// Create a dispatcher with an mpsc channel receiver.
+    #[must_use]
     pub fn with_channel() -> (Self, mpsc::UnboundedReceiver<Update>) {
         let (sender, receiver) = mpsc::unbounded_channel();
         (
@@ -138,8 +145,8 @@ impl UpdateDispatcher {
         )
     }
 
-
     /// Create a dispatcher that drops updates (for testing).
+    #[must_use]
     pub fn noop() -> Self {
         Self::new()
     }
@@ -155,20 +162,38 @@ impl UpdateDispatcher {
     /// Process an incoming Updates object and dispatch individual updates.
     pub fn process_updates(&mut self, updates: Updates) -> Vec<Update> {
         match updates {
-            Updates::Updates { updates: upd_list, date, .. } => {
+            Updates::Updates {
+                updates: upd_list,
+                date,
+                ..
+            } => {
                 self.account_pts.date = date;
                 self.dispatch_list(upd_list)
             }
-            Updates::UpdateShort { update, date, seq: _ } => {
+            Updates::UpdateShort {
+                update,
+                date,
+                seq: _,
+            } => {
                 self.account_pts.date = date;
                 self.dispatch_one(update)
             }
-            Updates::UpdatesCombined { updates: upd_list, date, seq, .. } => {
+            Updates::UpdatesCombined {
+                updates: upd_list,
+                date,
+                seq,
+                ..
+            } => {
                 self.account_pts.date = date;
                 self.account_pts.seq = seq;
                 self.dispatch_list(upd_list)
             }
-            Updates::UpdateShortSentMessage { id: _, pts, pts_count, date } => {
+            Updates::UpdateShortSentMessage {
+                id: _,
+                pts,
+                pts_count,
+                date,
+            } => {
                 self.account_pts.date = date;
                 self.account_pts.advance(pts, pts_count);
                 // This isn't a real Update — the caller uses the message_id
@@ -199,7 +224,11 @@ impl UpdateDispatcher {
 
                 if self.account_pts.is_behind(pts, pts_count) {
                     // Stale update, already processed
-                    tracing::debug!(pts, expected = self.account_pts.pts, "stale update, skipping");
+                    tracing::debug!(
+                        pts,
+                        expected = self.account_pts.pts,
+                        "stale update, skipping"
+                    );
                     return Vec::new();
                 }
 
@@ -255,8 +284,9 @@ impl UpdateDispatcher {
         self.handlers.push(handler);
     }
 
-    /// Check if we need to call updates.getDifference.
-    pub fn needs_difference(&self) -> bool {
+    /// Check if we need to call `updates.getDifference`.
+    #[must_use]
+    pub const fn needs_difference(&self) -> bool {
         self.account_pts.gap_pending
     }
 
@@ -280,41 +310,48 @@ impl UpdateDispatcher {
     }
 
     /// Get the current account pts.
-    pub fn account_pts(&self) -> i32 {
+    #[must_use]
+    pub const fn account_pts(&self) -> i32 {
         self.account_pts.pts
     }
 
     /// Get the current account seq.
-    pub fn account_seq(&self) -> i32 {
+    #[must_use]
+    pub const fn account_seq(&self) -> i32 {
         self.account_pts.seq
     }
 
     /// Get the current date.
-    pub fn date(&self) -> i32 {
+    #[must_use]
+    pub const fn date(&self) -> i32 {
         self.account_pts.date
     }
 
     /// Get the number of buffered updates.
-    pub fn buffered_count(&self) -> usize {
+    #[must_use]
+    pub const fn buffered_count(&self) -> usize {
         self.buffered.len()
     }
 
     /// Initialize channel pts (call when joining a channel).
     pub fn init_channel_pts(&mut self, channel_id: i64, pts: i32) {
-        self.channel_pts.insert(channel_id, PtsState {
-            pts,
-            seq: 0,
-            date: 0,
-            gap_pending: false,
-        });
+        self.channel_pts.insert(
+            channel_id,
+            PtsState {
+                pts,
+                seq: 0,
+                date: 0,
+                gap_pending: false,
+            },
+        );
     }
 
     /// Check if a specific channel has a pending gap.
+    #[must_use]
     pub fn channel_needs_difference(&self, channel_id: i64) -> bool {
         self.channel_pts
             .get(&channel_id)
-            .map(|s| s.gap_pending)
-            .unwrap_or(false)
+            .is_some_and(|s| s.gap_pending)
     }
 
     /// Drain the queue of channels flagged by `UpdateChannelTooLong`
@@ -340,18 +377,20 @@ impl UpdateDispatcher {
     }
 
     /// Get a channel's tracked pts, if any.
+    #[must_use]
     pub fn channel_pts_of(&self, channel_id: i64) -> Option<i32> {
         self.channel_pts.get(&channel_id).map(|s| s.pts)
     }
 
     /// Record the server-side qts from `updates.getState`
     /// (SPEC §6.1: qts tracks mentions separately from pts).
-    pub fn set_qts(&mut self, qts: i32) {
+    pub const fn set_qts(&mut self, qts: i32) {
         self.qts = qts;
     }
 
     /// Get the tracked qts value.
-    pub fn account_qts(&self) -> i32 {
+    #[must_use]
+    pub const fn account_qts(&self) -> i32 {
         self.qts
     }
 }
@@ -364,15 +403,28 @@ impl Default for UpdateDispatcher {
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap/panic are the idiomatic failure modes here, and
+    // epoch timestamps are quoted raw. `msg_id`/`pts` naming mirrors the
+    // wire shape (similar_names).
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreadable_literal,
+        clippy::similar_names,
+        clippy::assert_is_empty
+    )]
     use super::*;
-    use crate::types::{Message, Peer, MsgId};
+    use crate::types::{Message, MsgId, Peer};
 
     fn make_text_update(msg_id: i32, pts: i32, pts_count: i32) -> Update {
         Update::NewMessage {
             message: Message::Message(Box::new(crate::types::MessageFull {
-                id: MsgId(msg_id as i64),
+                id: MsgId(i64::from(msg_id)),
                 from_id: None,
-                peer_id: Peer::User { user_id: crate::types::UserId(1) },
+                peer_id: Peer::User {
+                    user_id: crate::types::UserId(1),
+                },
                 date: 1000,
                 message: "hello".into(),
                 media: None,

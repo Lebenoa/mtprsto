@@ -7,10 +7,17 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const ACCOUNT_UPDATE_PROFILE_ID: u32 = 0x78515775;
 pub const PHOTOS_UPLOAD_PROFILE_PHOTO_ID: u32 = 0x0388a3b5;
@@ -230,11 +237,25 @@ pub const CHANNELS_GET_CHANNELS_ID: u32 = 0x0a7f6bbb;
 #[derive(Debug, Clone, PartialEq)]
 pub enum VideoSize {
     /// `videoSizeStickerMarkup#0da082fe`
-    VideoSizeStickerMarkup { stickerset: InputStickerSet, sticker_id: i64, background_colors: Vec<i32> },
+    VideoSizeStickerMarkup {
+        stickerset: InputStickerSet,
+        sticker_id: i64,
+        background_colors: Vec<i32>,
+    },
     /// `videoSizeEmojiMarkup#f85c413c`
-    VideoSizeEmojiMarkup { emoji_id: i64, background_colors: Vec<i32> },
+    VideoSizeEmojiMarkup {
+        emoji_id: i64,
+        background_colors: Vec<i32>,
+    },
     /// `videoSize#de33b094`
-    VideoSize { flags: i32, r#type: String, w: i32, h: i32, size: i32, video_start_ts: Option<f64> },
+    VideoSize {
+        flags: i32,
+        r#type: String,
+        w: i32,
+        h: i32,
+        size: i32,
+        video_start_ts: Option<f64>,
+    },
 }
 
 impl VideoSize {
@@ -242,37 +263,51 @@ impl VideoSize {
         let ctor = r.read_u32()?;
         match ctor {
             VIDEO_SIZE_STICKER_MARKUP_ID => {
-    let stickerset = InputStickerSet::read_from(r)?;
-    let sticker_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        background_colors.push(r.read_i32()?);
-    }
-                Ok(VideoSize::VideoSizeStickerMarkup { stickerset, sticker_id, background_colors })
+                let stickerset = InputStickerSet::read_from(r)?;
+                let sticker_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeStickerMarkup {
+                    stickerset,
+                    sticker_id,
+                    background_colors,
+                })
             }
             VIDEO_SIZE_EMOJI_MARKUP_ID => {
-    let emoji_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        background_colors.push(r.read_i32()?);
-    }
-                Ok(VideoSize::VideoSizeEmojiMarkup { emoji_id, background_colors })
+                let emoji_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeEmojiMarkup {
+                    emoji_id,
+                    background_colors,
+                })
             }
             VIDEO_SIZE_ID => {
-    let flags = r.read_i32()?;
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let size = r.read_i32()?;
-    let video_start_ts = if flags & (1 << 0) != 0 {
-        let video_start_ts = f64::from_bits(r.read_u64()?);
-        Some(video_start_ts)
-    } else {
-        None
-    };
-                Ok(VideoSize::VideoSize { flags, r#type, w, h, size, video_start_ts })
+                let flags = r.read_i32()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let size = r.read_i32()?;
+                let video_start_ts = if flags & (1 << 0) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                Ok(VideoSize::VideoSize {
+                    flags,
+                    r#type,
+                    w,
+                    h,
+                    size,
+                    video_start_ts,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown VideoSize constructor {other:#x}"
@@ -314,47 +349,43 @@ impl InputStickerSet {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_STICKER_SET_TON_GIFTS_ID => {
-                Ok(InputStickerSet::InputStickerSetTonGifts {  })
-            }
+            INPUT_STICKER_SET_TON_GIFTS_ID => Ok(InputStickerSet::InputStickerSetTonGifts {}),
             INPUT_STICKER_SET_EMOJI_CHANNEL_DEFAULT_STATUSES_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiChannelDefaultStatuses {  })
+                Ok(InputStickerSet::InputStickerSetEmojiChannelDefaultStatuses {})
             }
             INPUT_STICKER_SET_EMOJI_DEFAULT_TOPIC_ICONS_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiDefaultTopicIcons {  })
+                Ok(InputStickerSet::InputStickerSetEmojiDefaultTopicIcons {})
             }
             INPUT_STICKER_SET_EMOJI_DEFAULT_STATUSES_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiDefaultStatuses {  })
+                Ok(InputStickerSet::InputStickerSetEmojiDefaultStatuses {})
             }
             INPUT_STICKER_SET_EMOJI_GENERIC_ANIMATIONS_ID => {
-                Ok(InputStickerSet::InputStickerSetEmojiGenericAnimations {  })
+                Ok(InputStickerSet::InputStickerSetEmojiGenericAnimations {})
             }
             INPUT_STICKER_SET_PREMIUM_GIFTS_ID => {
-                Ok(InputStickerSet::InputStickerSetPremiumGifts {  })
+                Ok(InputStickerSet::InputStickerSetPremiumGifts {})
             }
             INPUT_STICKER_SET_ANIMATED_EMOJI_ANIMATIONS_ID => {
-                Ok(InputStickerSet::InputStickerSetAnimatedEmojiAnimations {  })
+                Ok(InputStickerSet::InputStickerSetAnimatedEmojiAnimations {})
             }
             INPUT_STICKER_SET_DICE_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputStickerSet::InputStickerSetDice { emoticon })
             }
             INPUT_STICKER_SET_ANIMATED_EMOJI_ID => {
-                Ok(InputStickerSet::InputStickerSetAnimatedEmoji {  })
+                Ok(InputStickerSet::InputStickerSetAnimatedEmoji {})
             }
             INPUT_STICKER_SET_SHORT_NAME_ID => {
-    let short_name = String::from_utf8(r.read_bytes()?)?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputStickerSet::InputStickerSetShortName { short_name })
             }
             INPUT_STICKER_SET_ID_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputStickerSet::InputStickerSetID { id, access_hash })
             }
-            INPUT_STICKER_SET_EMPTY_ID => {
-                Ok(InputStickerSet::InputStickerSetEmpty {  })
-            }
+            INPUT_STICKER_SET_EMPTY_ID => Ok(InputStickerSet::InputStickerSetEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputStickerSet constructor {other:#x}"
             ))),
@@ -370,7 +401,12 @@ pub enum InputFile {
     /// `inputFileBig#fa4f0bb5`
     Big { id: i64, parts: i32, name: String },
     /// `inputFile#f52ff27f`
-    Id { id: i64, parts: i32, name: String, md5_checksum: String },
+    Id {
+        id: i64,
+        parts: i32,
+        name: String,
+        md5_checksum: String,
+    },
 }
 
 impl InputFile {
@@ -378,21 +414,26 @@ impl InputFile {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_FILE_STORY_DOCUMENT_ID => {
-    let id = InputDocument::read_from(r)?;
+                let id = InputDocument::read_from(r)?;
                 Ok(InputFile::InputFileStoryDocument { id })
             }
             INPUT_FILE_BIG_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let name = String::from_utf8(r.read_bytes()?)?;
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputFile::Big { id, parts, name })
             }
             INPUT_FILE_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let name = String::from_utf8(r.read_bytes()?)?;
-    let md5_checksum = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputFile::Id { id, parts, name, md5_checksum })
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let name = String::from_utf8(r.read_bytes()?)?;
+                let md5_checksum = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputFile::Id {
+                    id,
+                    parts,
+                    name,
+                    md5_checksum,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputFile constructor {other:#x}"
@@ -405,7 +446,11 @@ impl InputFile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputDocument {
     /// `inputDocument#1abfb575`
-    Document { id: i64, access_hash: AccessHash, file_reference: Vec<u8> },
+    Document {
+        id: i64,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+    },
     /// `inputDocumentEmpty#72f0eaae`
     Empty,
 }
@@ -415,15 +460,17 @@ impl InputDocument {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_DOCUMENT_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputDocument::Document { id, access_hash, file_reference })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputDocument::Document {
+                    id,
+                    access_hash,
+                    file_reference,
+                })
             }
-            INPUT_DOCUMENT_EMPTY_ID => {
-                Ok(InputDocument::Empty {  })
-            }
+            INPUT_DOCUMENT_EMPTY_ID => Ok(InputDocument::Empty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputDocument constructor {other:#x}"
             ))),
@@ -435,9 +482,16 @@ impl InputDocument {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputUser {
     /// `inputUserFromMessage#1da448e2`
-    InputUserFromMessage { peer: InputPeer, msg_id: i32, user_id: UserId },
+    InputUserFromMessage {
+        peer: InputPeer,
+        msg_id: i32,
+        user_id: UserId,
+    },
     /// `inputUser#f21158c6`
-    User { user_id: UserId, access_hash: AccessHash },
+    User {
+        user_id: UserId,
+        access_hash: AccessHash,
+    },
     /// `inputUserSelf#f7c1b13f`
     Self_,
     /// `inputUserEmpty#b98886cf`
@@ -449,25 +503,28 @@ impl InputUser {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_USER_FROM_MESSAGE_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(InputUser::InputUserFromMessage { peer, msg_id, user_id })
+                let peer = InputPeer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(InputUser::InputUserFromMessage {
+                    peer,
+                    msg_id,
+                    user_id,
+                })
             }
             INPUT_USER_ID => {
-    let user_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let user_id = UserId(user_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputUser::User { user_id, access_hash })
+                let user_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let user_id = UserId(user_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputUser::User {
+                    user_id,
+                    access_hash,
+                })
             }
-            INPUT_USER_SELF_ID => {
-                Ok(InputUser::Self_ {  })
-            }
-            INPUT_USER_EMPTY_ID => {
-                Ok(InputUser::InputUserEmpty {  })
-            }
+            INPUT_USER_SELF_ID => Ok(InputUser::Self_ {}),
+            INPUT_USER_EMPTY_ID => Ok(InputUser::InputUserEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputUser constructor {other:#x}"
             ))),
@@ -479,13 +536,27 @@ impl InputUser {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPeer {
     /// `inputPeerChannelFromMessage#bd2a0840`
-    ChannelFromMessage { peer: Box<InputPeer>, msg_id: i32, channel_id: ChannelId },
+    ChannelFromMessage {
+        peer: Box<InputPeer>,
+        msg_id: i32,
+        channel_id: ChannelId,
+    },
     /// `inputPeerUserFromMessage#a87b0a1c`
-    UserFromMessage { peer: Box<InputPeer>, msg_id: i32, user_id: UserId },
+    UserFromMessage {
+        peer: Box<InputPeer>,
+        msg_id: i32,
+        user_id: UserId,
+    },
     /// `inputPeerChannel#27bcbbfc`
-    Channel { channel_id: ChannelId, access_hash: AccessHash },
+    Channel {
+        channel_id: ChannelId,
+        access_hash: AccessHash,
+    },
     /// `inputPeerUser#dde8a54c`
-    User { user_id: UserId, access_hash: AccessHash },
+    User {
+        user_id: UserId,
+        access_hash: AccessHash,
+    },
     /// `inputPeerChat#35a95cb9`
     Chat { chat_id: ChatId },
     /// `inputPeerSelf#7da07ec9`
@@ -499,44 +570,54 @@ impl InputPeer {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PEER_CHANNEL_FROM_MESSAGE_ID => {
-    let peer = Box::new(InputPeer::read_from(r)?);
-    let msg_id = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(InputPeer::ChannelFromMessage { peer, msg_id, channel_id })
+                let peer = Box::new(InputPeer::read_from(r)?);
+                let msg_id = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(InputPeer::ChannelFromMessage {
+                    peer,
+                    msg_id,
+                    channel_id,
+                })
             }
             INPUT_PEER_USER_FROM_MESSAGE_ID => {
-    let peer = Box::new(InputPeer::read_from(r)?);
-    let msg_id = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(InputPeer::UserFromMessage { peer, msg_id, user_id })
+                let peer = Box::new(InputPeer::read_from(r)?);
+                let msg_id = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(InputPeer::UserFromMessage {
+                    peer,
+                    msg_id,
+                    user_id,
+                })
             }
             INPUT_PEER_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPeer::Channel { channel_id, access_hash })
+                let channel_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPeer::Channel {
+                    channel_id,
+                    access_hash,
+                })
             }
             INPUT_PEER_USER_ID => {
-    let user_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let user_id = UserId(user_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPeer::User { user_id, access_hash })
+                let user_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let user_id = UserId(user_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPeer::User {
+                    user_id,
+                    access_hash,
+                })
             }
             INPUT_PEER_CHAT_ID => {
-    let chat_id = r.read_i64()?;
-    let chat_id = ChatId(chat_id);
+                let chat_id = r.read_i64()?;
+                let chat_id = ChatId(chat_id);
                 Ok(InputPeer::Chat { chat_id })
             }
-            INPUT_PEER_SELF_ID => {
-                Ok(InputPeer::Self_ {  })
-            }
-            INPUT_PEER_EMPTY_ID => {
-                Ok(InputPeer::InputPeerEmpty {  })
-            }
+            INPUT_PEER_SELF_ID => Ok(InputPeer::Self_ {}),
+            INPUT_PEER_EMPTY_ID => Ok(InputPeer::InputPeerEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputPeer constructor {other:#x}"
             ))),
@@ -548,7 +629,11 @@ impl InputPeer {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPhoto {
     /// `inputPhoto#3bb3b94a`
-    InputPhoto { id: i64, access_hash: AccessHash, file_reference: Vec<u8> },
+    InputPhoto {
+        id: i64,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+    },
     /// `inputPhotoEmpty#1cd7bf0d`
     InputPhotoEmpty,
 }
@@ -558,15 +643,17 @@ impl InputPhoto {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PHOTO_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputPhoto::InputPhoto { id, access_hash, file_reference })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputPhoto::InputPhoto {
+                    id,
+                    access_hash,
+                    file_reference,
+                })
             }
-            INPUT_PHOTO_EMPTY_ID => {
-                Ok(InputPhoto::InputPhotoEmpty {  })
-            }
+            INPUT_PHOTO_EMPTY_ID => Ok(InputPhoto::InputPhotoEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputPhoto constructor {other:#x}"
             ))),
@@ -578,7 +665,11 @@ impl InputPhoto {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChannelParticipantsFilter {
     /// `channelParticipantsMentions#e04b5ceb`
-    ChannelParticipantsMentions { flags: i32, q: Option<String>, top_msg_id: Option<i32> },
+    ChannelParticipantsMentions {
+        flags: i32,
+        q: Option<String>,
+        top_msg_id: Option<i32>,
+    },
     /// `channelParticipantsContacts#bb6ae88d`
     ChannelParticipantsContacts { q: String },
     /// `channelParticipantsSearch#0656ac4b`
@@ -600,45 +691,49 @@ impl ChannelParticipantsFilter {
         let ctor = r.read_u32()?;
         match ctor {
             CHANNEL_PARTICIPANTS_MENTIONS_ID => {
-    let flags = r.read_i32()?;
-    let q = if flags & (1 << 0) != 0 {
-        let q = String::from_utf8(r.read_bytes()?)?;
-        Some(q)
-    } else {
-        None
-    };
-    let top_msg_id = if flags & (1 << 1) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-                Ok(ChannelParticipantsFilter::ChannelParticipantsMentions { flags, q, top_msg_id })
+                let flags = r.read_i32()?;
+                let q = if flags & (1 << 0) != 0 {
+                    let q = String::from_utf8(r.read_bytes()?)?;
+                    Some(q)
+                } else {
+                    None
+                };
+                let top_msg_id = if flags & (1 << 1) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                Ok(ChannelParticipantsFilter::ChannelParticipantsMentions {
+                    flags,
+                    q,
+                    top_msg_id,
+                })
             }
             CHANNEL_PARTICIPANTS_CONTACTS_ID => {
-    let q = String::from_utf8(r.read_bytes()?)?;
+                let q = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChannelParticipantsFilter::ChannelParticipantsContacts { q })
             }
             CHANNEL_PARTICIPANTS_SEARCH_ID => {
-    let q = String::from_utf8(r.read_bytes()?)?;
+                let q = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChannelParticipantsFilter::ChannelParticipantsSearch { q })
             }
             CHANNEL_PARTICIPANTS_BANNED_ID => {
-    let q = String::from_utf8(r.read_bytes()?)?;
+                let q = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChannelParticipantsFilter::ChannelParticipantsBanned { q })
             }
             CHANNEL_PARTICIPANTS_BOTS_ID => {
-                Ok(ChannelParticipantsFilter::ChannelParticipantsBots {  })
+                Ok(ChannelParticipantsFilter::ChannelParticipantsBots {})
             }
             CHANNEL_PARTICIPANTS_KICKED_ID => {
-    let q = String::from_utf8(r.read_bytes()?)?;
+                let q = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChannelParticipantsFilter::ChannelParticipantsKicked { q })
             }
             CHANNEL_PARTICIPANTS_ADMINS_ID => {
-                Ok(ChannelParticipantsFilter::ChannelParticipantsAdmins {  })
+                Ok(ChannelParticipantsFilter::ChannelParticipantsAdmins {})
             }
             CHANNEL_PARTICIPANTS_RECENT_ID => {
-                Ok(ChannelParticipantsFilter::ChannelParticipantsRecent {  })
+                Ok(ChannelParticipantsFilter::ChannelParticipantsRecent {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChannelParticipantsFilter constructor {other:#x}"
@@ -651,9 +746,16 @@ impl ChannelParticipantsFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputChannel {
     /// `inputChannelFromMessage#5b934f9d`
-    InputChannelFromMessage { peer: InputPeer, msg_id: i32, channel_id: ChannelId },
+    InputChannelFromMessage {
+        peer: InputPeer,
+        msg_id: i32,
+        channel_id: ChannelId,
+    },
     /// `inputChannel#f35aec28`
-    Channel { channel_id: ChannelId, access_hash: AccessHash },
+    Channel {
+        channel_id: ChannelId,
+        access_hash: AccessHash,
+    },
     /// `inputChannelEmpty#ee8c1e86`
     InputChannelEmpty,
 }
@@ -663,22 +765,27 @@ impl InputChannel {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_CHANNEL_FROM_MESSAGE_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let msg_id = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(InputChannel::InputChannelFromMessage { peer, msg_id, channel_id })
+                let peer = InputPeer::read_from(r)?;
+                let msg_id = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(InputChannel::InputChannelFromMessage {
+                    peer,
+                    msg_id,
+                    channel_id,
+                })
             }
             INPUT_CHANNEL_ID => {
-    let channel_id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
-    let access_hash = AccessHash(access_hash);
-                Ok(InputChannel::Channel { channel_id, access_hash })
+                let channel_id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
+                let access_hash = AccessHash(access_hash);
+                Ok(InputChannel::Channel {
+                    channel_id,
+                    access_hash,
+                })
             }
-            INPUT_CHANNEL_EMPTY_ID => {
-                Ok(InputChannel::InputChannelEmpty {  })
-            }
+            INPUT_CHANNEL_EMPTY_ID => Ok(InputChannel::InputChannelEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputChannel constructor {other:#x}"
             ))),
@@ -690,11 +797,31 @@ impl InputChannel {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageEntity {
     /// `messageEntityFormattedDate#904ac7c7`
-    FormattedDate { flags: i32, relative: bool, short_time: bool, long_time: bool, short_date: bool, long_date: bool, day_of_week: bool, offset: i32, length: i32, date: i32 },
+    FormattedDate {
+        flags: i32,
+        relative: bool,
+        short_time: bool,
+        long_time: bool,
+        short_date: bool,
+        long_date: bool,
+        day_of_week: bool,
+        offset: i32,
+        length: i32,
+        date: i32,
+    },
     /// `messageEntityBlockquote#f1ccaaac`
-    Blockquote { flags: i32, collapsed: bool, offset: i32, length: i32 },
+    Blockquote {
+        flags: i32,
+        collapsed: bool,
+        offset: i32,
+        length: i32,
+    },
     /// `messageEntityCustomEmoji#c8cf05f8`
-    CustomEmoji { offset: i32, length: i32, document_id: i64 },
+    CustomEmoji {
+        offset: i32,
+        length: i32,
+        document_id: i64,
+    },
     /// `messageEntitySpoiler#32ca960f`
     Spoiler { offset: i32, length: i32 },
     /// `messageEntityBankCard#761e6af4`
@@ -708,13 +835,29 @@ pub enum MessageEntity {
     /// `messageEntityPhone#9b69e34b`
     Phone { offset: i32, length: i32 },
     /// `inputMessageEntityMentionName#208e68c9`
-    InputMessageEntityMentionName { offset: i32, length: i32, user_id: InputUser },
+    InputMessageEntityMentionName {
+        offset: i32,
+        length: i32,
+        user_id: InputUser,
+    },
     /// `messageEntityMentionName#dc7b1140`
-    MentionName { offset: i32, length: i32, user_id: UserId },
+    MentionName {
+        offset: i32,
+        length: i32,
+        user_id: UserId,
+    },
     /// `messageEntityTextUrl#76a6d327`
-    TextUrl { offset: i32, length: i32, url: String },
+    TextUrl {
+        offset: i32,
+        length: i32,
+        url: String,
+    },
     /// `messageEntityPre#73924be0`
-    Pre { offset: i32, length: i32, language: String },
+    Pre {
+        offset: i32,
+        length: i32,
+        language: String,
+    },
     /// `messageEntityCode#28a20571`
     Code { offset: i32, length: i32 },
     /// `messageEntityItalic#826f8b60`
@@ -740,129 +883,165 @@ impl MessageEntity {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_ENTITY_FORMATTED_DATE_ID => {
-    let flags = r.read_i32()?;
-    let relative = flags & (1 << 0) != 0;
-    let short_time = flags & (1 << 1) != 0;
-    let long_time = flags & (1 << 2) != 0;
-    let short_date = flags & (1 << 3) != 0;
-    let long_date = flags & (1 << 4) != 0;
-    let day_of_week = flags & (1 << 5) != 0;
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let date = r.read_i32()?;
-                Ok(MessageEntity::FormattedDate { flags, relative, short_time, long_time, short_date, long_date, day_of_week, offset, length, date })
+                let flags = r.read_i32()?;
+                let relative = flags & (1 << 0) != 0;
+                let short_time = flags & (1 << 1) != 0;
+                let long_time = flags & (1 << 2) != 0;
+                let short_date = flags & (1 << 3) != 0;
+                let long_date = flags & (1 << 4) != 0;
+                let day_of_week = flags & (1 << 5) != 0;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let date = r.read_i32()?;
+                Ok(MessageEntity::FormattedDate {
+                    flags,
+                    relative,
+                    short_time,
+                    long_time,
+                    short_date,
+                    long_date,
+                    day_of_week,
+                    offset,
+                    length,
+                    date,
+                })
             }
             MESSAGE_ENTITY_BLOCKQUOTE_ID => {
-    let flags = r.read_i32()?;
-    let collapsed = flags & (1 << 0) != 0;
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-                Ok(MessageEntity::Blockquote { flags, collapsed, offset, length })
+                let flags = r.read_i32()?;
+                let collapsed = flags & (1 << 0) != 0;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                Ok(MessageEntity::Blockquote {
+                    flags,
+                    collapsed,
+                    offset,
+                    length,
+                })
             }
             MESSAGE_ENTITY_CUSTOM_EMOJI_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let document_id = r.read_i64()?;
-                Ok(MessageEntity::CustomEmoji { offset, length, document_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let document_id = r.read_i64()?;
+                Ok(MessageEntity::CustomEmoji {
+                    offset,
+                    length,
+                    document_id,
+                })
             }
             MESSAGE_ENTITY_SPOILER_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Spoiler { offset, length })
             }
             MESSAGE_ENTITY_BANK_CARD_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::BankCard { offset, length })
             }
             MESSAGE_ENTITY_STRIKE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Strike { offset, length })
             }
             MESSAGE_ENTITY_UNDERLINE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Underline { offset, length })
             }
             MESSAGE_ENTITY_CASHTAG_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Cashtag { offset, length })
             }
             MESSAGE_ENTITY_PHONE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Phone { offset, length })
             }
             INPUT_MESSAGE_ENTITY_MENTION_NAME_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let user_id = InputUser::read_from(r)?;
-                Ok(MessageEntity::InputMessageEntityMentionName { offset, length, user_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let user_id = InputUser::read_from(r)?;
+                Ok(MessageEntity::InputMessageEntityMentionName {
+                    offset,
+                    length,
+                    user_id,
+                })
             }
             MESSAGE_ENTITY_MENTION_NAME_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(MessageEntity::MentionName { offset, length, user_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(MessageEntity::MentionName {
+                    offset,
+                    length,
+                    user_id,
+                })
             }
             MESSAGE_ENTITY_TEXT_URL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageEntity::TextUrl { offset, length, url })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageEntity::TextUrl {
+                    offset,
+                    length,
+                    url,
+                })
             }
             MESSAGE_ENTITY_PRE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let language = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageEntity::Pre { offset, length, language })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let language = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageEntity::Pre {
+                    offset,
+                    length,
+                    language,
+                })
             }
             MESSAGE_ENTITY_CODE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Code { offset, length })
             }
             MESSAGE_ENTITY_ITALIC_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Italic { offset, length })
             }
             MESSAGE_ENTITY_BOLD_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Bold { offset, length })
             }
             MESSAGE_ENTITY_EMAIL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Email { offset, length })
             }
             MESSAGE_ENTITY_URL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Url { offset, length })
             }
             MESSAGE_ENTITY_BOT_COMMAND_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::BotCommand { offset, length })
             }
             MESSAGE_ENTITY_HASHTAG_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Hashtag { offset, length })
             }
             MESSAGE_ENTITY_MENTION_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Mention { offset, length })
             }
             MESSAGE_ENTITY_UNKNOWN_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Unknown { offset, length })
             }
             other => Err(Error::Serialization(format!(
@@ -878,9 +1057,22 @@ pub enum ReplyMarkup {
     /// `replyInlineMarkup#48a30254`
     InlineKeyboard { rows: Vec<KeyboardButtonRow> },
     /// `replyKeyboardMarkup#85dd99d1`
-    ReplyKeyboard { flags: i32, resize: bool, single_use: bool, selective: bool, persistent: bool, rows: Vec<KeyboardButtonRow>, placeholder: Option<String> },
+    ReplyKeyboard {
+        flags: i32,
+        resize: bool,
+        single_use: bool,
+        selective: bool,
+        persistent: bool,
+        rows: Vec<KeyboardButtonRow>,
+        placeholder: Option<String>,
+    },
     /// `replyKeyboardForceReply#86b40b08`
-    ForceReply { flags: i32, single_use: bool, selective: bool, placeholder: Option<String> },
+    ForceReply {
+        flags: i32,
+        single_use: bool,
+        selective: bool,
+        placeholder: Option<String>,
+    },
     /// `replyKeyboardHide#a03e5b85`
     None { flags: i32, selective: bool },
 }
@@ -890,47 +1082,60 @@ impl ReplyMarkup {
         let ctor = r.read_u32()?;
         match ctor {
             REPLY_INLINE_MARKUP_ID => {
-    let n = r.read_vector_header()?;
-    let mut rows = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rows.push(KeyboardButtonRow::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut rows = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rows.push(KeyboardButtonRow::read_from(r)?);
+                }
                 Ok(ReplyMarkup::InlineKeyboard { rows })
             }
             REPLY_KEYBOARD_MARKUP_ID => {
-    let flags = r.read_i32()?;
-    let resize = flags & (1 << 0) != 0;
-    let single_use = flags & (1 << 1) != 0;
-    let selective = flags & (1 << 2) != 0;
-    let persistent = flags & (1 << 4) != 0;
-    let n = r.read_vector_header()?;
-    let mut rows = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rows.push(KeyboardButtonRow::read_from(r)?);
-    }
-    let placeholder = if flags & (1 << 3) != 0 {
-        let placeholder = String::from_utf8(r.read_bytes()?)?;
-        Some(placeholder)
-    } else {
-        None
-    };
-                Ok(ReplyMarkup::ReplyKeyboard { flags, resize, single_use, selective, persistent, rows, placeholder })
+                let flags = r.read_i32()?;
+                let resize = flags & (1 << 0) != 0;
+                let single_use = flags & (1 << 1) != 0;
+                let selective = flags & (1 << 2) != 0;
+                let persistent = flags & (1 << 4) != 0;
+                let n = r.read_vector_header()?;
+                let mut rows = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rows.push(KeyboardButtonRow::read_from(r)?);
+                }
+                let placeholder = if flags & (1 << 3) != 0 {
+                    let placeholder = String::from_utf8(r.read_bytes()?)?;
+                    Some(placeholder)
+                } else {
+                    None
+                };
+                Ok(ReplyMarkup::ReplyKeyboard {
+                    flags,
+                    resize,
+                    single_use,
+                    selective,
+                    persistent,
+                    rows,
+                    placeholder,
+                })
             }
             REPLY_KEYBOARD_FORCE_REPLY_ID => {
-    let flags = r.read_i32()?;
-    let single_use = flags & (1 << 1) != 0;
-    let selective = flags & (1 << 2) != 0;
-    let placeholder = if flags & (1 << 3) != 0 {
-        let placeholder = String::from_utf8(r.read_bytes()?)?;
-        Some(placeholder)
-    } else {
-        None
-    };
-                Ok(ReplyMarkup::ForceReply { flags, single_use, selective, placeholder })
+                let flags = r.read_i32()?;
+                let single_use = flags & (1 << 1) != 0;
+                let selective = flags & (1 << 2) != 0;
+                let placeholder = if flags & (1 << 3) != 0 {
+                    let placeholder = String::from_utf8(r.read_bytes()?)?;
+                    Some(placeholder)
+                } else {
+                    None
+                };
+                Ok(ReplyMarkup::ForceReply {
+                    flags,
+                    single_use,
+                    selective,
+                    placeholder,
+                })
             }
             REPLY_KEYBOARD_HIDE_ID => {
-    let flags = r.read_i32()?;
-    let selective = flags & (1 << 2) != 0;
+                let flags = r.read_i32()?;
+                let selective = flags & (1 << 2) != 0;
                 Ok(ReplyMarkup::None { flags, selective })
             }
             other => Err(Error::Serialization(format!(
@@ -954,57 +1159,154 @@ impl KeyboardButtonRow {
                 "expected keyboardButtonRow, got {ctor:#x}"
             )));
         }
-    let n = r.read_vector_header()?;
-    let mut buttons = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        buttons.push(KeyboardButton::read_from(r)?);
+        let n = r.read_vector_header()?;
+        let mut buttons = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            buttons.push(KeyboardButton::read_from(r)?);
+        }
+        Ok(KeyboardButtonRow { buttons })
     }
-        Ok(KeyboardButtonRow {
-            buttons,
-        })
-    }
-
 }
 
 /// Union `KeyboardButton` (18 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyboardButton {
     /// `keyboardButtonCopy#bcc4af10`
-    KeyboardButtonCopy { flags: i32, style: Option<KeyboardButtonStyle>, text: String, copy_text: String },
+    KeyboardButtonCopy {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        copy_text: String,
+    },
     /// `inputKeyboardButtonRequestPeer#02b78156`
-    InputKeyboardButtonRequestPeer { flags: i32, name_requested: bool, username_requested: bool, photo_requested: bool, style: Option<KeyboardButtonStyle>, text: String, button_id: i32, peer_type: RequestPeerType, max_quantity: i32 },
+    InputKeyboardButtonRequestPeer {
+        flags: i32,
+        name_requested: bool,
+        username_requested: bool,
+        photo_requested: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
     /// `keyboardButtonRequestPeer#5b0f15f5`
-    KeyboardButtonRequestPeer { flags: i32, style: Option<KeyboardButtonStyle>, text: String, button_id: i32, peer_type: RequestPeerType, max_quantity: i32 },
+    KeyboardButtonRequestPeer {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
     /// `keyboardButtonSimpleWebView#e15c4370`
-    KeyboardButtonSimpleWebView { flags: i32, style: Option<KeyboardButtonStyle>, text: String, url: String },
+    KeyboardButtonSimpleWebView {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
     /// `keyboardButtonWebView#e846b1a0`
-    KeyboardButtonWebView { flags: i32, style: Option<KeyboardButtonStyle>, text: String, url: String },
+    KeyboardButtonWebView {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
     /// `keyboardButtonUserProfile#c0fd5d09`
-    KeyboardButtonUserProfile { flags: i32, style: Option<KeyboardButtonStyle>, text: String, user_id: UserId },
+    KeyboardButtonUserProfile {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        user_id: UserId,
+    },
     /// `inputKeyboardButtonUserProfile#7d5e07c7`
-    InputKeyboardButtonUserProfile { flags: i32, style: Option<KeyboardButtonStyle>, text: String, user_id: InputUser },
+    InputKeyboardButtonUserProfile {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        user_id: InputUser,
+    },
     /// `keyboardButtonRequestPoll#7a11d782`
-    KeyboardButtonRequestPoll { flags: i32, style: Option<KeyboardButtonStyle>, quiz: Option<bool>, text: String },
+    KeyboardButtonRequestPoll {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        quiz: Option<bool>,
+        text: String,
+    },
     /// `inputKeyboardButtonUrlAuth#68013e72`
-    InputKeyboardButtonUrlAuth { flags: i32, request_write_access: bool, style: Option<KeyboardButtonStyle>, text: String, fwd_text: Option<String>, url: String, bot: InputUser },
+    InputKeyboardButtonUrlAuth {
+        flags: i32,
+        request_write_access: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        fwd_text: Option<String>,
+        url: String,
+        bot: InputUser,
+    },
     /// `keyboardButtonUrlAuth#f51006f9`
-    KeyboardButtonUrlAuth { flags: i32, style: Option<KeyboardButtonStyle>, text: String, fwd_text: Option<String>, url: String, button_id: i32 },
+    KeyboardButtonUrlAuth {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        fwd_text: Option<String>,
+        url: String,
+        button_id: i32,
+    },
     /// `keyboardButtonBuy#3fa53905`
-    KeyboardButtonBuy { flags: i32, style: Option<KeyboardButtonStyle>, text: String },
+    KeyboardButtonBuy {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
     /// `keyboardButtonGame#89c590f9`
-    KeyboardButtonGame { flags: i32, style: Option<KeyboardButtonStyle>, text: String },
+    KeyboardButtonGame {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
     /// `keyboardButtonSwitchInline#991399fc`
-    KeyboardButtonSwitchInline { flags: i32, same_peer: bool, style: Option<KeyboardButtonStyle>, text: String, query: String, peer_types: Option<Vec<InlineQueryPeerType>> },
+    KeyboardButtonSwitchInline {
+        flags: i32,
+        same_peer: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        query: String,
+        peer_types: Option<Vec<InlineQueryPeerType>>,
+    },
     /// `keyboardButtonRequestGeoLocation#aa40f94d`
-    KeyboardButtonRequestGeoLocation { flags: i32, style: Option<KeyboardButtonStyle>, text: String },
+    KeyboardButtonRequestGeoLocation {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
     /// `keyboardButtonRequestPhone#417efd8f`
-    KeyboardButtonRequestPhone { flags: i32, style: Option<KeyboardButtonStyle>, text: String },
+    KeyboardButtonRequestPhone {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
     /// `keyboardButtonCallback#e62bc960`
-    Callback { flags: i32, requires_password: bool, style: Option<KeyboardButtonStyle>, text: String, data: Vec<u8> },
+    Callback {
+        flags: i32,
+        requires_password: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        data: Vec<u8>,
+    },
     /// `keyboardButtonUrl#d80c25ec`
-    Url { flags: i32, style: Option<KeyboardButtonStyle>, text: String, url: String },
+    Url {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
     /// `keyboardButton#7d170cff`
-    Text { flags: i32, style: Option<KeyboardButtonStyle>, text: String },
+    Text {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
 }
 
 impl KeyboardButton {
@@ -1012,254 +1314,334 @@ impl KeyboardButton {
         let ctor = r.read_u32()?;
         match ctor {
             KEYBOARD_BUTTON_COPY_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let copy_text = String::from_utf8(r.read_bytes()?)?;
-                Ok(KeyboardButton::KeyboardButtonCopy { flags, style, text, copy_text })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let copy_text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonCopy {
+                    flags,
+                    style,
+                    text,
+                    copy_text,
+                })
             }
             INPUT_KEYBOARD_BUTTON_REQUEST_PEER_ID => {
-    let flags = r.read_i32()?;
-    let name_requested = flags & (1 << 0) != 0;
-    let username_requested = flags & (1 << 1) != 0;
-    let photo_requested = flags & (1 << 2) != 0;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let button_id = r.read_i32()?;
-    let peer_type = RequestPeerType::read_from(r)?;
-    let max_quantity = r.read_i32()?;
-                Ok(KeyboardButton::InputKeyboardButtonRequestPeer { flags, name_requested, username_requested, photo_requested, style, text, button_id, peer_type, max_quantity })
+                let flags = r.read_i32()?;
+                let name_requested = flags & (1 << 0) != 0;
+                let username_requested = flags & (1 << 1) != 0;
+                let photo_requested = flags & (1 << 2) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(KeyboardButton::InputKeyboardButtonRequestPeer {
+                    flags,
+                    name_requested,
+                    username_requested,
+                    photo_requested,
+                    style,
+                    text,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
             }
             KEYBOARD_BUTTON_REQUEST_PEER_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let button_id = r.read_i32()?;
-    let peer_type = RequestPeerType::read_from(r)?;
-    let max_quantity = r.read_i32()?;
-                Ok(KeyboardButton::KeyboardButtonRequestPeer { flags, style, text, button_id, peer_type, max_quantity })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(KeyboardButton::KeyboardButtonRequestPeer {
+                    flags,
+                    style,
+                    text,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
             }
             KEYBOARD_BUTTON_SIMPLE_WEB_VIEW_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(KeyboardButton::KeyboardButtonSimpleWebView { flags, style, text, url })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonSimpleWebView {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
             }
             KEYBOARD_BUTTON_WEB_VIEW_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(KeyboardButton::KeyboardButtonWebView { flags, style, text, url })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonWebView {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
             }
             KEYBOARD_BUTTON_USER_PROFILE_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(KeyboardButton::KeyboardButtonUserProfile { flags, style, text, user_id })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(KeyboardButton::KeyboardButtonUserProfile {
+                    flags,
+                    style,
+                    text,
+                    user_id,
+                })
             }
             INPUT_KEYBOARD_BUTTON_USER_PROFILE_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let user_id = InputUser::read_from(r)?;
-                Ok(KeyboardButton::InputKeyboardButtonUserProfile { flags, style, text, user_id })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let user_id = InputUser::read_from(r)?;
+                Ok(KeyboardButton::InputKeyboardButtonUserProfile {
+                    flags,
+                    style,
+                    text,
+                    user_id,
+                })
             }
             KEYBOARD_BUTTON_REQUEST_POLL_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let quiz = if flags & (1 << 0) != 0 {
-        let quiz = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(quiz)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-                Ok(KeyboardButton::KeyboardButtonRequestPoll { flags, style, quiz, text })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let quiz = if flags & (1 << 0) != 0 {
+                    let quiz = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(quiz)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonRequestPoll {
+                    flags,
+                    style,
+                    quiz,
+                    text,
+                })
             }
             INPUT_KEYBOARD_BUTTON_URL_AUTH_ID => {
-    let flags = r.read_i32()?;
-    let request_write_access = flags & (1 << 0) != 0;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let fwd_text = if flags & (1 << 1) != 0 {
-        let fwd_text = String::from_utf8(r.read_bytes()?)?;
-        Some(fwd_text)
-    } else {
-        None
-    };
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let bot = InputUser::read_from(r)?;
-                Ok(KeyboardButton::InputKeyboardButtonUrlAuth { flags, request_write_access, style, text, fwd_text, url, bot })
+                let flags = r.read_i32()?;
+                let request_write_access = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let fwd_text = if flags & (1 << 1) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let bot = InputUser::read_from(r)?;
+                Ok(KeyboardButton::InputKeyboardButtonUrlAuth {
+                    flags,
+                    request_write_access,
+                    style,
+                    text,
+                    fwd_text,
+                    url,
+                    bot,
+                })
             }
             KEYBOARD_BUTTON_URL_AUTH_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let fwd_text = if flags & (1 << 0) != 0 {
-        let fwd_text = String::from_utf8(r.read_bytes()?)?;
-        Some(fwd_text)
-    } else {
-        None
-    };
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let button_id = r.read_i32()?;
-                Ok(KeyboardButton::KeyboardButtonUrlAuth { flags, style, text, fwd_text, url, button_id })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let fwd_text = if flags & (1 << 0) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                Ok(KeyboardButton::KeyboardButtonUrlAuth {
+                    flags,
+                    style,
+                    text,
+                    fwd_text,
+                    url,
+                    button_id,
+                })
             }
             KEYBOARD_BUTTON_BUY_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(KeyboardButton::KeyboardButtonBuy { flags, style, text })
             }
             KEYBOARD_BUTTON_GAME_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(KeyboardButton::KeyboardButtonGame { flags, style, text })
             }
             KEYBOARD_BUTTON_SWITCH_INLINE_ID => {
-    let flags = r.read_i32()?;
-    let same_peer = flags & (1 << 0) != 0;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let query = String::from_utf8(r.read_bytes()?)?;
-    let peer_types = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut peer_types = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            peer_types.push(InlineQueryPeerType::read_from(r)?);
-        }
-        Some(peer_types)
-    } else {
-        None
-    };
-                Ok(KeyboardButton::KeyboardButtonSwitchInline { flags, same_peer, style, text, query, peer_types })
+                let flags = r.read_i32()?;
+                let same_peer = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let query = String::from_utf8(r.read_bytes()?)?;
+                let peer_types = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut peer_types = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        peer_types.push(InlineQueryPeerType::read_from(r)?);
+                    }
+                    Some(peer_types)
+                } else {
+                    None
+                };
+                Ok(KeyboardButton::KeyboardButtonSwitchInline {
+                    flags,
+                    same_peer,
+                    style,
+                    text,
+                    query,
+                    peer_types,
+                })
             }
             KEYBOARD_BUTTON_REQUEST_GEO_LOCATION_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(KeyboardButton::KeyboardButtonRequestGeoLocation { flags, style, text })
             }
             KEYBOARD_BUTTON_REQUEST_PHONE_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(KeyboardButton::KeyboardButtonRequestPhone { flags, style, text })
             }
             KEYBOARD_BUTTON_CALLBACK_ID => {
-    let flags = r.read_i32()?;
-    let requires_password = flags & (1 << 0) != 0;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let data = r.read_bytes()?;
-                Ok(KeyboardButton::Callback { flags, requires_password, style, text, data })
+                let flags = r.read_i32()?;
+                let requires_password = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let data = r.read_bytes()?;
+                Ok(KeyboardButton::Callback {
+                    flags,
+                    requires_password,
+                    style,
+                    text,
+                    data,
+                })
             }
             KEYBOARD_BUTTON_URL_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(KeyboardButton::Url { flags, style, text, url })
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::Url {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
             }
             KEYBOARD_BUTTON_ID => {
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(KeyboardButton::Text { flags, style, text })
             }
             other => Err(Error::Serialization(format!(
@@ -1287,16 +1669,16 @@ impl KeyboardButtonStyle {
                 "expected keyboardButtonStyle, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let bg_primary = flags & (1 << 0) != 0;
-    let bg_danger = flags & (1 << 1) != 0;
-    let bg_success = flags & (1 << 2) != 0;
-    let icon = if flags & (1 << 3) != 0 {
-        let icon = r.read_i64()?;
-        Some(icon)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let bg_primary = flags & (1 << 0) != 0;
+        let bg_danger = flags & (1 << 1) != 0;
+        let bg_success = flags & (1 << 2) != 0;
+        let icon = if flags & (1 << 3) != 0 {
+            let icon = r.read_i64()?;
+            Some(icon)
+        } else {
+            None
+        };
         Ok(KeyboardButtonStyle {
             flags,
             bg_primary,
@@ -1308,12 +1690,15 @@ impl KeyboardButtonStyle {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(KEYBOARD_BUTTON_STYLE_ID);
-    let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 } | if self.bg_danger { 1 << 1 } else { 0 } | if self.bg_success { 1 << 2 } else { 0 } | if self.icon.is_some() { 1 << 3 } else { 0 };
-    w.write_i32(flags);
-    if let Some(icon) = self.icon {
-        w.write_i64(icon);
-    }
+        w.write_u32(KEYBOARD_BUTTON_STYLE_ID);
+        let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 }
+            | if self.bg_danger { 1 << 1 } else { 0 }
+            | if self.bg_success { 1 << 2 } else { 0 }
+            | if self.icon.is_some() { 1 << 3 } else { 0 };
+        w.write_i32(flags);
+        if let Some(icon) = self.icon {
+            w.write_i64(icon);
+        }
     }
 }
 
@@ -1321,11 +1706,29 @@ impl KeyboardButtonStyle {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RequestPeerType {
     /// `requestPeerTypeBroadcast#339bef6c`
-    RequestPeerTypeBroadcast { flags: i32, creator: bool, has_username: Option<bool>, user_admin_rights: Option<ChatAdminRights>, bot_admin_rights: Option<ChatAdminRights> },
+    RequestPeerTypeBroadcast {
+        flags: i32,
+        creator: bool,
+        has_username: Option<bool>,
+        user_admin_rights: Option<ChatAdminRights>,
+        bot_admin_rights: Option<ChatAdminRights>,
+    },
     /// `requestPeerTypeChat#c9f06e1b`
-    RequestPeerTypeChat { flags: i32, creator: bool, bot_participant: bool, has_username: Option<bool>, forum: Option<bool>, user_admin_rights: Option<ChatAdminRights>, bot_admin_rights: Option<ChatAdminRights> },
+    RequestPeerTypeChat {
+        flags: i32,
+        creator: bool,
+        bot_participant: bool,
+        has_username: Option<bool>,
+        forum: Option<bool>,
+        user_admin_rights: Option<ChatAdminRights>,
+        bot_admin_rights: Option<ChatAdminRights>,
+    },
     /// `requestPeerTypeUser#5f3b8a00`
-    RequestPeerTypeUser { flags: i32, bot: Option<bool>, premium: Option<bool> },
+    RequestPeerTypeUser {
+        flags: i32,
+        bot: Option<bool>,
+        premium: Option<bool>,
+    },
 }
 
 impl RequestPeerType {
@@ -1333,73 +1736,91 @@ impl RequestPeerType {
         let ctor = r.read_u32()?;
         match ctor {
             REQUEST_PEER_TYPE_BROADCAST_ID => {
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let has_username = if flags & (1 << 3) != 0 {
-        let has_username = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(has_username)
-    } else {
-        None
-    };
-    let user_admin_rights = if flags & (1 << 1) != 0 {
-        let user_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(user_admin_rights)
-    } else {
-        None
-    };
-    let bot_admin_rights = if flags & (1 << 2) != 0 {
-        let bot_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(bot_admin_rights)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeBroadcast { flags, creator, has_username, user_admin_rights, bot_admin_rights })
+                let flags = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let has_username = if flags & (1 << 3) != 0 {
+                    let has_username = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(has_username)
+                } else {
+                    None
+                };
+                let user_admin_rights = if flags & (1 << 1) != 0 {
+                    let user_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(user_admin_rights)
+                } else {
+                    None
+                };
+                let bot_admin_rights = if flags & (1 << 2) != 0 {
+                    let bot_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(bot_admin_rights)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeBroadcast {
+                    flags,
+                    creator,
+                    has_username,
+                    user_admin_rights,
+                    bot_admin_rights,
+                })
             }
             REQUEST_PEER_TYPE_CHAT_ID => {
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let bot_participant = flags & (1 << 5) != 0;
-    let has_username = if flags & (1 << 3) != 0 {
-        let has_username = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(has_username)
-    } else {
-        None
-    };
-    let forum = if flags & (1 << 4) != 0 {
-        let forum = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(forum)
-    } else {
-        None
-    };
-    let user_admin_rights = if flags & (1 << 1) != 0 {
-        let user_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(user_admin_rights)
-    } else {
-        None
-    };
-    let bot_admin_rights = if flags & (1 << 2) != 0 {
-        let bot_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(bot_admin_rights)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeChat { flags, creator, bot_participant, has_username, forum, user_admin_rights, bot_admin_rights })
+                let flags = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let bot_participant = flags & (1 << 5) != 0;
+                let has_username = if flags & (1 << 3) != 0 {
+                    let has_username = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(has_username)
+                } else {
+                    None
+                };
+                let forum = if flags & (1 << 4) != 0 {
+                    let forum = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(forum)
+                } else {
+                    None
+                };
+                let user_admin_rights = if flags & (1 << 1) != 0 {
+                    let user_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(user_admin_rights)
+                } else {
+                    None
+                };
+                let bot_admin_rights = if flags & (1 << 2) != 0 {
+                    let bot_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(bot_admin_rights)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeChat {
+                    flags,
+                    creator,
+                    bot_participant,
+                    has_username,
+                    forum,
+                    user_admin_rights,
+                    bot_admin_rights,
+                })
             }
             REQUEST_PEER_TYPE_USER_ID => {
-    let flags = r.read_i32()?;
-    let bot = if flags & (1 << 0) != 0 {
-        let bot = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(bot)
-    } else {
-        None
-    };
-    let premium = if flags & (1 << 1) != 0 {
-        let premium = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(premium)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeUser { flags, bot, premium })
+                let flags = r.read_i32()?;
+                let bot = if flags & (1 << 0) != 0 {
+                    let bot = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(bot)
+                } else {
+                    None
+                };
+                let premium = if flags & (1 << 1) != 0 {
+                    let premium = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(premium)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeUser {
+                    flags,
+                    bot,
+                    premium,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown RequestPeerType constructor {other:#x}"
@@ -1439,24 +1860,24 @@ impl ChatAdminRights {
                 "expected chatAdminRights, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let change_info = flags & (1 << 0) != 0;
-    let post_messages = flags & (1 << 1) != 0;
-    let edit_messages = flags & (1 << 2) != 0;
-    let delete_messages = flags & (1 << 3) != 0;
-    let ban_users = flags & (1 << 4) != 0;
-    let invite_users = flags & (1 << 5) != 0;
-    let pin_messages = flags & (1 << 7) != 0;
-    let add_admins = flags & (1 << 9) != 0;
-    let anonymous = flags & (1 << 10) != 0;
-    let manage_call = flags & (1 << 11) != 0;
-    let other = flags & (1 << 12) != 0;
-    let manage_topics = flags & (1 << 13) != 0;
-    let post_stories = flags & (1 << 14) != 0;
-    let edit_stories = flags & (1 << 15) != 0;
-    let delete_stories = flags & (1 << 16) != 0;
-    let manage_direct_messages = flags & (1 << 17) != 0;
-    let manage_ranks = flags & (1 << 18) != 0;
+        let flags = r.read_i32()?;
+        let change_info = flags & (1 << 0) != 0;
+        let post_messages = flags & (1 << 1) != 0;
+        let edit_messages = flags & (1 << 2) != 0;
+        let delete_messages = flags & (1 << 3) != 0;
+        let ban_users = flags & (1 << 4) != 0;
+        let invite_users = flags & (1 << 5) != 0;
+        let pin_messages = flags & (1 << 7) != 0;
+        let add_admins = flags & (1 << 9) != 0;
+        let anonymous = flags & (1 << 10) != 0;
+        let manage_call = flags & (1 << 11) != 0;
+        let other = flags & (1 << 12) != 0;
+        let manage_topics = flags & (1 << 13) != 0;
+        let post_stories = flags & (1 << 14) != 0;
+        let edit_stories = flags & (1 << 15) != 0;
+        let delete_stories = flags & (1 << 16) != 0;
+        let manage_direct_messages = flags & (1 << 17) != 0;
+        let manage_ranks = flags & (1 << 18) != 0;
         Ok(ChatAdminRights {
             flags,
             change_info,
@@ -1481,9 +1902,29 @@ impl ChatAdminRights {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(CHAT_ADMIN_RIGHTS_ID);
-    let flags: i32 = if self.change_info { 1 << 0 } else { 0 } | if self.post_messages { 1 << 1 } else { 0 } | if self.edit_messages { 1 << 2 } else { 0 } | if self.delete_messages { 1 << 3 } else { 0 } | if self.ban_users { 1 << 4 } else { 0 } | if self.invite_users { 1 << 5 } else { 0 } | if self.pin_messages { 1 << 7 } else { 0 } | if self.add_admins { 1 << 9 } else { 0 } | if self.anonymous { 1 << 10 } else { 0 } | if self.manage_call { 1 << 11 } else { 0 } | if self.other { 1 << 12 } else { 0 } | if self.manage_topics { 1 << 13 } else { 0 } | if self.post_stories { 1 << 14 } else { 0 } | if self.edit_stories { 1 << 15 } else { 0 } | if self.delete_stories { 1 << 16 } else { 0 } | if self.manage_direct_messages { 1 << 17 } else { 0 } | if self.manage_ranks { 1 << 18 } else { 0 };
-    w.write_i32(flags);
+        w.write_u32(CHAT_ADMIN_RIGHTS_ID);
+        let flags: i32 = if self.change_info { 1 << 0 } else { 0 }
+            | if self.post_messages { 1 << 1 } else { 0 }
+            | if self.edit_messages { 1 << 2 } else { 0 }
+            | if self.delete_messages { 1 << 3 } else { 0 }
+            | if self.ban_users { 1 << 4 } else { 0 }
+            | if self.invite_users { 1 << 5 } else { 0 }
+            | if self.pin_messages { 1 << 7 } else { 0 }
+            | if self.add_admins { 1 << 9 } else { 0 }
+            | if self.anonymous { 1 << 10 } else { 0 }
+            | if self.manage_call { 1 << 11 } else { 0 }
+            | if self.other { 1 << 12 } else { 0 }
+            | if self.manage_topics { 1 << 13 } else { 0 }
+            | if self.post_stories { 1 << 14 } else { 0 }
+            | if self.edit_stories { 1 << 15 } else { 0 }
+            | if self.delete_stories { 1 << 16 } else { 0 }
+            | if self.manage_direct_messages {
+                1 << 17
+            } else {
+                0
+            }
+            | if self.manage_ranks { 1 << 18 } else { 0 };
+        w.write_i32(flags);
     }
 }
 
@@ -1509,22 +1950,18 @@ impl InlineQueryPeerType {
         let ctor = r.read_u32()?;
         match ctor {
             INLINE_QUERY_PEER_TYPE_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {})
             }
             INLINE_QUERY_PEER_TYPE_BROADCAST_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {})
             }
             INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {})
             }
-            INLINE_QUERY_PEER_TYPE_CHAT_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {  })
-            }
-            INLINE_QUERY_PEER_TYPE_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypePM {  })
-            }
+            INLINE_QUERY_PEER_TYPE_CHAT_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {}),
+            INLINE_QUERY_PEER_TYPE_PM_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypePM {}),
             INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {  })
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown InlineQueryPeerType constructor {other:#x}"
@@ -1537,43 +1974,138 @@ impl InlineQueryPeerType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMedia {
     /// `inputMediaStakeDice#f3a9244a`
-    InputMediaStakeDice { game_hash: String, ton_amount: i64, client_seed: Vec<u8> },
+    InputMediaStakeDice {
+        game_hash: String,
+        ton_amount: i64,
+        client_seed: Vec<u8>,
+    },
     /// `inputMediaTodo#9fc55fde`
     InputMediaTodo { todo: TodoList },
     /// `inputMediaPaidMedia#c4103386`
-    InputMediaPaidMedia { flags: i32, stars_amount: i64, extended_media: Vec<InputMedia>, payload: Option<String> },
+    InputMediaPaidMedia {
+        flags: i32,
+        stars_amount: i64,
+        extended_media: Vec<InputMedia>,
+        payload: Option<String>,
+    },
     /// `inputMediaWebPage#c21b8849`
-    InputMediaWebPage { flags: i32, force_large_media: bool, force_small_media: bool, optional: bool, url: String },
+    InputMediaWebPage {
+        flags: i32,
+        force_large_media: bool,
+        force_small_media: bool,
+        optional: bool,
+        url: String,
+    },
     /// `inputMediaStory#89fdd778`
     InputMediaStory { peer: InputPeer, id: i32 },
     /// `inputMediaDice#e66fbf7b`
     InputMediaDice { emoticon: String },
     /// `inputMediaPoll#0f94e5f1`
-    InputMediaPoll { flags: i32, poll: Poll, correct_answers: Option<Vec<Vec<u8>>>, solution: Option<String>, solution_entities: Option<Vec<MessageEntity>> },
+    InputMediaPoll {
+        flags: i32,
+        poll: Poll,
+        correct_answers: Option<Vec<Vec<u8>>>,
+        solution: Option<String>,
+        solution_entities: Option<Vec<MessageEntity>>,
+    },
     /// `inputMediaGeoLive#971fa843`
-    InputMediaGeoLive { flags: i32, stopped: bool, geo_point: InputGeoPoint, heading: Option<i32>, period: Option<i32>, proximity_notification_radius: Option<i32> },
+    InputMediaGeoLive {
+        flags: i32,
+        stopped: bool,
+        geo_point: InputGeoPoint,
+        heading: Option<i32>,
+        period: Option<i32>,
+        proximity_notification_radius: Option<i32>,
+    },
     /// `inputMediaInvoice#405fef0d`
-    InputMediaInvoice { flags: i32, title: String, description: String, photo: Option<InputWebDocument>, invoice: Invoice, payload: Vec<u8>, provider: Option<String>, provider_data: DataJSON, start_param: Option<String>, extended_media: Option<Box<InputMedia>> },
+    InputMediaInvoice {
+        flags: i32,
+        title: String,
+        description: String,
+        photo: Option<InputWebDocument>,
+        invoice: Invoice,
+        payload: Vec<u8>,
+        provider: Option<String>,
+        provider_data: DataJSON,
+        start_param: Option<String>,
+        extended_media: Option<Box<InputMedia>>,
+    },
     /// `inputMediaGame#d33f43f3`
     InputMediaGame { id: InputGame },
     /// `inputMediaDocumentExternal#779600f9`
-    InputMediaDocumentExternal { flags: i32, spoiler: bool, url: String, ttl_seconds: Option<i32>, video_cover: Option<InputPhoto>, video_timestamp: Option<i32> },
+    InputMediaDocumentExternal {
+        flags: i32,
+        spoiler: bool,
+        url: String,
+        ttl_seconds: Option<i32>,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+    },
     /// `inputMediaPhotoExternal#e5bbfe1a`
-    InputMediaPhotoExternal { flags: i32, spoiler: bool, url: String, ttl_seconds: Option<i32> },
+    InputMediaPhotoExternal {
+        flags: i32,
+        spoiler: bool,
+        url: String,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaVenue#c13d1c11`
-    InputMediaVenue { geo_point: InputGeoPoint, title: String, address: String, provider: String, venue_id: String, venue_type: String },
+    InputMediaVenue {
+        geo_point: InputGeoPoint,
+        title: String,
+        address: String,
+        provider: String,
+        venue_id: String,
+        venue_type: String,
+    },
     /// `inputMediaDocument#a8763ab5`
-    InputMediaDocument { flags: i32, spoiler: bool, id: InputDocument, video_cover: Option<InputPhoto>, video_timestamp: Option<i32>, ttl_seconds: Option<i32>, query: Option<String> },
+    InputMediaDocument {
+        flags: i32,
+        spoiler: bool,
+        id: InputDocument,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+        ttl_seconds: Option<i32>,
+        query: Option<String>,
+    },
     /// `inputMediaUploadedDocument#037c9330`
-    InputMediaUploadedDocument { flags: i32, nosound_video: bool, force_file: bool, spoiler: bool, file: InputFile, thumb: Option<InputFile>, mime_type: String, attributes: Vec<DocumentAttribute>, stickers: Option<Vec<InputDocument>>, video_cover: Option<InputPhoto>, video_timestamp: Option<i32>, ttl_seconds: Option<i32> },
+    InputMediaUploadedDocument {
+        flags: i32,
+        nosound_video: bool,
+        force_file: bool,
+        spoiler: bool,
+        file: InputFile,
+        thumb: Option<InputFile>,
+        mime_type: String,
+        attributes: Vec<DocumentAttribute>,
+        stickers: Option<Vec<InputDocument>>,
+        video_cover: Option<InputPhoto>,
+        video_timestamp: Option<i32>,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaContact#f8ab7dfb`
-    InputMediaContact { phone_number: String, first_name: String, last_name: String, vcard: String },
+    InputMediaContact {
+        phone_number: String,
+        first_name: String,
+        last_name: String,
+        vcard: String,
+    },
     /// `inputMediaGeoPoint#f9c44144`
     InputMediaGeoPoint { geo_point: InputGeoPoint },
     /// `inputMediaPhoto#b3ba0635`
-    InputMediaPhoto { flags: i32, spoiler: bool, id: InputPhoto, ttl_seconds: Option<i32> },
+    InputMediaPhoto {
+        flags: i32,
+        spoiler: bool,
+        id: InputPhoto,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaUploadedPhoto#1e287d04`
-    InputMediaUploadedPhoto { flags: i32, spoiler: bool, file: InputFile, stickers: Option<Vec<InputDocument>>, ttl_seconds: Option<i32> },
+    InputMediaUploadedPhoto {
+        flags: i32,
+        spoiler: bool,
+        file: InputFile,
+        stickers: Option<Vec<InputDocument>>,
+        ttl_seconds: Option<i32>,
+    },
     /// `inputMediaEmpty#9664f57f`
     InputMediaEmpty,
 }
@@ -1583,311 +2115,404 @@ impl InputMedia {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_MEDIA_STAKE_DICE_ID => {
-    let game_hash = String::from_utf8(r.read_bytes()?)?;
-    let ton_amount = r.read_i64()?;
-    let client_seed = r.read_bytes()?;
-                Ok(InputMedia::InputMediaStakeDice { game_hash, ton_amount, client_seed })
+                let game_hash = String::from_utf8(r.read_bytes()?)?;
+                let ton_amount = r.read_i64()?;
+                let client_seed = r.read_bytes()?;
+                Ok(InputMedia::InputMediaStakeDice {
+                    game_hash,
+                    ton_amount,
+                    client_seed,
+                })
             }
             INPUT_MEDIA_TODO_ID => {
-    let todo = TodoList::read_from(r)?;
+                let todo = TodoList::read_from(r)?;
                 Ok(InputMedia::InputMediaTodo { todo })
             }
             INPUT_MEDIA_PAID_MEDIA_ID => {
-    let flags = r.read_i32()?;
-    let stars_amount = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut extended_media = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        extended_media.push(InputMedia::read_from(r)?);
-    }
-    let payload = if flags & (1 << 0) != 0 {
-        let payload = String::from_utf8(r.read_bytes()?)?;
-        Some(payload)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPaidMedia { flags, stars_amount, extended_media, payload })
+                let flags = r.read_i32()?;
+                let stars_amount = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut extended_media = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    extended_media.push(InputMedia::read_from(r)?);
+                }
+                let payload = if flags & (1 << 0) != 0 {
+                    let payload = String::from_utf8(r.read_bytes()?)?;
+                    Some(payload)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPaidMedia {
+                    flags,
+                    stars_amount,
+                    extended_media,
+                    payload,
+                })
             }
             INPUT_MEDIA_WEB_PAGE_ID => {
-    let flags = r.read_i32()?;
-    let force_large_media = flags & (1 << 0) != 0;
-    let force_small_media = flags & (1 << 1) != 0;
-    let optional = flags & (1 << 2) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaWebPage { flags, force_large_media, force_small_media, optional, url })
+                let flags = r.read_i32()?;
+                let force_large_media = flags & (1 << 0) != 0;
+                let force_small_media = flags & (1 << 1) != 0;
+                let optional = flags & (1 << 2) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaWebPage {
+                    flags,
+                    force_large_media,
+                    force_small_media,
+                    optional,
+                    url,
+                })
             }
             INPUT_MEDIA_STORY_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let id = r.read_i32()?;
+                let peer = InputPeer::read_from(r)?;
+                let id = r.read_i32()?;
                 Ok(InputMedia::InputMediaStory { peer, id })
             }
             INPUT_MEDIA_DICE_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputMedia::InputMediaDice { emoticon })
             }
             INPUT_MEDIA_POLL_ID => {
-    let flags = r.read_i32()?;
-    let poll = Poll::read_from(r)?;
-    let correct_answers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut correct_answers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            correct_answers.push(r.read_bytes()?);
-        }
-        Some(correct_answers)
-    } else {
-        None
-    };
-    let solution = if flags & (1 << 1) != 0 {
-        let solution = String::from_utf8(r.read_bytes()?)?;
-        Some(solution)
-    } else {
-        None
-    };
-    let solution_entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            solution_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(solution_entities)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPoll { flags, poll, correct_answers, solution, solution_entities })
+                let flags = r.read_i32()?;
+                let poll = Poll::read_from(r)?;
+                let correct_answers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut correct_answers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        correct_answers.push(r.read_bytes()?);
+                    }
+                    Some(correct_answers)
+                } else {
+                    None
+                };
+                let solution = if flags & (1 << 1) != 0 {
+                    let solution = String::from_utf8(r.read_bytes()?)?;
+                    Some(solution)
+                } else {
+                    None
+                };
+                let solution_entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut solution_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        solution_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(solution_entities)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPoll {
+                    flags,
+                    poll,
+                    correct_answers,
+                    solution,
+                    solution_entities,
+                })
             }
             INPUT_MEDIA_GEO_LIVE_ID => {
-    let flags = r.read_i32()?;
-    let stopped = flags & (1 << 0) != 0;
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let heading = if flags & (1 << 2) != 0 {
-        let heading = r.read_i32()?;
-        Some(heading)
-    } else {
-        None
-    };
-    let period = if flags & (1 << 1) != 0 {
-        let period = r.read_i32()?;
-        Some(period)
-    } else {
-        None
-    };
-    let proximity_notification_radius = if flags & (1 << 3) != 0 {
-        let proximity_notification_radius = r.read_i32()?;
-        Some(proximity_notification_radius)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaGeoLive { flags, stopped, geo_point, heading, period, proximity_notification_radius })
+                let flags = r.read_i32()?;
+                let stopped = flags & (1 << 0) != 0;
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let heading = if flags & (1 << 2) != 0 {
+                    let heading = r.read_i32()?;
+                    Some(heading)
+                } else {
+                    None
+                };
+                let period = if flags & (1 << 1) != 0 {
+                    let period = r.read_i32()?;
+                    Some(period)
+                } else {
+                    None
+                };
+                let proximity_notification_radius = if flags & (1 << 3) != 0 {
+                    let proximity_notification_radius = r.read_i32()?;
+                    Some(proximity_notification_radius)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaGeoLive {
+                    flags,
+                    stopped,
+                    geo_point,
+                    heading,
+                    period,
+                    proximity_notification_radius,
+                })
             }
             INPUT_MEDIA_INVOICE_ID => {
-    let flags = r.read_i32()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = if flags & (1 << 0) != 0 {
-        let photo = InputWebDocument::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let invoice = Invoice::read_from(r)?;
-    let payload = r.read_bytes()?;
-    let provider = if flags & (1 << 3) != 0 {
-        let provider = String::from_utf8(r.read_bytes()?)?;
-        Some(provider)
-    } else {
-        None
-    };
-    let provider_data = DataJSON::read_from(r)?;
-    let start_param = if flags & (1 << 1) != 0 {
-        let start_param = String::from_utf8(r.read_bytes()?)?;
-        Some(start_param)
-    } else {
-        None
-    };
-    let extended_media = if flags & (1 << 2) != 0 {
-        let extended_media = Box::new(InputMedia::read_from(r)?);
-        Some(extended_media)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaInvoice { flags, title, description, photo, invoice, payload, provider, provider_data, start_param, extended_media })
+                let flags = r.read_i32()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let description = String::from_utf8(r.read_bytes()?)?;
+                let photo = if flags & (1 << 0) != 0 {
+                    let photo = InputWebDocument::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let invoice = Invoice::read_from(r)?;
+                let payload = r.read_bytes()?;
+                let provider = if flags & (1 << 3) != 0 {
+                    let provider = String::from_utf8(r.read_bytes()?)?;
+                    Some(provider)
+                } else {
+                    None
+                };
+                let provider_data = DataJSON::read_from(r)?;
+                let start_param = if flags & (1 << 1) != 0 {
+                    let start_param = String::from_utf8(r.read_bytes()?)?;
+                    Some(start_param)
+                } else {
+                    None
+                };
+                let extended_media = if flags & (1 << 2) != 0 {
+                    let extended_media = Box::new(InputMedia::read_from(r)?);
+                    Some(extended_media)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaInvoice {
+                    flags,
+                    title,
+                    description,
+                    photo,
+                    invoice,
+                    payload,
+                    provider,
+                    provider_data,
+                    start_param,
+                    extended_media,
+                })
             }
             INPUT_MEDIA_GAME_ID => {
-    let id = InputGame::read_from(r)?;
+                let id = InputGame::read_from(r)?;
                 Ok(InputMedia::InputMediaGame { id })
             }
             INPUT_MEDIA_DOCUMENT_EXTERNAL_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let video_cover = if flags & (1 << 2) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 3) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaDocumentExternal { flags, spoiler, url, ttl_seconds, video_cover, video_timestamp })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let video_cover = if flags & (1 << 2) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 3) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaDocumentExternal {
+                    flags,
+                    spoiler,
+                    url,
+                    ttl_seconds,
+                    video_cover,
+                    video_timestamp,
+                })
             }
             INPUT_MEDIA_PHOTO_EXTERNAL_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPhotoExternal { flags, spoiler, url, ttl_seconds })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPhotoExternal {
+                    flags,
+                    spoiler,
+                    url,
+                    ttl_seconds,
+                })
             }
             INPUT_MEDIA_VENUE_ID => {
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let venue_id = String::from_utf8(r.read_bytes()?)?;
-    let venue_type = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaVenue { geo_point, title, address, provider, venue_id, venue_type })
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let venue_id = String::from_utf8(r.read_bytes()?)?;
+                let venue_type = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaVenue {
+                    geo_point,
+                    title,
+                    address,
+                    provider,
+                    venue_id,
+                    venue_type,
+                })
             }
             INPUT_MEDIA_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 2) != 0;
-    let id = InputDocument::read_from(r)?;
-    let video_cover = if flags & (1 << 3) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 4) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let query = if flags & (1 << 1) != 0 {
-        let query = String::from_utf8(r.read_bytes()?)?;
-        Some(query)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaDocument { flags, spoiler, id, video_cover, video_timestamp, ttl_seconds, query })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 2) != 0;
+                let id = InputDocument::read_from(r)?;
+                let video_cover = if flags & (1 << 3) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 4) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let query = if flags & (1 << 1) != 0 {
+                    let query = String::from_utf8(r.read_bytes()?)?;
+                    Some(query)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaDocument {
+                    flags,
+                    spoiler,
+                    id,
+                    video_cover,
+                    video_timestamp,
+                    ttl_seconds,
+                    query,
+                })
             }
             INPUT_MEDIA_UPLOADED_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let nosound_video = flags & (1 << 3) != 0;
-    let force_file = flags & (1 << 4) != 0;
-    let spoiler = flags & (1 << 5) != 0;
-    let file = InputFile::read_from(r)?;
-    let thumb = if flags & (1 << 2) != 0 {
-        let thumb = InputFile::read_from(r)?;
-        Some(thumb)
-    } else {
-        None
-    };
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
-    let stickers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut stickers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            stickers.push(InputDocument::read_from(r)?);
-        }
-        Some(stickers)
-    } else {
-        None
-    };
-    let video_cover = if flags & (1 << 6) != 0 {
-        let video_cover = InputPhoto::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 7) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 1) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaUploadedDocument { flags, nosound_video, force_file, spoiler, file, thumb, mime_type, attributes, stickers, video_cover, video_timestamp, ttl_seconds })
+                let flags = r.read_i32()?;
+                let nosound_video = flags & (1 << 3) != 0;
+                let force_file = flags & (1 << 4) != 0;
+                let spoiler = flags & (1 << 5) != 0;
+                let file = InputFile::read_from(r)?;
+                let thumb = if flags & (1 << 2) != 0 {
+                    let thumb = InputFile::read_from(r)?;
+                    Some(thumb)
+                } else {
+                    None
+                };
+                let mime_type = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(DocumentAttribute::read_from(r)?);
+                }
+                let stickers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut stickers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        stickers.push(InputDocument::read_from(r)?);
+                    }
+                    Some(stickers)
+                } else {
+                    None
+                };
+                let video_cover = if flags & (1 << 6) != 0 {
+                    let video_cover = InputPhoto::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 7) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 1) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaUploadedDocument {
+                    flags,
+                    nosound_video,
+                    force_file,
+                    spoiler,
+                    file,
+                    thumb,
+                    mime_type,
+                    attributes,
+                    stickers,
+                    video_cover,
+                    video_timestamp,
+                    ttl_seconds,
+                })
             }
             INPUT_MEDIA_CONTACT_ID => {
-    let phone_number = String::from_utf8(r.read_bytes()?)?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let vcard = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputMedia::InputMediaContact { phone_number, first_name, last_name, vcard })
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let vcard = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputMedia::InputMediaContact {
+                    phone_number,
+                    first_name,
+                    last_name,
+                    vcard,
+                })
             }
             INPUT_MEDIA_GEO_POINT_ID => {
-    let geo_point = InputGeoPoint::read_from(r)?;
+                let geo_point = InputGeoPoint::read_from(r)?;
                 Ok(InputMedia::InputMediaGeoPoint { geo_point })
             }
             INPUT_MEDIA_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 1) != 0;
-    let id = InputPhoto::read_from(r)?;
-    let ttl_seconds = if flags & (1 << 0) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaPhoto { flags, spoiler, id, ttl_seconds })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 1) != 0;
+                let id = InputPhoto::read_from(r)?;
+                let ttl_seconds = if flags & (1 << 0) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaPhoto {
+                    flags,
+                    spoiler,
+                    id,
+                    ttl_seconds,
+                })
             }
             INPUT_MEDIA_UPLOADED_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 2) != 0;
-    let file = InputFile::read_from(r)?;
-    let stickers = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut stickers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            stickers.push(InputDocument::read_from(r)?);
-        }
-        Some(stickers)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 1) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(InputMedia::InputMediaUploadedPhoto { flags, spoiler, file, stickers, ttl_seconds })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 2) != 0;
+                let file = InputFile::read_from(r)?;
+                let stickers = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut stickers = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        stickers.push(InputDocument::read_from(r)?);
+                    }
+                    Some(stickers)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 1) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(InputMedia::InputMediaUploadedPhoto {
+                    flags,
+                    spoiler,
+                    file,
+                    stickers,
+                    ttl_seconds,
+                })
             }
-            INPUT_MEDIA_EMPTY_ID => {
-                Ok(InputMedia::InputMediaEmpty {  })
-            }
+            INPUT_MEDIA_EMPTY_ID => Ok(InputMedia::InputMediaEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputMedia constructor {other:#x}"
             ))),
@@ -1913,15 +2538,15 @@ impl TodoList {
                 "expected todoList, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let others_can_append = flags & (1 << 0) != 0;
-    let others_can_complete = flags & (1 << 1) != 0;
-    let title = TextWithEntities::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut list = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        list.push(TodoItem::read_from(r)?);
-    }
+        let flags = r.read_i32()?;
+        let others_can_append = flags & (1 << 0) != 0;
+        let others_can_complete = flags & (1 << 1) != 0;
+        let title = TextWithEntities::read_from(r)?;
+        let n = r.read_vector_header()?;
+        let mut list = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            list.push(TodoItem::read_from(r)?);
+        }
         Ok(TodoList {
             flags,
             others_can_append,
@@ -1930,7 +2555,6 @@ impl TodoList {
             list,
         })
     }
-
 }
 
 /// `todoItem#cba9a52f = TodoItem`
@@ -1948,14 +2572,10 @@ impl TodoItem {
                 "expected todoItem, got {ctor:#x}"
             )));
         }
-    let id = r.read_i32()?;
-    let title = TextWithEntities::read_from(r)?;
-        Ok(TodoItem {
-            id,
-            title,
-        })
+        let id = r.read_i32()?;
+        let title = TextWithEntities::read_from(r)?;
+        Ok(TodoItem { id, title })
     }
-
 }
 
 /// `textWithEntities#751f3146 = TextWithEntities`
@@ -1973,18 +2593,14 @@ impl TextWithEntities {
                 "expected textWithEntities, got {ctor:#x}"
             )));
         }
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut entities = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        entities.push(MessageEntity::read_from(r)?);
+        let text = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut entities = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            entities.push(MessageEntity::read_from(r)?);
+        }
+        Ok(TextWithEntities { text, entities })
     }
-        Ok(TextWithEntities {
-            text,
-            entities,
-        })
-    }
-
 }
 
 /// `poll#58747131 = Poll`
@@ -2010,30 +2626,30 @@ impl Poll {
                 "expected poll, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let closed = flags & (1 << 0) != 0;
-    let public_voters = flags & (1 << 1) != 0;
-    let multiple_choice = flags & (1 << 2) != 0;
-    let quiz = flags & (1 << 3) != 0;
-    let question = TextWithEntities::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut answers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        answers.push(PollAnswer::read_from(r)?);
-    }
-    let close_period = if flags & (1 << 4) != 0 {
-        let close_period = r.read_i32()?;
-        Some(close_period)
-    } else {
-        None
-    };
-    let close_date = if flags & (1 << 5) != 0 {
-        let close_date = r.read_i32()?;
-        Some(close_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let id = r.read_i64()?;
+        let closed = flags & (1 << 0) != 0;
+        let public_voters = flags & (1 << 1) != 0;
+        let multiple_choice = flags & (1 << 2) != 0;
+        let quiz = flags & (1 << 3) != 0;
+        let question = TextWithEntities::read_from(r)?;
+        let n = r.read_vector_header()?;
+        let mut answers = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            answers.push(PollAnswer::read_from(r)?);
+        }
+        let close_period = if flags & (1 << 4) != 0 {
+            let close_period = r.read_i32()?;
+            Some(close_period)
+        } else {
+            None
+        };
+        let close_date = if flags & (1 << 5) != 0 {
+            let close_date = r.read_i32()?;
+            Some(close_date)
+        } else {
+            None
+        };
         Ok(Poll {
             id,
             flags,
@@ -2047,7 +2663,6 @@ impl Poll {
             close_date,
         })
     }
-
 }
 
 /// `pollAnswer#ff16e2ca = PollAnswer`
@@ -2065,21 +2680,22 @@ impl PollAnswer {
                 "expected pollAnswer, got {ctor:#x}"
             )));
         }
-    let text = TextWithEntities::read_from(r)?;
-    let option = r.read_bytes()?;
-        Ok(PollAnswer {
-            text,
-            option,
-        })
+        let text = TextWithEntities::read_from(r)?;
+        let option = r.read_bytes()?;
+        Ok(PollAnswer { text, option })
     }
-
 }
 
 /// Union `InputGeoPoint` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputGeoPoint {
     /// `inputGeoPoint#48222faf`
-    InputGeoPoint { flags: i32, lat: f64, long: f64, accuracy_radius: Option<i32> },
+    InputGeoPoint {
+        flags: i32,
+        lat: f64,
+        long: f64,
+        accuracy_radius: Option<i32>,
+    },
     /// `inputGeoPointEmpty#e4c123d6`
     InputGeoPointEmpty,
 }
@@ -2089,20 +2705,23 @@ impl InputGeoPoint {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_GEO_POINT_ID => {
-    let flags = r.read_i32()?;
-    let lat = f64::from_bits(r.read_u64()?);
-    let long = f64::from_bits(r.read_u64()?);
-    let accuracy_radius = if flags & (1 << 0) != 0 {
-        let accuracy_radius = r.read_i32()?;
-        Some(accuracy_radius)
-    } else {
-        None
-    };
-                Ok(InputGeoPoint::InputGeoPoint { flags, lat, long, accuracy_radius })
+                let flags = r.read_i32()?;
+                let lat = f64::from_bits(r.read_u64()?);
+                let long = f64::from_bits(r.read_u64()?);
+                let accuracy_radius = if flags & (1 << 0) != 0 {
+                    let accuracy_radius = r.read_i32()?;
+                    Some(accuracy_radius)
+                } else {
+                    None
+                };
+                Ok(InputGeoPoint::InputGeoPoint {
+                    flags,
+                    lat,
+                    long,
+                    accuracy_radius,
+                })
             }
-            INPUT_GEO_POINT_EMPTY_ID => {
-                Ok(InputGeoPoint::InputGeoPointEmpty {  })
-            }
+            INPUT_GEO_POINT_EMPTY_ID => Ok(InputGeoPoint::InputGeoPointEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputGeoPoint constructor {other:#x}"
             ))),
@@ -2124,16 +2743,14 @@ impl DataJSON {
                 "expected dataJSON, got {ctor:#x}"
             )));
         }
-    let data = String::from_utf8(r.read_bytes()?)?;
-        Ok(DataJSON {
-            data,
-        })
+        let data = String::from_utf8(r.read_bytes()?)?;
+        Ok(DataJSON { data })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(DATA_JSON_ID);
-    w.write_bytes(self.data.as_bytes());
+        w.write_u32(DATA_JSON_ID);
+        w.write_bytes(self.data.as_bytes());
     }
 }
 
@@ -2166,50 +2783,50 @@ impl Invoice {
                 "expected invoice, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let test = flags & (1 << 0) != 0;
-    let name_requested = flags & (1 << 1) != 0;
-    let phone_requested = flags & (1 << 2) != 0;
-    let email_requested = flags & (1 << 3) != 0;
-    let shipping_address_requested = flags & (1 << 4) != 0;
-    let flexible = flags & (1 << 5) != 0;
-    let phone_to_provider = flags & (1 << 6) != 0;
-    let email_to_provider = flags & (1 << 7) != 0;
-    let recurring = flags & (1 << 9) != 0;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut prices = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        prices.push(LabeledPrice::read_from(r)?);
-    }
-    let max_tip_amount = if flags & (1 << 8) != 0 {
-        let max_tip_amount = r.read_i64()?;
-        Some(max_tip_amount)
-    } else {
-        None
-    };
-    let suggested_tip_amounts = if flags & (1 << 8) != 0 {
+        let flags = r.read_i32()?;
+        let test = flags & (1 << 0) != 0;
+        let name_requested = flags & (1 << 1) != 0;
+        let phone_requested = flags & (1 << 2) != 0;
+        let email_requested = flags & (1 << 3) != 0;
+        let shipping_address_requested = flags & (1 << 4) != 0;
+        let flexible = flags & (1 << 5) != 0;
+        let phone_to_provider = flags & (1 << 6) != 0;
+        let email_to_provider = flags & (1 << 7) != 0;
+        let recurring = flags & (1 << 9) != 0;
+        let currency = String::from_utf8(r.read_bytes()?)?;
         let n = r.read_vector_header()?;
-        let mut suggested_tip_amounts = Vec::with_capacity(n.max(0) as usize);
+        let mut prices = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            suggested_tip_amounts.push(r.read_i64()?);
+            prices.push(LabeledPrice::read_from(r)?);
         }
-        Some(suggested_tip_amounts)
-    } else {
-        None
-    };
-    let terms_url = if flags & (1 << 10) != 0 {
-        let terms_url = String::from_utf8(r.read_bytes()?)?;
-        Some(terms_url)
-    } else {
-        None
-    };
-    let subscription_period = if flags & (1 << 11) != 0 {
-        let subscription_period = r.read_i32()?;
-        Some(subscription_period)
-    } else {
-        None
-    };
+        let max_tip_amount = if flags & (1 << 8) != 0 {
+            let max_tip_amount = r.read_i64()?;
+            Some(max_tip_amount)
+        } else {
+            None
+        };
+        let suggested_tip_amounts = if flags & (1 << 8) != 0 {
+            let n = r.read_vector_header()?;
+            let mut suggested_tip_amounts = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                suggested_tip_amounts.push(r.read_i64()?);
+            }
+            Some(suggested_tip_amounts)
+        } else {
+            None
+        };
+        let terms_url = if flags & (1 << 10) != 0 {
+            let terms_url = String::from_utf8(r.read_bytes()?)?;
+            Some(terms_url)
+        } else {
+            None
+        };
+        let subscription_period = if flags & (1 << 11) != 0 {
+            let subscription_period = r.read_i32()?;
+            Some(subscription_period)
+        } else {
+            None
+        };
         Ok(Invoice {
             flags,
             test,
@@ -2232,31 +2849,59 @@ impl Invoice {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(INVOICE_ID);
-    let flags: i32 = if self.test { 1 << 0 } else { 0 } | if self.name_requested { 1 << 1 } else { 0 } | if self.phone_requested { 1 << 2 } else { 0 } | if self.email_requested { 1 << 3 } else { 0 } | if self.shipping_address_requested { 1 << 4 } else { 0 } | if self.flexible { 1 << 5 } else { 0 } | if self.phone_to_provider { 1 << 6 } else { 0 } | if self.email_to_provider { 1 << 7 } else { 0 } | if self.recurring { 1 << 9 } else { 0 } | if self.max_tip_amount.is_some() { 1 << 8 } else { 0 } | if self.suggested_tip_amounts.is_some() { 1 << 8 } else { 0 } | if self.terms_url.is_some() { 1 << 10 } else { 0 } | if self.subscription_period.is_some() { 1 << 11 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.currency.as_bytes());
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.prices.len() as i32);
-    for item in self.prices.iter() {
-        item.write_to(w);
-    }
-    if let Some(max_tip_amount) = self.max_tip_amount {
-        w.write_i64(max_tip_amount);
-    }
-    if let Some(suggested_tip_amounts) = self.suggested_tip_amounts.clone() {
+        w.write_u32(INVOICE_ID);
+        let flags: i32 = if self.test { 1 << 0 } else { 0 }
+            | if self.name_requested { 1 << 1 } else { 0 }
+            | if self.phone_requested { 1 << 2 } else { 0 }
+            | if self.email_requested { 1 << 3 } else { 0 }
+            | if self.shipping_address_requested {
+                1 << 4
+            } else {
+                0
+            }
+            | if self.flexible { 1 << 5 } else { 0 }
+            | if self.phone_to_provider { 1 << 6 } else { 0 }
+            | if self.email_to_provider { 1 << 7 } else { 0 }
+            | if self.recurring { 1 << 9 } else { 0 }
+            | if self.max_tip_amount.is_some() {
+                1 << 8
+            } else {
+                0
+            }
+            | if self.suggested_tip_amounts.is_some() {
+                1 << 8
+            } else {
+                0
+            }
+            | if self.terms_url.is_some() { 1 << 10 } else { 0 }
+            | if self.subscription_period.is_some() {
+                1 << 11
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        w.write_bytes(self.currency.as_bytes());
         w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(suggested_tip_amounts.len() as i32);
-        for item in suggested_tip_amounts.iter().copied() {
-            w.write_i64(item);
+        w.write_i32(self.prices.len() as i32);
+        for item in self.prices.iter() {
+            item.write_to(w);
         }
-    }
-    if let Some(terms_url) = self.terms_url.clone() {
-        w.write_bytes(terms_url.as_bytes());
-    }
-    if let Some(subscription_period) = self.subscription_period {
-        w.write_i32(subscription_period);
-    }
+        if let Some(max_tip_amount) = self.max_tip_amount {
+            w.write_i64(max_tip_amount);
+        }
+        if let Some(suggested_tip_amounts) = self.suggested_tip_amounts.clone() {
+            w.write_u32(crate::serialize::VECTOR);
+            w.write_i32(suggested_tip_amounts.len() as i32);
+            for item in suggested_tip_amounts.iter().copied() {
+                w.write_i64(item);
+            }
+        }
+        if let Some(terms_url) = self.terms_url.clone() {
+            w.write_bytes(terms_url.as_bytes());
+        }
+        if let Some(subscription_period) = self.subscription_period {
+            w.write_i32(subscription_period);
+        }
     }
 }
 
@@ -2275,19 +2920,16 @@ impl LabeledPrice {
                 "expected labeledPrice, got {ctor:#x}"
             )));
         }
-    let label = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-        Ok(LabeledPrice {
-            label,
-            amount,
-        })
+        let label = String::from_utf8(r.read_bytes()?)?;
+        let amount = r.read_i64()?;
+        Ok(LabeledPrice { label, amount })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(LABELED_PRICE_ID);
-    w.write_bytes(self.label.as_bytes());
-    w.write_i64(self.amount);
+        w.write_u32(LABELED_PRICE_ID);
+        w.write_bytes(self.label.as_bytes());
+        w.write_i64(self.amount);
     }
 }
 
@@ -2308,14 +2950,14 @@ impl InputWebDocument {
                 "expected inputWebDocument, got {ctor:#x}"
             )));
         }
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let size = r.read_i32()?;
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
+        let url = String::from_utf8(r.read_bytes()?)?;
+        let size = r.read_i32()?;
+        let mime_type = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut attributes = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            attributes.push(DocumentAttribute::read_from(r)?);
+        }
         Ok(InputWebDocument {
             url,
             size,
@@ -2323,24 +2965,53 @@ impl InputWebDocument {
             attributes,
         })
     }
-
 }
 
 /// Union `DocumentAttribute` (8 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentAttribute {
     /// `documentAttributeCustomEmoji#fd149899`
-    DocumentAttributeCustomEmoji { flags: i32, free: bool, text_color: bool, alt: String, stickerset: InputStickerSet },
+    DocumentAttributeCustomEmoji {
+        flags: i32,
+        free: bool,
+        text_color: bool,
+        alt: String,
+        stickerset: InputStickerSet,
+    },
     /// `documentAttributeHasStickers#9801d2f7`
     DocumentAttributeHasStickers,
     /// `documentAttributeFilename#15590068`
     DocumentAttributeFilename { file_name: String },
     /// `documentAttributeAudio#9852f9c6`
-    DocumentAttributeAudio { flags: i32, voice: bool, duration: i32, title: Option<String>, performer: Option<String>, waveform: Option<Vec<u8>> },
+    DocumentAttributeAudio {
+        flags: i32,
+        voice: bool,
+        duration: i32,
+        title: Option<String>,
+        performer: Option<String>,
+        waveform: Option<Vec<u8>>,
+    },
     /// `documentAttributeVideo#43c57c48`
-    DocumentAttributeVideo { flags: i32, round_message: bool, supports_streaming: bool, nosound: bool, duration: f64, w: i32, h: i32, preload_prefix_size: Option<i32>, video_start_ts: Option<f64>, video_codec: Option<String> },
+    DocumentAttributeVideo {
+        flags: i32,
+        round_message: bool,
+        supports_streaming: bool,
+        nosound: bool,
+        duration: f64,
+        w: i32,
+        h: i32,
+        preload_prefix_size: Option<i32>,
+        video_start_ts: Option<f64>,
+        video_codec: Option<String>,
+    },
     /// `documentAttributeSticker#6319d612`
-    DocumentAttributeSticker { flags: i32, mask: bool, alt: String, stickerset: InputStickerSet, mask_coords: Option<MaskCoords> },
+    DocumentAttributeSticker {
+        flags: i32,
+        mask: bool,
+        alt: String,
+        stickerset: InputStickerSet,
+        mask_coords: Option<MaskCoords>,
+    },
     /// `documentAttributeAnimated#11b58939`
     DocumentAttributeAnimated,
     /// `documentAttributeImageSize#6c37c15c`
@@ -2352,91 +3023,119 @@ impl DocumentAttribute {
         let ctor = r.read_u32()?;
         match ctor {
             DOCUMENT_ATTRIBUTE_CUSTOM_EMOJI_ID => {
-    let flags = r.read_i32()?;
-    let free = flags & (1 << 0) != 0;
-    let text_color = flags & (1 << 1) != 0;
-    let alt = String::from_utf8(r.read_bytes()?)?;
-    let stickerset = InputStickerSet::read_from(r)?;
-                Ok(DocumentAttribute::DocumentAttributeCustomEmoji { flags, free, text_color, alt, stickerset })
+                let flags = r.read_i32()?;
+                let free = flags & (1 << 0) != 0;
+                let text_color = flags & (1 << 1) != 0;
+                let alt = String::from_utf8(r.read_bytes()?)?;
+                let stickerset = InputStickerSet::read_from(r)?;
+                Ok(DocumentAttribute::DocumentAttributeCustomEmoji {
+                    flags,
+                    free,
+                    text_color,
+                    alt,
+                    stickerset,
+                })
             }
             DOCUMENT_ATTRIBUTE_HAS_STICKERS_ID => {
-                Ok(DocumentAttribute::DocumentAttributeHasStickers {  })
+                Ok(DocumentAttribute::DocumentAttributeHasStickers {})
             }
             DOCUMENT_ATTRIBUTE_FILENAME_ID => {
-    let file_name = String::from_utf8(r.read_bytes()?)?;
+                let file_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(DocumentAttribute::DocumentAttributeFilename { file_name })
             }
             DOCUMENT_ATTRIBUTE_AUDIO_ID => {
-    let flags = r.read_i32()?;
-    let voice = flags & (1 << 10) != 0;
-    let duration = r.read_i32()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let performer = if flags & (1 << 1) != 0 {
-        let performer = String::from_utf8(r.read_bytes()?)?;
-        Some(performer)
-    } else {
-        None
-    };
-    let waveform = if flags & (1 << 2) != 0 {
-        let waveform = r.read_bytes()?;
-        Some(waveform)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeAudio { flags, voice, duration, title, performer, waveform })
+                let flags = r.read_i32()?;
+                let voice = flags & (1 << 10) != 0;
+                let duration = r.read_i32()?;
+                let title = if flags & (1 << 0) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let performer = if flags & (1 << 1) != 0 {
+                    let performer = String::from_utf8(r.read_bytes()?)?;
+                    Some(performer)
+                } else {
+                    None
+                };
+                let waveform = if flags & (1 << 2) != 0 {
+                    let waveform = r.read_bytes()?;
+                    Some(waveform)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeAudio {
+                    flags,
+                    voice,
+                    duration,
+                    title,
+                    performer,
+                    waveform,
+                })
             }
             DOCUMENT_ATTRIBUTE_VIDEO_ID => {
-    let flags = r.read_i32()?;
-    let round_message = flags & (1 << 0) != 0;
-    let supports_streaming = flags & (1 << 1) != 0;
-    let nosound = flags & (1 << 3) != 0;
-    let duration = f64::from_bits(r.read_u64()?);
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let preload_prefix_size = if flags & (1 << 2) != 0 {
-        let preload_prefix_size = r.read_i32()?;
-        Some(preload_prefix_size)
-    } else {
-        None
-    };
-    let video_start_ts = if flags & (1 << 4) != 0 {
-        let video_start_ts = f64::from_bits(r.read_u64()?);
-        Some(video_start_ts)
-    } else {
-        None
-    };
-    let video_codec = if flags & (1 << 5) != 0 {
-        let video_codec = String::from_utf8(r.read_bytes()?)?;
-        Some(video_codec)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeVideo { flags, round_message, supports_streaming, nosound, duration, w, h, preload_prefix_size, video_start_ts, video_codec })
+                let flags = r.read_i32()?;
+                let round_message = flags & (1 << 0) != 0;
+                let supports_streaming = flags & (1 << 1) != 0;
+                let nosound = flags & (1 << 3) != 0;
+                let duration = f64::from_bits(r.read_u64()?);
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let preload_prefix_size = if flags & (1 << 2) != 0 {
+                    let preload_prefix_size = r.read_i32()?;
+                    Some(preload_prefix_size)
+                } else {
+                    None
+                };
+                let video_start_ts = if flags & (1 << 4) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                let video_codec = if flags & (1 << 5) != 0 {
+                    let video_codec = String::from_utf8(r.read_bytes()?)?;
+                    Some(video_codec)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeVideo {
+                    flags,
+                    round_message,
+                    supports_streaming,
+                    nosound,
+                    duration,
+                    w,
+                    h,
+                    preload_prefix_size,
+                    video_start_ts,
+                    video_codec,
+                })
             }
             DOCUMENT_ATTRIBUTE_STICKER_ID => {
-    let flags = r.read_i32()?;
-    let mask = flags & (1 << 1) != 0;
-    let alt = String::from_utf8(r.read_bytes()?)?;
-    let stickerset = InputStickerSet::read_from(r)?;
-    let mask_coords = if flags & (1 << 0) != 0 {
-        let mask_coords = MaskCoords::read_from(r)?;
-        Some(mask_coords)
-    } else {
-        None
-    };
-                Ok(DocumentAttribute::DocumentAttributeSticker { flags, mask, alt, stickerset, mask_coords })
+                let flags = r.read_i32()?;
+                let mask = flags & (1 << 1) != 0;
+                let alt = String::from_utf8(r.read_bytes()?)?;
+                let stickerset = InputStickerSet::read_from(r)?;
+                let mask_coords = if flags & (1 << 0) != 0 {
+                    let mask_coords = MaskCoords::read_from(r)?;
+                    Some(mask_coords)
+                } else {
+                    None
+                };
+                Ok(DocumentAttribute::DocumentAttributeSticker {
+                    flags,
+                    mask,
+                    alt,
+                    stickerset,
+                    mask_coords,
+                })
             }
-            DOCUMENT_ATTRIBUTE_ANIMATED_ID => {
-                Ok(DocumentAttribute::DocumentAttributeAnimated {  })
-            }
+            DOCUMENT_ATTRIBUTE_ANIMATED_ID => Ok(DocumentAttribute::DocumentAttributeAnimated {}),
             DOCUMENT_ATTRIBUTE_IMAGE_SIZE_ID => {
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
                 Ok(DocumentAttribute::DocumentAttributeImageSize { w, h })
             }
             other => Err(Error::Serialization(format!(
@@ -2463,25 +3162,20 @@ impl MaskCoords {
                 "expected maskCoords, got {ctor:#x}"
             )));
         }
-    let n = r.read_i32()?;
-    let x = f64::from_bits(r.read_u64()?);
-    let y = f64::from_bits(r.read_u64()?);
-    let zoom = f64::from_bits(r.read_u64()?);
-        Ok(MaskCoords {
-            n,
-            x,
-            y,
-            zoom,
-        })
+        let n = r.read_i32()?;
+        let x = f64::from_bits(r.read_u64()?);
+        let y = f64::from_bits(r.read_u64()?);
+        let zoom = f64::from_bits(r.read_u64()?);
+        Ok(MaskCoords { n, x, y, zoom })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MASK_COORDS_ID);
-    w.write_i32(self.n);
-    w.write_double(self.x);
-    w.write_double(self.y);
-    w.write_double(self.zoom);
+        w.write_u32(MASK_COORDS_ID);
+        w.write_i32(self.n);
+        w.write_double(self.x);
+        w.write_double(self.y);
+        w.write_double(self.zoom);
     }
 }
 
@@ -2489,7 +3183,10 @@ impl MaskCoords {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputGame {
     /// `inputGameShortName#c331e80a`
-    InputGameShortName { bot_id: InputUser, short_name: String },
+    InputGameShortName {
+        bot_id: InputUser,
+        short_name: String,
+    },
     /// `inputGameID#032c3e77`
     InputGameID { id: i64, access_hash: AccessHash },
 }
@@ -2499,14 +3196,14 @@ impl InputGame {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_GAME_SHORT_NAME_ID => {
-    let bot_id = InputUser::read_from(r)?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
+                let bot_id = InputUser::read_from(r)?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputGame::InputGameShortName { bot_id, short_name })
             }
             INPUT_GAME_ID_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputGame::InputGameID { id, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -2530,11 +3227,11 @@ impl InputQuickReplyShortcut {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_QUICK_REPLY_SHORTCUT_ID_ID => {
-    let shortcut_id = r.read_i32()?;
+                let shortcut_id = r.read_i32()?;
                 Ok(InputQuickReplyShortcut::InputQuickReplyShortcutId { shortcut_id })
             }
             INPUT_QUICK_REPLY_SHORTCUT_ID => {
-    let shortcut = String::from_utf8(r.read_bytes()?)?;
+                let shortcut = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputQuickReplyShortcut::InputQuickReplyShortcut { shortcut })
             }
             other => Err(Error::Serialization(format!(
@@ -2562,20 +3259,20 @@ impl InputSingleMedia {
                 "expected inputSingleMedia, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let media = InputMedia::read_from(r)?;
-    let random_id = r.read_i64()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let media = InputMedia::read_from(r)?;
+        let random_id = r.read_i64()?;
+        let message = String::from_utf8(r.read_bytes()?)?;
+        let entities = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut entities = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                entities.push(MessageEntity::read_from(r)?);
+            }
+            Some(entities)
+        } else {
+            None
+        };
         Ok(InputSingleMedia {
             flags,
             media,
@@ -2584,7 +3281,6 @@ impl InputSingleMedia {
             entities,
         })
     }
-
 }
 
 /// Union `InputReplyTo` (3 constructors).
@@ -2595,7 +3291,17 @@ pub enum InputReplyTo {
     /// `inputReplyToStory#5881323a`
     InputReplyToStory { peer: InputPeer, story_id: i32 },
     /// `inputReplyToMessage#869fbe10`
-    InputReplyToMessage { flags: i32, reply_to_msg_id: i32, top_msg_id: Option<i32>, reply_to_peer_id: Option<InputPeer>, quote_text: Option<String>, quote_entities: Option<Vec<MessageEntity>>, quote_offset: Option<i32>, monoforum_peer_id: Option<InputPeer>, todo_item_id: Option<i32> },
+    InputReplyToMessage {
+        flags: i32,
+        reply_to_msg_id: i32,
+        top_msg_id: Option<i32>,
+        reply_to_peer_id: Option<InputPeer>,
+        quote_text: Option<String>,
+        quote_entities: Option<Vec<MessageEntity>>,
+        quote_offset: Option<i32>,
+        monoforum_peer_id: Option<InputPeer>,
+        todo_item_id: Option<i32>,
+    },
 }
 
 impl InputReplyTo {
@@ -2603,64 +3309,74 @@ impl InputReplyTo {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_REPLY_TO_MONO_FORUM_ID => {
-    let monoforum_peer_id = InputPeer::read_from(r)?;
+                let monoforum_peer_id = InputPeer::read_from(r)?;
                 Ok(InputReplyTo::InputReplyToMonoForum { monoforum_peer_id })
             }
             INPUT_REPLY_TO_STORY_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let story_id = r.read_i32()?;
+                let peer = InputPeer::read_from(r)?;
+                let story_id = r.read_i32()?;
                 Ok(InputReplyTo::InputReplyToStory { peer, story_id })
             }
             INPUT_REPLY_TO_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let reply_to_msg_id = r.read_i32()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let reply_to_peer_id = if flags & (1 << 1) != 0 {
-        let reply_to_peer_id = InputPeer::read_from(r)?;
-        Some(reply_to_peer_id)
-    } else {
-        None
-    };
-    let quote_text = if flags & (1 << 2) != 0 {
-        let quote_text = String::from_utf8(r.read_bytes()?)?;
-        Some(quote_text)
-    } else {
-        None
-    };
-    let quote_entities = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            quote_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(quote_entities)
-    } else {
-        None
-    };
-    let quote_offset = if flags & (1 << 4) != 0 {
-        let quote_offset = r.read_i32()?;
-        Some(quote_offset)
-    } else {
-        None
-    };
-    let monoforum_peer_id = if flags & (1 << 5) != 0 {
-        let monoforum_peer_id = InputPeer::read_from(r)?;
-        Some(monoforum_peer_id)
-    } else {
-        None
-    };
-    let todo_item_id = if flags & (1 << 6) != 0 {
-        let todo_item_id = r.read_i32()?;
-        Some(todo_item_id)
-    } else {
-        None
-    };
-                Ok(InputReplyTo::InputReplyToMessage { flags, reply_to_msg_id, top_msg_id, reply_to_peer_id, quote_text, quote_entities, quote_offset, monoforum_peer_id, todo_item_id })
+                let flags = r.read_i32()?;
+                let reply_to_msg_id = r.read_i32()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let reply_to_peer_id = if flags & (1 << 1) != 0 {
+                    let reply_to_peer_id = InputPeer::read_from(r)?;
+                    Some(reply_to_peer_id)
+                } else {
+                    None
+                };
+                let quote_text = if flags & (1 << 2) != 0 {
+                    let quote_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(quote_text)
+                } else {
+                    None
+                };
+                let quote_entities = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        quote_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(quote_entities)
+                } else {
+                    None
+                };
+                let quote_offset = if flags & (1 << 4) != 0 {
+                    let quote_offset = r.read_i32()?;
+                    Some(quote_offset)
+                } else {
+                    None
+                };
+                let monoforum_peer_id = if flags & (1 << 5) != 0 {
+                    let monoforum_peer_id = InputPeer::read_from(r)?;
+                    Some(monoforum_peer_id)
+                } else {
+                    None
+                };
+                let todo_item_id = if flags & (1 << 6) != 0 {
+                    let todo_item_id = r.read_i32()?;
+                    Some(todo_item_id)
+                } else {
+                    None
+                };
+                Ok(InputReplyTo::InputReplyToMessage {
+                    flags,
+                    reply_to_msg_id,
+                    top_msg_id,
+                    reply_to_peer_id,
+                    quote_text,
+                    quote_entities,
+                    quote_offset,
+                    monoforum_peer_id,
+                    todo_item_id,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputReplyTo constructor {other:#x}"
@@ -2687,21 +3403,21 @@ impl SuggestedPost {
                 "expected suggestedPost, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let accepted = flags & (1 << 1) != 0;
-    let rejected = flags & (1 << 2) != 0;
-    let price = if flags & (1 << 3) != 0 {
-        let price = StarsAmount::read_from(r)?;
-        Some(price)
-    } else {
-        None
-    };
-    let schedule_date = if flags & (1 << 0) != 0 {
-        let schedule_date = r.read_i32()?;
-        Some(schedule_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let accepted = flags & (1 << 1) != 0;
+        let rejected = flags & (1 << 2) != 0;
+        let price = if flags & (1 << 3) != 0 {
+            let price = StarsAmount::read_from(r)?;
+            Some(price)
+        } else {
+            None
+        };
+        let schedule_date = if flags & (1 << 0) != 0 {
+            let schedule_date = r.read_i32()?;
+            Some(schedule_date)
+        } else {
+            None
+        };
         Ok(SuggestedPost {
             flags,
             accepted,
@@ -2710,7 +3426,6 @@ impl SuggestedPost {
             schedule_date,
         })
     }
-
 }
 
 /// Union `StarsAmount` (2 constructors).
@@ -2727,12 +3442,12 @@ impl StarsAmount {
         let ctor = r.read_u32()?;
         match ctor {
             STARS_TON_AMOUNT_ID => {
-    let amount = r.read_i64()?;
+                let amount = r.read_i64()?;
                 Ok(StarsAmount::StarsTonAmount { amount })
             }
             STARS_AMOUNT_ID => {
-    let amount = r.read_i64()?;
-    let nanos = r.read_i32()?;
+                let amount = r.read_i64()?;
+                let nanos = r.read_i32()?;
                 Ok(StarsAmount::StarsAmount { amount, nanos })
             }
             other => Err(Error::Serialization(format!(
@@ -2785,59 +3500,37 @@ impl MessagesFilter {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_MESSAGES_FILTER_PINNED_ID => {
-                Ok(MessagesFilter::InputMessagesFilterPinned {  })
-            }
-            INPUT_MESSAGES_FILTER_CONTACTS_ID => {
-                Ok(MessagesFilter::InputMessagesFilterContacts {  })
-            }
-            INPUT_MESSAGES_FILTER_GEO_ID => {
-                Ok(MessagesFilter::InputMessagesFilterGeo {  })
-            }
+            INPUT_MESSAGES_FILTER_PINNED_ID => Ok(MessagesFilter::InputMessagesFilterPinned {}),
+            INPUT_MESSAGES_FILTER_CONTACTS_ID => Ok(MessagesFilter::InputMessagesFilterContacts {}),
+            INPUT_MESSAGES_FILTER_GEO_ID => Ok(MessagesFilter::InputMessagesFilterGeo {}),
             INPUT_MESSAGES_FILTER_MY_MENTIONS_ID => {
-                Ok(MessagesFilter::InputMessagesFilterMyMentions {  })
+                Ok(MessagesFilter::InputMessagesFilterMyMentions {})
             }
             INPUT_MESSAGES_FILTER_ROUND_VIDEO_ID => {
-                Ok(MessagesFilter::InputMessagesFilterRoundVideo {  })
+                Ok(MessagesFilter::InputMessagesFilterRoundVideo {})
             }
             INPUT_MESSAGES_FILTER_ROUND_VOICE_ID => {
-                Ok(MessagesFilter::InputMessagesFilterRoundVoice {  })
+                Ok(MessagesFilter::InputMessagesFilterRoundVoice {})
             }
             INPUT_MESSAGES_FILTER_PHONE_CALLS_ID => {
-    let flags = r.read_i32()?;
-    let missed = flags & (1 << 0) != 0;
+                let flags = r.read_i32()?;
+                let missed = flags & (1 << 0) != 0;
                 Ok(MessagesFilter::InputMessagesFilterPhoneCalls { flags, missed })
             }
             INPUT_MESSAGES_FILTER_CHAT_PHOTOS_ID => {
-                Ok(MessagesFilter::InputMessagesFilterChatPhotos {  })
+                Ok(MessagesFilter::InputMessagesFilterChatPhotos {})
             }
-            INPUT_MESSAGES_FILTER_MUSIC_ID => {
-                Ok(MessagesFilter::InputMessagesFilterMusic {  })
-            }
-            INPUT_MESSAGES_FILTER_VOICE_ID => {
-                Ok(MessagesFilter::InputMessagesFilterVoice {  })
-            }
-            INPUT_MESSAGES_FILTER_GIF_ID => {
-                Ok(MessagesFilter::InputMessagesFilterGif {  })
-            }
-            INPUT_MESSAGES_FILTER_URL_ID => {
-                Ok(MessagesFilter::InputMessagesFilterUrl {  })
-            }
-            INPUT_MESSAGES_FILTER_DOCUMENT_ID => {
-                Ok(MessagesFilter::InputMessagesFilterDocument {  })
-            }
+            INPUT_MESSAGES_FILTER_MUSIC_ID => Ok(MessagesFilter::InputMessagesFilterMusic {}),
+            INPUT_MESSAGES_FILTER_VOICE_ID => Ok(MessagesFilter::InputMessagesFilterVoice {}),
+            INPUT_MESSAGES_FILTER_GIF_ID => Ok(MessagesFilter::InputMessagesFilterGif {}),
+            INPUT_MESSAGES_FILTER_URL_ID => Ok(MessagesFilter::InputMessagesFilterUrl {}),
+            INPUT_MESSAGES_FILTER_DOCUMENT_ID => Ok(MessagesFilter::InputMessagesFilterDocument {}),
             INPUT_MESSAGES_FILTER_PHOTO_VIDEO_ID => {
-                Ok(MessagesFilter::InputMessagesFilterPhotoVideo {  })
+                Ok(MessagesFilter::InputMessagesFilterPhotoVideo {})
             }
-            INPUT_MESSAGES_FILTER_VIDEO_ID => {
-                Ok(MessagesFilter::InputMessagesFilterVideo {  })
-            }
-            INPUT_MESSAGES_FILTER_PHOTOS_ID => {
-                Ok(MessagesFilter::InputMessagesFilterPhotos {  })
-            }
-            INPUT_MESSAGES_FILTER_EMPTY_ID => {
-                Ok(MessagesFilter::InputMessagesFilterEmpty {  })
-            }
+            INPUT_MESSAGES_FILTER_VIDEO_ID => Ok(MessagesFilter::InputMessagesFilterVideo {}),
+            INPUT_MESSAGES_FILTER_PHOTOS_ID => Ok(MessagesFilter::InputMessagesFilterPhotos {}),
+            INPUT_MESSAGES_FILTER_EMPTY_ID => Ok(MessagesFilter::InputMessagesFilterEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown MessagesFilter constructor {other:#x}"
             ))),
@@ -2862,20 +3555,16 @@ impl Reaction {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            REACTION_PAID_ID => {
-                Ok(Reaction::ReactionPaid {  })
-            }
+            REACTION_PAID_ID => Ok(Reaction::ReactionPaid {}),
             REACTION_CUSTOM_EMOJI_ID => {
-    let document_id = r.read_i64()?;
+                let document_id = r.read_i64()?;
                 Ok(Reaction::ReactionCustomEmoji { document_id })
             }
             REACTION_EMOJI_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(Reaction::ReactionEmoji { emoticon })
             }
-            REACTION_EMPTY_ID => {
-                Ok(Reaction::ReactionEmpty {  })
-            }
+            REACTION_EMPTY_ID => Ok(Reaction::ReactionEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown Reaction constructor {other:#x}"
             ))),
@@ -2901,19 +3590,17 @@ impl InputMessage {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_MESSAGE_CALLBACK_QUERY_ID => {
-    let id = r.read_i32()?;
-    let query_id = r.read_i64()?;
+                let id = r.read_i32()?;
+                let query_id = r.read_i64()?;
                 Ok(InputMessage::InputMessageCallbackQuery { id, query_id })
             }
-            INPUT_MESSAGE_PINNED_ID => {
-                Ok(InputMessage::InputMessagePinned {  })
-            }
+            INPUT_MESSAGE_PINNED_ID => Ok(InputMessage::InputMessagePinned {}),
             INPUT_MESSAGE_REPLY_TO_ID => {
-    let id = r.read_i32()?;
+                let id = r.read_i32()?;
                 Ok(InputMessage::InputMessageReplyTo { id })
             }
             INPUT_MESSAGE_ID_ID => {
-    let id = r.read_i32()?;
+                let id = r.read_i32()?;
                 Ok(InputMessage::InputMessageID { id })
             }
             other => Err(Error::Serialization(format!(
@@ -2946,35 +3633,35 @@ impl CodeSettings {
                 "expected codeSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let allow_flashcall = flags & (1 << 0) != 0;
-    let current_number = flags & (1 << 1) != 0;
-    let allow_app_hash = flags & (1 << 4) != 0;
-    let allow_missed_call = flags & (1 << 5) != 0;
-    let allow_firebase = flags & (1 << 7) != 0;
-    let unknown_number = flags & (1 << 9) != 0;
-    let logout_tokens = if flags & (1 << 6) != 0 {
-        let n = r.read_vector_header()?;
-        let mut logout_tokens = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            logout_tokens.push(r.read_bytes()?);
-        }
-        Some(logout_tokens)
-    } else {
-        None
-    };
-    let token = if flags & (1 << 8) != 0 {
-        let token = String::from_utf8(r.read_bytes()?)?;
-        Some(token)
-    } else {
-        None
-    };
-    let app_sandbox = if flags & (1 << 8) != 0 {
-        let app_sandbox = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(app_sandbox)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let allow_flashcall = flags & (1 << 0) != 0;
+        let current_number = flags & (1 << 1) != 0;
+        let allow_app_hash = flags & (1 << 4) != 0;
+        let allow_missed_call = flags & (1 << 5) != 0;
+        let allow_firebase = flags & (1 << 7) != 0;
+        let unknown_number = flags & (1 << 9) != 0;
+        let logout_tokens = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut logout_tokens = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                logout_tokens.push(r.read_bytes()?);
+            }
+            Some(logout_tokens)
+        } else {
+            None
+        };
+        let token = if flags & (1 << 8) != 0 {
+            let token = String::from_utf8(r.read_bytes()?)?;
+            Some(token)
+        } else {
+            None
+        };
+        let app_sandbox = if flags & (1 << 8) != 0 {
+            let app_sandbox = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(app_sandbox)
+        } else {
+            None
+        };
         Ok(CodeSettings {
             flags,
             allow_flashcall,
@@ -2991,22 +3678,42 @@ impl CodeSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(CODE_SETTINGS_ID);
-    let flags: i32 = if self.allow_flashcall { 1 << 0 } else { 0 } | if self.current_number { 1 << 1 } else { 0 } | if self.allow_app_hash { 1 << 4 } else { 0 } | if self.allow_missed_call { 1 << 5 } else { 0 } | if self.allow_firebase { 1 << 7 } else { 0 } | if self.unknown_number { 1 << 9 } else { 0 } | if self.logout_tokens.is_some() { 1 << 6 } else { 0 } | if self.token.is_some() { 1 << 8 } else { 0 } | if self.app_sandbox.is_some() { 1 << 8 } else { 0 };
-    w.write_i32(flags);
-    if let Some(logout_tokens) = self.logout_tokens.clone() {
-        w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(logout_tokens.len() as i32);
-        for item in logout_tokens.iter() {
-            w.write_bytes(item);
+        w.write_u32(CODE_SETTINGS_ID);
+        let flags: i32 = if self.allow_flashcall { 1 << 0 } else { 0 }
+            | if self.current_number { 1 << 1 } else { 0 }
+            | if self.allow_app_hash { 1 << 4 } else { 0 }
+            | if self.allow_missed_call { 1 << 5 } else { 0 }
+            | if self.allow_firebase { 1 << 7 } else { 0 }
+            | if self.unknown_number { 1 << 9 } else { 0 }
+            | if self.logout_tokens.is_some() {
+                1 << 6
+            } else {
+                0
+            }
+            | if self.token.is_some() { 1 << 8 } else { 0 }
+            | if self.app_sandbox.is_some() {
+                1 << 8
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        if let Some(logout_tokens) = self.logout_tokens.clone() {
+            w.write_u32(crate::serialize::VECTOR);
+            w.write_i32(logout_tokens.len() as i32);
+            for item in logout_tokens.iter() {
+                w.write_bytes(item);
+            }
         }
-    }
-    if let Some(token) = self.token.clone() {
-        w.write_bytes(token.as_bytes());
-    }
-    if let Some(app_sandbox) = self.app_sandbox {
-        if app_sandbox { w.write_bool_true(); } else { w.write_bool_false(); }
-    }
+        if let Some(token) = self.token.clone() {
+            w.write_bytes(token.as_bytes());
+        }
+        if let Some(app_sandbox) = self.app_sandbox {
+            if app_sandbox {
+                w.write_bool_true();
+            } else {
+                w.write_bool_false();
+            }
+        }
     }
 }
 
@@ -3026,15 +3733,15 @@ impl EmailVerification {
         let ctor = r.read_u32()?;
         match ctor {
             EMAIL_VERIFICATION_APPLE_ID => {
-    let token = String::from_utf8(r.read_bytes()?)?;
+                let token = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationApple { token })
             }
             EMAIL_VERIFICATION_GOOGLE_ID => {
-    let token = String::from_utf8(r.read_bytes()?)?;
+                let token = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationGoogle { token })
             }
             EMAIL_VERIFICATION_CODE_ID => {
-    let code = String::from_utf8(r.read_bytes()?)?;
+                let code = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationCode { code })
             }
             other => Err(Error::Serialization(format!(
@@ -3061,14 +3768,22 @@ pub fn expected_response_ctors(method_ctor: u32) -> &'static [u32] {
         0x11f812d8 => &[0xb3134d9d],
         0x8af94344 => &[0x7f077ad9],
         0x36e5bf4d => &[0xb45c69d1],
-        0x51e842e1 => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
+        0x51e842e1 => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
         0x9d4104e2 => &[0x751f3146],
         0x087fc5e7 => &[0x7d748d04],
         0x55451fa9 => &[0x7d748d04],
         0xaa2769ed => &[0x7d748d04],
-        0x1bf89d74 => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
-        0x0330e77f => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
-        0x545cd15a => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
+        0x1bf89d74 => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
+        0x0330e77f => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
+        0x545cd15a => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
         0x0e306d3a => &[0x84d19185],
         0xb08f922a => &[0xb45c69d1],
         0x29ee847a => &[0x1d73e7ea, 0x5f206716, 0xc776ba4e, 0x74535f21],
@@ -3081,10 +3796,16 @@ pub fn expected_response_ctors(method_ctor: u32) -> &'static [u32] {
         0x91cd32a8 => &[0x8dca6aa5, 0x15051f54],
         0x725afbbc => &[0x7f077ad9],
         0xe58e95d2 => &[0x84d19185],
-        0xf836aa95 => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
-        0x9a98ad68 => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
+        0xf836aa95 => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
+        0x9a98ad68 => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
         0xc9e33d54 => &[0x7f5defa6],
-        0x91006707 => &[0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101],
+        0x91006707 => &[
+            0xe317af7e, 0x313bc7f8, 0x4d6deea5, 0x78d4dec1, 0x725b04c3, 0x74ae4240, 0x9015e101,
+        ],
         0x0a7f6bbb => &[0x64ff9fd5, 0x9cd81144],
         _ => &[],
     }
@@ -3096,11 +3817,13 @@ pub fn expected_response_ctors(method_ctor: u32) -> &'static [u32] {
 pub fn build_account_update_profile(
     first_name: Option<&str>,
     last_name: Option<&str>,
-    about: Option<&str>
+    about: Option<&str>,
 ) -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(ACCOUNT_UPDATE_PROFILE_ID);
-    let flags: i32 = if first_name.is_some() { 1 << 0 } else { 0 } | if last_name.is_some() { 1 << 1 } else { 0 } | if about.is_some() { 1 << 2 } else { 0 };
+    let flags: i32 = if first_name.is_some() { 1 << 0 } else { 0 }
+        | if last_name.is_some() { 1 << 1 } else { 0 }
+        | if about.is_some() { 1 << 2 } else { 0 };
     w.write_i32(flags);
     if let Some(first_name) = first_name {
         w.write_bytes(first_name.as_bytes());
@@ -3125,10 +3848,7 @@ pub fn build_account_update_profile(
 /// `contacts.search#11f812d8 = contacts.Found` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_contacts_search(
-    q: &str,
-    limit: i32
-) -> Vec<u8> {
+pub fn build_contacts_search(q: &str, limit: i32) -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(CONTACTS_SEARCH_ID);
     w.write_bytes(q.as_bytes());
@@ -3139,9 +3859,7 @@ pub fn build_contacts_search(
 /// `contacts.resolvePhone#8af94344 = contacts.ResolvedPeer` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_contacts_resolve_phone(
-    phone: &str
-) -> Vec<u8> {
+pub fn build_contacts_resolve_phone(phone: &str) -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(CONTACTS_RESOLVE_PHONE_ID);
     w.write_bytes(phone.as_bytes());
@@ -3159,8 +3877,7 @@ pub fn build_contacts_resolve_phone(
 /// `phone.getCallConfig#55451fa9 = DataJSON` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_phone_get_call_config(
-) -> Vec<u8> {
+pub fn build_phone_get_call_config() -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(PHONE_GET_CALL_CONFIG_ID);
     w.into_bytes()
@@ -3185,8 +3902,7 @@ pub fn build_phone_get_call_config(
 /// `help.getConfig#c4f9186b = Config` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_help_get_config(
-) -> Vec<u8> {
+pub fn build_help_get_config() -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(HELP_GET_CONFIG_ID);
     w.into_bytes()
@@ -3195,8 +3911,7 @@ pub fn build_help_get_config(
 /// `help.getNearestDc#1fb33026 = NearestDc` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_help_get_nearest_dc(
-) -> Vec<u8> {
+pub fn build_help_get_nearest_dc() -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(HELP_GET_NEAREST_DC_ID);
     w.into_bytes()
@@ -3213,10 +3928,7 @@ pub fn build_help_get_nearest_dc(
 /// `contacts.resolveUsername#725afbbc = contacts.ResolvedPeer` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_contacts_resolve_username(
-    username: &str,
-    referer: Option<&str>
-) -> Vec<u8> {
+pub fn build_contacts_resolve_username(username: &str, referer: Option<&str>) -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(CONTACTS_RESOLVE_USERNAME_ID);
     let flags: i32 = if referer.is_some() { 1 << 0 } else { 0 };
@@ -3231,10 +3943,7 @@ pub fn build_contacts_resolve_username(
 /// `messages.deleteMessages#e58e95d2 = messages.AffectedMessages` — request builder.
 /// Returns the serialized method payload (wrap in invoke* at call site).
 #[allow(clippy::too_many_arguments)]
-pub fn build_messages_delete_messages(
-    revoke: bool,
-    id: &[i32]
-) -> Vec<u8> {
+pub fn build_messages_delete_messages(revoke: bool, id: &[i32]) -> Vec<u8> {
     let mut w = crate::serialize::TLWriter::new();
     w.write_u32(MESSAGES_DELETE_MESSAGES_ID);
     let flags: i32 = if revoke { 1 << 0 } else { 0 };

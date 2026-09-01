@@ -1,4 +1,4 @@
-//! TL (Type Language) binary serialization for MTProto.
+//! TL (Type Language) binary serialization for `MTProto`.
 //!
 //! Implements the serialization format described at
 //! <https://core.telegram.org/mtproto/serialize>.
@@ -10,6 +10,23 @@
 //! - `int256` (256-bit, little-endian)
 //! - `string` (length-prefixed, padded to 4 bytes)
 //! - `boolTrue` / `boolFalse` — boxed Bool constructors
+//!
+//! Serialization format: <https://core.telegram.org/mtproto/serialize>.
+
+// Wire-format engine: byte wrangling is this module's job — TL field
+// order, int32 wire ids, offset arithmetic over length-checked
+// buffers. The cast/index/arithmetic classes are inherent to that
+// job; they are relaxed once here, invariants held by hand. Every
+// other lint still applies.
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::string_slice
+)]
+#![allow(clippy::unreadable_literal)] // ids/hex quoted verbatim from the TL schema
+#![allow(clippy::unwrap_used)] // every unwrap below sits behind an ensure(N) length check on the same buffer
 
 use crate::error::{Error, Result};
 
@@ -24,37 +41,47 @@ pub struct TLWriter {
 }
 
 impl TLWriter {
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self { buf: Vec::new() }
     }
 
+    #[must_use]
     pub fn into_bytes(self) -> Vec<u8> {
         self.buf
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.buf
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.buf.len()
     }
 
     /// Returns `true` when nothing has been written yet.
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
 
     // --- elementary writes ---
 
+    // extend_from_slice is not const-stable, so these stay runtime fns
+    // despite clippy's missing_const_for_fn.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn write_i32(&mut self, v: i32) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn write_u32(&mut self, v: u32) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn write_i64(&mut self, v: i64) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
@@ -108,17 +135,17 @@ impl TLWriter {
         self.write_u32(id);
     }
 
-    /// Write the BoolTrue constructor.
+    /// Write the `BoolTrue` constructor.
     pub fn write_bool_true(&mut self) {
         self.write_u32(BOOL_TRUE);
     }
 
-    /// Write the BoolFalse constructor.
+    /// Write the `BoolFalse` constructor.
     pub fn write_bool_false(&mut self) {
         self.write_u32(BOOL_FALSE);
     }
 
-    /// Write a TL `Vector<int>` (box of int vector).
+    /// Write a bare TL `Vector<int>` (box of int vector).
     pub fn write_vector_int(&mut self, items: &[i32]) {
         // vector#1cb5c415 count:Vector<int> = Vector<int>;
         self.write_u32(VECTOR);
@@ -128,7 +155,7 @@ impl TLWriter {
         }
     }
 
-    /// Write a TL `Vector<long>` (box of long vector).
+    /// Write a bare TL `Vector<long>` (box of long vector).
     pub fn write_vector_long(&mut self, items: &[i64]) {
         self.write_u32(VECTOR);
         self.write_i32(items.len() as i32);
@@ -141,7 +168,7 @@ impl TLWriter {
     pub fn write_nullable_int(&mut self, v: Option<i32>) {
         match v {
             Some(v) => self.write_i32(v),
-            None => self.write_i32(0x14377020), // null#14377020 = Null;
+            None => self.write_i32(0x1437_7020), // null#14377020 = Null;
         }
     }
 }
@@ -157,16 +184,21 @@ pub struct TLReader<'a> {
     pos: usize,
 }
 
-impl<'a> TLReader<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
+impl TLReader<'_> {
+    #[must_use]
+    // try_from is not const-stable yet.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(data: &[u8]) -> TLReader<'_> {
+        TLReader { data, pos: 0 }
     }
 
-    pub fn remaining(&self) -> usize {
+    #[must_use]
+    pub const fn remaining(&self) -> usize {
         self.data.len() - self.pos
     }
 
-    pub fn position(&self) -> usize {
+    #[must_use]
+    pub const fn position(&self) -> usize {
         self.pos
     }
 
@@ -184,6 +216,16 @@ impl<'a> TLReader<'a> {
 
     // --- elementary reads ---
 
+    /// Read an `int` (4 bytes, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 4 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(4)` above bounds the slice, so the
+    /// `try_into` of exactly 4 bytes cannot fail.
     pub fn read_i32(&mut self) -> Result<i32> {
         self.ensure(4)?;
         let val = i32::from_le_bytes(self.data[self.pos..self.pos + 4].try_into().unwrap());
@@ -191,6 +233,16 @@ impl<'a> TLReader<'a> {
         Ok(val)
     }
 
+    /// Read an `int` as unsigned (4 bytes, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 4 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(4)` above bounds the slice, so the
+    /// `try_into` of exactly 4 bytes cannot fail.
     pub fn read_u32(&mut self) -> Result<u32> {
         self.ensure(4)?;
         let val = u32::from_le_bytes(self.data[self.pos..self.pos + 4].try_into().unwrap());
@@ -198,6 +250,16 @@ impl<'a> TLReader<'a> {
         Ok(val)
     }
 
+    /// Read a `long` (8 bytes, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 8 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(8)` above bounds the slice, so the
+    /// `try_into` of exactly 8 bytes cannot fail.
     pub fn read_i64(&mut self) -> Result<i64> {
         self.ensure(8)?;
         let val = i64::from_le_bytes(self.data[self.pos..self.pos + 8].try_into().unwrap());
@@ -205,6 +267,16 @@ impl<'a> TLReader<'a> {
         Ok(val)
     }
 
+    /// Read a `long` as unsigned (8 bytes, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 8 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(8)` above bounds the slice, so the
+    /// `try_into` of exactly 8 bytes cannot fail.
     pub fn read_u64(&mut self) -> Result<u64> {
         self.ensure(8)?;
         let val = u64::from_le_bytes(self.data[self.pos..self.pos + 8].try_into().unwrap());
@@ -212,6 +284,16 @@ impl<'a> TLReader<'a> {
         Ok(val)
     }
 
+    /// Read an `int128` (16 bytes, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 16 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(16)` above bounds the slice, so the
+    /// `try_into` of exactly 16 bytes cannot fail.
     pub fn read_u128(&mut self) -> Result<u128> {
         self.ensure(16)?;
         let val = u128::from_le_bytes(self.data[self.pos..self.pos + 16].try_into().unwrap());
@@ -219,6 +301,11 @@ impl<'a> TLReader<'a> {
         Ok(val)
     }
 
+    /// Read an `int128` as raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 16 bytes remain.
     pub fn read_i128_bytes(&mut self) -> Result<[u8; 16]> {
         self.ensure(16)?;
         let mut buf = [0u8; 16];
@@ -227,6 +314,11 @@ impl<'a> TLReader<'a> {
         Ok(buf)
     }
 
+    /// Read an `int256` as raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 32 bytes remain.
     pub fn read_u256_bytes(&mut self) -> Result<[u8; 32]> {
         self.ensure(32)?;
         let mut buf = [0u8; 32];
@@ -238,6 +330,11 @@ impl<'a> TLReader<'a> {
     /// Read a bare TL `string` (length-prefixed, padded to 4-byte
     /// alignment — padding is computed from the absolute stream offset,
     /// matching `TLWriter::write_bytes`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] on a truncated length prefix, a
+    /// truncated payload, or an invalid length byte.
     pub fn read_bytes(&mut self) -> Result<Vec<u8>> {
         self.ensure(1)?;
         let first = self.data[self.pos];
@@ -267,6 +364,15 @@ impl<'a> TLReader<'a> {
     }
 
     /// Peek at the next 4 bytes as a constructor ID without advancing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than 4 bytes remain.
+    ///
+    /// # Panics
+    ///
+    /// Never: the `ensure(4)` above bounds the slice, so the
+    /// `try_into` of exactly 4 bytes cannot fail.
     pub fn peek_constructor_id(&self) -> Result<u32> {
         self.ensure(4)?;
         Ok(u32::from_le_bytes(
@@ -275,6 +381,10 @@ impl<'a> TLReader<'a> {
     }
 
     /// Skip `n` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than `n` bytes remain.
     pub fn skip(&mut self, n: usize) -> Result<()> {
         self.ensure(n)?;
         self.pos += n;
@@ -283,6 +393,11 @@ impl<'a> TLReader<'a> {
 
     /// Read a TL `Vector<T>` header and return the element count.
     /// The caller then reads `count` elements directly from this reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when the constructor is not
+    /// `vector#1cb5c415` or the count itself cannot be read.
     pub fn read_vector_header(&mut self) -> Result<i32> {
         let ctor = self.read_u32()?;
         if ctor != VECTOR {
@@ -303,6 +418,7 @@ use crate::crypto::crc32;
 /// Compute a TL constructor ID from its description string.
 ///
 /// The ID is the CRC32 of the description, which always falls in 0x01000000..0xFFFFFF00.
+#[must_use]
 pub fn constructor_id(description: &str) -> u32 {
     crc32(description.as_bytes())
 }
@@ -371,7 +487,6 @@ pub const BAD_MSG_NOTIFICATION: u32 = 0xa7eff811;
 pub const BAD_SERVER_SALT: u32 = 0xedab447b;
 // new_server_salt#1160b89c new_server_salt:long
 pub const NEW_SERVER_SALT: u32 = 0x1160b89c;
-
 
 // future_salt
 // getFutureSalts#b921bd04 num:int — request; reply is future_salts
@@ -453,7 +568,10 @@ mod tests {
 
     #[test]
     fn test_constructor_id_vector() {
-        assert_eq!(constructor_id("vector t:Type # [ t ] = Vector t"), 0x1cb5c415);
+        assert_eq!(
+            constructor_id("vector t:Type # [ t ] = Vector t"),
+            0x1cb5c415
+        );
     }
 
     #[test]

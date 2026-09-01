@@ -1,4 +1,4 @@
-//! Behind-the-scenes resilience (SPEC §12.2 BS-2/BS-3/BS-6):
+//! Behind-the-scenes resilience (`SPEC` §12.2 BS-2/BS-3/BS-6):
 //!
 //! - [`FloodLimiter`]: per-method flood-wait bucket tracking with
 //!   retry-after scheduling (BS-2).
@@ -20,9 +20,9 @@ use tokio::sync::Mutex;
 /// Whether and how aggressively the client self-throttles.
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
-    /// Self-throttle enabled. Off by default (SPEC BS-2 is opt-in).
+    /// Self-throttle enabled. Off by default (`SPEC` BS-2 is opt-in).
     pub enabled: bool,
-    /// Default backoff applied after a FloodWait when the server did not
+    /// Default backoff applied after a `FloodWait` when the server did not
     /// give a retry duration.
     pub default_backoff: Duration,
     /// Maximum backoff the limiter will schedule.
@@ -51,6 +51,7 @@ pub struct FloodLimiter {
 
 impl FloodLimiter {
     /// Build a limiter from a rate-limit config.
+    #[must_use]
     pub fn new(config: RateLimitConfig) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
@@ -59,7 +60,8 @@ impl FloodLimiter {
     }
 
     /// True when self-throttling is enabled.
-    pub fn enabled(&self) -> bool {
+    #[must_use]
+    pub const fn enabled(&self) -> bool {
         self.config.enabled
     }
 
@@ -76,21 +78,24 @@ impl FloodLimiter {
         if let Some(ready_at) = ready_at {
             let now = Instant::now();
             if ready_at > now {
+                // guarded by `ready_at > now`, so duration_since cannot saturate
+                let wait = ready_at.duration_since(now);
                 tracing::debug!(
                     method = format!("{method:#x}"),
-                    wait_ms = (ready_at - now).as_millis() as u64,
+                    wait_ms = u64::try_from(wait.as_millis()).unwrap_or(u64::MAX),
                     "flood-wait backoff"
                 );
-                tokio::time::sleep(ready_at - now).await;
+                tokio::time::sleep(wait).await;
             }
             let mut map = self.inner.lock().await;
             map.remove(&method);
         }
     }
 
-    /// Record a FloodWait of `seconds` for `method`.
+    /// Record a `FloodWait` of `seconds` for `method`.
     pub async fn record_flood(&self, method: u32, seconds: i32) {
-        let secs = seconds.clamp(0, 3600) as u64;
+        // clamp bounds the value to 0..=3600, so the conversion cannot fail
+        let secs = u64::try_from(seconds.clamp(0, 3600)).unwrap_or(0);
         let backoff = if secs == 0 {
             self.config.default_backoff
         } else {
@@ -98,7 +103,9 @@ impl FloodLimiter {
         }
         .min(self.config.max_backoff);
         let mut map = self.inner.lock().await;
-        map.insert(method, Instant::now() + backoff);
+        // overflow unreachable: backoff is capped by `max_backoff`
+        let now = Instant::now();
+        map.insert(method, now.checked_add(backoff).unwrap_or(now));
     }
 }
 
@@ -127,7 +134,7 @@ pub struct FileRefKey {
 /// Origin descriptor for a file reference.
 #[derive(Debug, Clone)]
 pub enum FileRefSource {
-    /// From a message in a chat (msg_id + peer id for re-fetch).
+    /// From a message in a chat (`msg_id` + peer id for re-fetch).
     Message { peer_id: i64, msg_id: i64 },
 }
 
@@ -143,11 +150,13 @@ pub struct FileRefCache {
 
 impl FileRefCache {
     /// Cache with the default capacity (1024) and 1 h max age.
+    #[must_use]
     pub fn new() -> Self {
         Self::with_limits(1024, Duration::from_secs(3600))
     }
 
     /// Cache with explicit capacity and max age.
+    #[must_use]
     pub fn with_limits(capacity: usize, max_age: Duration) -> Self {
         Self {
             entries: Mutex::new(HashMap::new()),
@@ -157,6 +166,9 @@ impl FileRefCache {
     }
 
     /// Look up a fresh reference for `key`.
+    // The guard must span the `?` and the staleness read; clippy's
+    // early-drop suggestion would deadlock the return path instead.
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn get(&self, key: FileRefKey) -> Option<Vec<u8>> {
         let map = self.entries.lock().await;
         let entry = map.get(&key)?;
@@ -171,11 +183,7 @@ impl FileRefCache {
         let mut map = self.entries.lock().await;
         if map.len() >= self.capacity {
             // Evict the oldest entry (linear scan is fine at this scale).
-            if let Some(oldest_key) = map
-                .iter()
-                .min_by_key(|(_, e)| e.inserted)
-                .map(|(k, _)| *k)
-            {
+            if let Some(oldest_key) = map.iter().min_by_key(|(_, e)| e.inserted).map(|(k, _)| *k) {
                 map.remove(&oldest_key);
             }
         }
@@ -220,7 +228,7 @@ pub struct DcRotator {
 
 #[derive(Debug, Default)]
 struct DcRotatorInner {
-    /// DC option table from the last `help.getConfig` (dc_id -> ip:port).
+    /// DC option table from the last `help.getConfig` (`dc_id` -> ip:port).
     dc_options: HashMap<i32, String>,
     /// When the config was last refreshed (None = never).
     last_refresh: Option<Instant>,
@@ -228,6 +236,7 @@ struct DcRotatorInner {
 
 impl DcRotator {
     /// New rotator with an empty option table.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(DcRotatorInner::default()),
@@ -264,6 +273,7 @@ pub type SharedFileRefCache = Arc<FileRefCache>;
 pub type SharedDcRotator = Arc<DcRotator>;
 
 /// True when the error is a file-reference expiry (the BS-3 trigger).
-pub fn is_file_ref_expired(e: &Error) -> bool {
+#[must_use]
+pub const fn is_file_ref_expired(e: &Error) -> bool {
     matches!(e, Error::FileReferenceExpired { .. })
 }

@@ -7,12 +7,19 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
 use super::chat_gen::{DocumentAttribute, VideoSize};
 use super::input_gen::{InputStickerSet, MaskCoords};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const GEO_POINT_ID: u32 = 0xb2a2f663;
 pub const GEO_POINT_EMPTY_ID: u32 = 0x1117dd5f;
@@ -33,7 +40,13 @@ pub const PHOTO_EMPTY_ID: u32 = 0x2331b22d;
 #[derive(Debug, Clone, PartialEq)]
 pub enum GeoPoint {
     /// `geoPoint#b2a2f663`
-    GeoPoint { flags: i32, long: f64, lat: f64, access_hash: AccessHash, accuracy_radius: Option<i32> },
+    GeoPoint {
+        flags: i32,
+        long: f64,
+        lat: f64,
+        access_hash: AccessHash,
+        accuracy_radius: Option<i32>,
+    },
     /// `geoPointEmpty#1117dd5f`
     GeoPointEmpty,
 }
@@ -43,22 +56,26 @@ impl GeoPoint {
         let ctor = r.read_u32()?;
         match ctor {
             GEO_POINT_ID => {
-    let flags = r.read_i32()?;
-    let long = f64::from_bits(r.read_u64()?);
-    let lat = f64::from_bits(r.read_u64()?);
-    let access_hash = r.read_i64()?;
-    let accuracy_radius = if flags & (1 << 0) != 0 {
-        let accuracy_radius = r.read_i32()?;
-        Some(accuracy_radius)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
-                Ok(GeoPoint::GeoPoint { flags, long, lat, access_hash, accuracy_radius })
+                let flags = r.read_i32()?;
+                let long = f64::from_bits(r.read_u64()?);
+                let lat = f64::from_bits(r.read_u64()?);
+                let access_hash = r.read_i64()?;
+                let accuracy_radius = if flags & (1 << 0) != 0 {
+                    let accuracy_radius = r.read_i32()?;
+                    Some(accuracy_radius)
+                } else {
+                    None
+                };
+                let access_hash = AccessHash(access_hash);
+                Ok(GeoPoint::GeoPoint {
+                    flags,
+                    long,
+                    lat,
+                    access_hash,
+                    accuracy_radius,
+                })
             }
-            GEO_POINT_EMPTY_ID => {
-                Ok(GeoPoint::GeoPointEmpty {  })
-            }
+            GEO_POINT_EMPTY_ID => Ok(GeoPoint::GeoPointEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown GeoPoint constructor {other:#x}"
             ))),
@@ -70,9 +87,20 @@ impl GeoPoint {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WebDocument {
     /// `webDocumentNoProxy#f9c8bcc6`
-    WebDocumentNoProxy { url: String, size: i32, mime_type: String, attributes: Vec<DocumentAttribute> },
+    WebDocumentNoProxy {
+        url: String,
+        size: i32,
+        mime_type: String,
+        attributes: Vec<DocumentAttribute>,
+    },
     /// `webDocument#1c570ed1`
-    WebDocument { url: String, access_hash: AccessHash, size: i32, mime_type: String, attributes: Vec<DocumentAttribute> },
+    WebDocument {
+        url: String,
+        access_hash: AccessHash,
+        size: i32,
+        mime_type: String,
+        attributes: Vec<DocumentAttribute>,
+    },
 }
 
 impl WebDocument {
@@ -80,28 +108,39 @@ impl WebDocument {
         let ctor = r.read_u32()?;
         match ctor {
             WEB_DOCUMENT_NO_PROXY_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let size = r.read_i32()?;
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
-                Ok(WebDocument::WebDocumentNoProxy { url, size, mime_type, attributes })
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let size = r.read_i32()?;
+                let mime_type = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(DocumentAttribute::read_from(r)?);
+                }
+                Ok(WebDocument::WebDocumentNoProxy {
+                    url,
+                    size,
+                    mime_type,
+                    attributes,
+                })
             }
             WEB_DOCUMENT_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let access_hash = r.read_i64()?;
-    let size = r.read_i32()?;
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
-    let access_hash = AccessHash(access_hash);
-                Ok(WebDocument::WebDocument { url, access_hash, size, mime_type, attributes })
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let access_hash = r.read_i64()?;
+                let size = r.read_i32()?;
+                let mime_type = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(DocumentAttribute::read_from(r)?);
+                }
+                let access_hash = AccessHash(access_hash);
+                Ok(WebDocument::WebDocument {
+                    url,
+                    access_hash,
+                    size,
+                    mime_type,
+                    attributes,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown WebDocument constructor {other:#x}"
@@ -114,7 +153,19 @@ impl WebDocument {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Document {
     /// `document#8fd4c4d8`
-    Document { flags: i32, id: DocumentId, access_hash: AccessHash, file_reference: Vec<u8>, date: i32, mime_type: String, size: i64, thumbs: Option<Vec<PhotoSize>>, video_thumbs: Option<Vec<VideoSize>>, dc_id: i32, attributes: Vec<DocumentAttribute> },
+    Document {
+        flags: i32,
+        id: DocumentId,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+        date: i32,
+        mime_type: String,
+        size: i64,
+        thumbs: Option<Vec<PhotoSize>>,
+        video_thumbs: Option<Vec<VideoSize>>,
+        dc_id: i32,
+        attributes: Vec<DocumentAttribute>,
+    },
     /// `documentEmpty#36f8c871`
     Empty { id: DocumentId },
 }
@@ -124,46 +175,58 @@ impl Document {
         let ctor = r.read_u32()?;
         match ctor {
             DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let date = r.read_i32()?;
-    let mime_type = String::from_utf8(r.read_bytes()?)?;
-    let size = r.read_i64()?;
-    let thumbs = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut thumbs = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            thumbs.push(PhotoSize::read_from(r)?);
-        }
-        Some(thumbs)
-    } else {
-        None
-    };
-    let video_thumbs = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut video_thumbs = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            video_thumbs.push(VideoSize::read_from(r)?);
-        }
-        Some(video_thumbs)
-    } else {
-        None
-    };
-    let dc_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut attributes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        attributes.push(DocumentAttribute::read_from(r)?);
-    }
-    let id = DocumentId(id);
-    let access_hash = AccessHash(access_hash);
-                Ok(Document::Document { flags, id, access_hash, file_reference, date, mime_type, size, thumbs, video_thumbs, dc_id, attributes })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let date = r.read_i32()?;
+                let mime_type = String::from_utf8(r.read_bytes()?)?;
+                let size = r.read_i64()?;
+                let thumbs = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut thumbs = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        thumbs.push(PhotoSize::read_from(r)?);
+                    }
+                    Some(thumbs)
+                } else {
+                    None
+                };
+                let video_thumbs = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut video_thumbs = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        video_thumbs.push(VideoSize::read_from(r)?);
+                    }
+                    Some(video_thumbs)
+                } else {
+                    None
+                };
+                let dc_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut attributes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    attributes.push(DocumentAttribute::read_from(r)?);
+                }
+                let id = DocumentId(id);
+                let access_hash = AccessHash(access_hash);
+                Ok(Document::Document {
+                    flags,
+                    id,
+                    access_hash,
+                    file_reference,
+                    date,
+                    mime_type,
+                    size,
+                    thumbs,
+                    video_thumbs,
+                    dc_id,
+                    attributes,
+                })
             }
             DOCUMENT_EMPTY_ID => {
-    let id = r.read_i64()?;
-    let id = DocumentId(id);
+                let id = r.read_i64()?;
+                let id = DocumentId(id);
                 Ok(Document::Empty { id })
             }
             other => Err(Error::Serialization(format!(
@@ -179,13 +242,28 @@ pub enum PhotoSize {
     /// `photoPathSize#d8214d41`
     PhotoPathSize { r#type: String, bytes: Vec<u8> },
     /// `photoSizeProgressive#fa3efb95`
-    PhotoSizeProgressive { r#type: String, w: i32, h: i32, sizes: Vec<i32> },
+    PhotoSizeProgressive {
+        r#type: String,
+        w: i32,
+        h: i32,
+        sizes: Vec<i32>,
+    },
     /// `photoStrippedSize#e0b0bc2e`
     PhotoStrippedSize { r#type: String, bytes: Vec<u8> },
     /// `photoCachedSize#021e1ad6`
-    PhotoCachedSize { r#type: String, w: i32, h: i32, bytes: Vec<u8> },
+    PhotoCachedSize {
+        r#type: String,
+        w: i32,
+        h: i32,
+        bytes: Vec<u8>,
+    },
     /// `photoSize#75c78e60`
-    PhotoSize { r#type: String, w: i32, h: i32, size: i32 },
+    PhotoSize {
+        r#type: String,
+        w: i32,
+        h: i32,
+        size: i32,
+    },
     /// `photoSizeEmpty#0e17e23c`
     PhotoSizeEmpty { r#type: String },
 }
@@ -195,42 +273,52 @@ impl PhotoSize {
         let ctor = r.read_u32()?;
         match ctor {
             PHOTO_PATH_SIZE_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let bytes = r.read_bytes()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let bytes = r.read_bytes()?;
                 Ok(PhotoSize::PhotoPathSize { r#type, bytes })
             }
             PHOTO_SIZE_PROGRESSIVE_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut sizes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        sizes.push(r.read_i32()?);
-    }
-                Ok(PhotoSize::PhotoSizeProgressive { r#type, w, h, sizes })
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut sizes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    sizes.push(r.read_i32()?);
+                }
+                Ok(PhotoSize::PhotoSizeProgressive {
+                    r#type,
+                    w,
+                    h,
+                    sizes,
+                })
             }
             PHOTO_STRIPPED_SIZE_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let bytes = r.read_bytes()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let bytes = r.read_bytes()?;
                 Ok(PhotoSize::PhotoStrippedSize { r#type, bytes })
             }
             PHOTO_CACHED_SIZE_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let bytes = r.read_bytes()?;
-                Ok(PhotoSize::PhotoCachedSize { r#type, w, h, bytes })
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let bytes = r.read_bytes()?;
+                Ok(PhotoSize::PhotoCachedSize {
+                    r#type,
+                    w,
+                    h,
+                    bytes,
+                })
             }
             PHOTO_SIZE_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let w = r.read_i32()?;
-    let h = r.read_i32()?;
-    let size = r.read_i32()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let size = r.read_i32()?;
                 Ok(PhotoSize::PhotoSize { r#type, w, h, size })
             }
             PHOTO_SIZE_EMPTY_ID => {
-    let r#type = String::from_utf8(r.read_bytes()?)?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
                 Ok(PhotoSize::PhotoSizeEmpty { r#type })
             }
             other => Err(Error::Serialization(format!(
@@ -244,7 +332,17 @@ impl PhotoSize {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Photo {
     /// `photo#fb197a65`
-    Photo { flags: i32, has_stickers: bool, id: PhotoId, access_hash: AccessHash, file_reference: Vec<u8>, date: i32, sizes: Vec<PhotoSize>, video_sizes: Option<Vec<VideoSize>>, dc_id: i32 },
+    Photo {
+        flags: i32,
+        has_stickers: bool,
+        id: PhotoId,
+        access_hash: AccessHash,
+        file_reference: Vec<u8>,
+        date: i32,
+        sizes: Vec<PhotoSize>,
+        video_sizes: Option<Vec<VideoSize>>,
+        dc_id: i32,
+    },
     /// `photoEmpty#2331b22d`
     Empty { id: PhotoId },
 }
@@ -254,35 +352,45 @@ impl Photo {
         let ctor = r.read_u32()?;
         match ctor {
             PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let has_stickers = flags & (1 << 0) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let file_reference = r.read_bytes()?;
-    let date = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut sizes = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        sizes.push(PhotoSize::read_from(r)?);
-    }
-    let video_sizes = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut video_sizes = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            video_sizes.push(VideoSize::read_from(r)?);
-        }
-        Some(video_sizes)
-    } else {
-        None
-    };
-    let dc_id = r.read_i32()?;
-    let id = PhotoId(id);
-    let access_hash = AccessHash(access_hash);
-                Ok(Photo::Photo { flags, has_stickers, id, access_hash, file_reference, date, sizes, video_sizes, dc_id })
+                let flags = r.read_i32()?;
+                let has_stickers = flags & (1 << 0) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let file_reference = r.read_bytes()?;
+                let date = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut sizes = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    sizes.push(PhotoSize::read_from(r)?);
+                }
+                let video_sizes = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut video_sizes = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        video_sizes.push(VideoSize::read_from(r)?);
+                    }
+                    Some(video_sizes)
+                } else {
+                    None
+                };
+                let dc_id = r.read_i32()?;
+                let id = PhotoId(id);
+                let access_hash = AccessHash(access_hash);
+                Ok(Photo::Photo {
+                    flags,
+                    has_stickers,
+                    id,
+                    access_hash,
+                    file_reference,
+                    date,
+                    sizes,
+                    video_sizes,
+                    dc_id,
+                })
             }
             PHOTO_EMPTY_ID => {
-    let id = r.read_i64()?;
-    let id = PhotoId(id);
+                let id = r.read_i64()?;
+                let id = PhotoId(id);
                 Ok(Photo::Empty { id })
             }
             other => Err(Error::Serialization(format!(

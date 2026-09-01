@@ -9,9 +9,9 @@
 //! https://my.telegram.org.
 
 use mtprsto::api::TelegramClient;
-use mtprsto::session::SessionStorage;
 use mtprsto::crypto;
 use mtprsto::mtproto::MtProtoSession;
+use mtprsto::session::SessionStorage;
 use num_bigint::BigUint;
 use std::env;
 
@@ -106,8 +106,16 @@ fn run_demo() {
     let (g_b, b) = crypto::dh_server_generate();
     let client_key = crypto::dh_client_complete(g_b.clone(), a.clone());
     let server_key = crypto::dh_server_complete(g_a.clone(), b);
-    println!("   g_a ({} bits): {}...", g_a.bits(), &hex_str(&client_key)[..32]);
-    println!("   g_b ({} bits): {}...", g_b.bits(), &hex_str(&server_key)[..32]);
+    println!(
+        "   g_a ({} bits): {}...",
+        g_a.bits(),
+        &hex_str(&client_key)[..32]
+    );
+    println!(
+        "   g_b ({} bits): {}...",
+        g_b.bits(),
+        &hex_str(&server_key)[..32]
+    );
     assert_eq!(client_key, server_key);
     println!("   ✓ Keys match!");
 
@@ -178,14 +186,22 @@ fn run_demo() {
         seconds: 30,
         retry_after: std::time::Instant::now(),
     };
-    println!("   FloodWait: {} (transient={})", flood_err, flood_err.is_transient());
+    println!(
+        "   FloodWait: {} (transient={})",
+        flood_err,
+        flood_err.is_transient()
+    );
     let rpc_err = mtprsto::error::Error::Rpc {
         error_code: 400,
         error_message: "PEER_ID_INVALID".into(),
     };
     println!("   Rpc: {} (transient={})", rpc_err, rpc_err.is_transient());
     let migration_err = mtprsto::error::Error::Migration { dc_id: 2 };
-    println!("   Migration: {} (dc_id={:?})", migration_err, migration_err.dc_id());
+    println!(
+        "   Migration: {} (dc_id={:?})",
+        migration_err,
+        migration_err.dc_id()
+    );
     println!("   ✓ Error types working correctly");
 
     // Cleanup
@@ -205,7 +221,10 @@ fn run_demo() {
 
 async fn bot_auth(token: &str) -> Result<(), Box<dyn std::error::Error>> {
     let api_id = env::var("TELEGRAM_API_ID")
-        .map(|v| v.parse::<i32>().expect("TELEGRAM_API_ID must be an integer"))
+        .map(|v| {
+            v.parse::<i32>()
+                .expect("TELEGRAM_API_ID must be an integer")
+        })
         .unwrap_or(0);
     let api_hash = env::var("TELEGRAM_API_HASH").unwrap_or_default();
 
@@ -230,7 +249,10 @@ async fn bot_auth(token: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
     let api_id = env::var("TELEGRAM_API_ID")
-        .map(|v| v.parse::<i32>().expect("TELEGRAM_API_ID must be an integer"))
+        .map(|v| {
+            v.parse::<i32>()
+                .expect("TELEGRAM_API_ID must be an integer")
+        })
         .unwrap_or(0);
     let api_hash = env::var("TELEGRAM_API_HASH").unwrap_or_default();
 
@@ -267,7 +289,10 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => return Err(e.into()),
     };
-    println!("✓ Code sent (type: {:?})", sent_code_name(sent.sent_code_type));
+    println!(
+        "✓ Code sent (type: {:?})",
+        sent_code_name(sent.sent_code_type)
+    );
 
     // Step 3+4: Read the code and sign in. If the code session expires
     // while the user is typing, the server answers auth.sentCode
@@ -290,7 +315,9 @@ async fn user_auth(phone: &str) -> Result<(), Box<dyn std::error::Error>> {
                 println!("Flood wait: {seconds}s — pausing, then re-prompting for the code.");
                 tokio::time::sleep(std::time::Duration::from_secs(seconds as u64 + 1)).await;
             }
-            Err(mtprsto::error::Error::CodeResent { phone_code_hash: new_hash }) => {
+            Err(mtprsto::error::Error::CodeResent {
+                phone_code_hash: new_hash,
+            }) => {
                 println!("Code session expired — a NEW code was sent. Please enter it.");
                 phone_code_hash = new_hash;
             }
@@ -335,8 +362,7 @@ fn save_user_session(
     use mtprsto::session::SessionData;
 
     let session = client.session.as_ref().ok_or("no session to save")?;
-    let mut data =
-        SessionData::from_auth_key(&session.auth_key, session.server_salt, dc_id);
+    let mut data = SessionData::from_auth_key(&session.auth_key, session.server_salt, dc_id);
     data.user_id = client.user_id.unwrap_or(0);
     let path = env::temp_dir().join("mtprsto_demo_session.json");
     let mut store = mtprsto::SessionStore::new(&path);

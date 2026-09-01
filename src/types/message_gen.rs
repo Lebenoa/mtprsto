@@ -7,17 +7,43 @@
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
+// Schema-shaped wire code is generated, never hand-maintained: the
+// strict gate's pedantic/nursery groups and the byte-wrangling
+// classes (casts, wire-int narrowing) are silenced wholesale here
+// instead of in every handwritten module.
+#![allow(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use crate::error::{Error, Result};
-use crate::serialize::TLReader;
-use crate::types::{UserId, ChatId, ChannelId, AccessHash, MsgId, PhotoId, DocumentId};
-use super::chat_gen::{BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant, ChatParticipants, ChatPhoto, ChatReactions, DataJSON, DocumentAttribute, ExportedChatInvite, Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText, StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount, StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings, TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage, WebPageAttribute};
-use super::input_gen::{InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet, InputStickerSetItem, InputStorePaymentPurpose, InputUser, MaskCoords, TextWithEntities};
-use super::peer_gen::{Peer};
+use super::chat_gen::{
+    BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant,
+    ChatParticipants, ChatPhoto, ChatReactions, DataJSON, DocumentAttribute, ExportedChatInvite,
+    Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall,
+    InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice,
+    MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome,
+    NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem,
+    PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer,
+    PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText,
+    StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
+    StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings,
+    TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage,
+    WebPageAttribute,
+};
+use super::input_gen::{
+    InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet,
+    InputStickerSetItem, InputStorePaymentPurpose, InputUser, MaskCoords, TextWithEntities,
+};
+use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
 use super::reply_markup_gen::{KeyboardButton, ReplyMarkup};
 use super::updates_gen::{Update, Updates};
-use super::user_gen::{EmojiStatus, PeerColor, RecentStory, RestrictionReason, User, UserProfilePhoto, UserStatus, Username};
+use super::user_gen::{
+    EmojiStatus, PeerColor, RecentStory, RestrictionReason, User, UserProfilePhoto, UserStatus,
+    Username,
+};
+use crate::error::{Error, Result};
+use crate::serialize::TLReader;
+use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
 pub const MISSING_INVITEE_ID: u32 = 0x628c9224;
 pub const MESSAGES_INVITED_USERS_ID: u32 = 0x7f5defa6;
@@ -130,7 +156,8 @@ pub const SECURE_SECRET_SETTINGS_ID: u32 = 0x1527bcac;
 pub const SECURE_PASSWORD_KDF_ALGO_SHA512_ID: u32 = 0x86471d92;
 pub const SECURE_PASSWORD_KDF_ALGO_PBKDF2_HMACSHA512ITER100000_ID: u32 = 0xbbf2dda0;
 pub const SECURE_PASSWORD_KDF_ALGO_UNKNOWN_ID: u32 = 0x004a8537;
-pub const PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512ITER100000_SHA256_MOD_POW_ID: u32 = 0x3a912d4a;
+pub const PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512ITER100000_SHA256_MOD_POW_ID: u32 =
+    0x3a912d4a;
 pub const PASSWORD_KDF_ALGO_UNKNOWN_ID: u32 = 0xd45ab096;
 pub const AUTH_CHECK_PASSWORD_ID: u32 = 0xd18b4d16;
 pub const AUTH_IMPORT_BOT_AUTHORIZATION_ID: u32 = 0x67a3ff2c;
@@ -476,11 +503,11 @@ impl MissingInvitee {
                 "expected missingInvitee, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let premium_would_allow_invite = flags & (1 << 0) != 0;
-    let premium_required_for_pm = flags & (1 << 1) != 0;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+        let flags = r.read_i32()?;
+        let premium_would_allow_invite = flags & (1 << 0) != 0;
+        let premium_required_for_pm = flags & (1 << 1) != 0;
+        let user_id = r.read_i64()?;
+        let user_id = UserId(user_id);
         Ok(MissingInvitee {
             flags,
             premium_would_allow_invite,
@@ -491,10 +518,18 @@ impl MissingInvitee {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MISSING_INVITEE_ID);
-    let flags: i32 = if self.premium_would_allow_invite { 1 << 0 } else { 0 } | if self.premium_required_for_pm { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    w.write_i64(self.user_id.0);
+        w.write_u32(MISSING_INVITEE_ID);
+        let flags: i32 = if self.premium_would_allow_invite {
+            1 << 0
+        } else {
+            0
+        } | if self.premium_required_for_pm {
+            1 << 1
+        } else {
+            0
+        };
+        w.write_i32(flags);
+        w.write_i64(self.user_id.0);
     }
 }
 
@@ -513,29 +548,48 @@ impl MessagesInvitedUsers {
                 "expected messages.invitedUsers, got {ctor:#x}"
             )));
         }
-    let updates = Updates::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut missing_invitees = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        missing_invitees.push(MissingInvitee::read_from(r)?);
-    }
+        let updates = Updates::read_from(r)?;
+        let n = r.read_vector_header()?;
+        let mut missing_invitees = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            missing_invitees.push(MissingInvitee::read_from(r)?);
+        }
         Ok(MessagesInvitedUsers {
             updates,
             missing_invitees,
         })
     }
-
 }
 
 /// Union `InputRichMessage` (3 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputRichMessage {
     /// `inputRichMessageMarkdown#004b572c`
-    InputRichMessageMarkdown { flags: i32, rtl: bool, noautolink: bool, markdown: String, files: Option<Vec<InputRichFile>> },
+    InputRichMessageMarkdown {
+        flags: i32,
+        rtl: bool,
+        noautolink: bool,
+        markdown: String,
+        files: Option<Vec<InputRichFile>>,
+    },
     /// `inputRichMessageHTML#dacb836a`
-    InputRichMessageHTML { flags: i32, rtl: bool, noautolink: bool, html: String, files: Option<Vec<InputRichFile>> },
+    InputRichMessageHTML {
+        flags: i32,
+        rtl: bool,
+        noautolink: bool,
+        html: String,
+        files: Option<Vec<InputRichFile>>,
+    },
     /// `inputRichMessage#e4c449fc`
-    InputRichMessage { flags: i32, rtl: bool, noautolink: bool, blocks: Vec<PageBlock>, photos: Option<Vec<InputPhoto>>, documents: Option<Vec<InputDocument>>, users: Option<Vec<InputUser>> },
+    InputRichMessage {
+        flags: i32,
+        rtl: bool,
+        noautolink: bool,
+        blocks: Vec<PageBlock>,
+        photos: Option<Vec<InputPhoto>>,
+        documents: Option<Vec<InputDocument>>,
+        users: Option<Vec<InputUser>>,
+    },
 }
 
 impl InputRichMessage {
@@ -543,79 +597,99 @@ impl InputRichMessage {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_RICH_MESSAGE_MARKDOWN_ID => {
-    let flags = r.read_i32()?;
-    let rtl = flags & (1 << 0) != 0;
-    let noautolink = flags & (1 << 1) != 0;
-    let markdown = String::from_utf8(r.read_bytes()?)?;
-    let files = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut files = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            files.push(InputRichFile::read_from(r)?);
-        }
-        Some(files)
-    } else {
-        None
-    };
-                Ok(InputRichMessage::InputRichMessageMarkdown { flags, rtl, noautolink, markdown, files })
+                let flags = r.read_i32()?;
+                let rtl = flags & (1 << 0) != 0;
+                let noautolink = flags & (1 << 1) != 0;
+                let markdown = String::from_utf8(r.read_bytes()?)?;
+                let files = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut files = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        files.push(InputRichFile::read_from(r)?);
+                    }
+                    Some(files)
+                } else {
+                    None
+                };
+                Ok(InputRichMessage::InputRichMessageMarkdown {
+                    flags,
+                    rtl,
+                    noautolink,
+                    markdown,
+                    files,
+                })
             }
             INPUT_RICH_MESSAGE_HTML_ID => {
-    let flags = r.read_i32()?;
-    let rtl = flags & (1 << 0) != 0;
-    let noautolink = flags & (1 << 1) != 0;
-    let html = String::from_utf8(r.read_bytes()?)?;
-    let files = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut files = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            files.push(InputRichFile::read_from(r)?);
-        }
-        Some(files)
-    } else {
-        None
-    };
-                Ok(InputRichMessage::InputRichMessageHTML { flags, rtl, noautolink, html, files })
+                let flags = r.read_i32()?;
+                let rtl = flags & (1 << 0) != 0;
+                let noautolink = flags & (1 << 1) != 0;
+                let html = String::from_utf8(r.read_bytes()?)?;
+                let files = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut files = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        files.push(InputRichFile::read_from(r)?);
+                    }
+                    Some(files)
+                } else {
+                    None
+                };
+                Ok(InputRichMessage::InputRichMessageHTML {
+                    flags,
+                    rtl,
+                    noautolink,
+                    html,
+                    files,
+                })
             }
             INPUT_RICH_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let rtl = flags & (1 << 0) != 0;
-    let noautolink = flags & (1 << 1) != 0;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let photos = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut photos = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            photos.push(InputPhoto::read_from(r)?);
-        }
-        Some(photos)
-    } else {
-        None
-    };
-    let documents = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut documents = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            documents.push(InputDocument::read_from(r)?);
-        }
-        Some(documents)
-    } else {
-        None
-    };
-    let users = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut users = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            users.push(InputUser::read_from(r)?);
-        }
-        Some(users)
-    } else {
-        None
-    };
-                Ok(InputRichMessage::InputRichMessage { flags, rtl, noautolink, blocks, photos, documents, users })
+                let flags = r.read_i32()?;
+                let rtl = flags & (1 << 0) != 0;
+                let noautolink = flags & (1 << 1) != 0;
+                let n = r.read_vector_header()?;
+                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    blocks.push(PageBlock::read_from(r)?);
+                }
+                let photos = if flags & (1 << 2) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut photos = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        photos.push(InputPhoto::read_from(r)?);
+                    }
+                    Some(photos)
+                } else {
+                    None
+                };
+                let documents = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut documents = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        documents.push(InputDocument::read_from(r)?);
+                    }
+                    Some(documents)
+                } else {
+                    None
+                };
+                let users = if flags & (1 << 4) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut users = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        users.push(InputUser::read_from(r)?);
+                    }
+                    Some(users)
+                } else {
+                    None
+                };
+                Ok(InputRichMessage::InputRichMessage {
+                    flags,
+                    rtl,
+                    noautolink,
+                    blocks,
+                    photos,
+                    documents,
+                    users,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputRichMessage constructor {other:#x}"
@@ -638,13 +712,13 @@ impl InputRichFile {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_RICH_FILE_DOCUMENT_ID => {
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let document = InputDocument::read_from(r)?;
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let document = InputDocument::read_from(r)?;
                 Ok(InputRichFile::InputRichFileDocument { id, document })
             }
             INPUT_RICH_FILE_PHOTO_ID => {
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let photo = InputPhoto::read_from(r)?;
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let photo = InputPhoto::read_from(r)?;
                 Ok(InputRichFile::InputRichFilePhoto { id, photo })
             }
             other => Err(Error::Serialization(format!(
@@ -668,16 +742,13 @@ impl KeyboardInlineButtonRow {
                 "expected keyboardInlineButtonRow, got {ctor:#x}"
             )));
         }
-    let n = r.read_vector_header()?;
-    let mut buttons = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        buttons.push(KeyboardInlineButton::read_from(r)?);
+        let n = r.read_vector_header()?;
+        let mut buttons = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            buttons.push(KeyboardInlineButton::read_from(r)?);
+        }
+        Ok(KeyboardInlineButtonRow { buttons })
     }
-        Ok(KeyboardInlineButtonRow {
-            buttons,
-        })
-    }
-
 }
 
 /// `keyboardInlineButton#11c1a322 = KeyboardInlineButton`
@@ -697,15 +768,15 @@ impl KeyboardInlineButton {
                 "expected keyboardInlineButton, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let style = if flags & (1 << 10) != 0 {
-        let style = KeyboardButtonStyle::read_from(r)?;
-        Some(style)
-    } else {
-        None
-    };
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let r#type = InlineButtonType::read_from(r)?;
+        let flags = r.read_i32()?;
+        let style = if flags & (1 << 10) != 0 {
+            let style = KeyboardButtonStyle::read_from(r)?;
+            Some(style)
+        } else {
+            None
+        };
+        let text = String::from_utf8(r.read_bytes()?)?;
+        let r#type = InlineButtonType::read_from(r)?;
         Ok(KeyboardInlineButton {
             flags,
             style,
@@ -713,7 +784,6 @@ impl KeyboardInlineButton {
             r#type,
         })
     }
-
 }
 
 /// `keyboardButtonStyle#4fdd3430 = KeyboardButtonStyle`
@@ -734,16 +804,16 @@ impl KeyboardButtonStyle {
                 "expected keyboardButtonStyle, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let bg_primary = flags & (1 << 0) != 0;
-    let bg_danger = flags & (1 << 1) != 0;
-    let bg_success = flags & (1 << 2) != 0;
-    let icon = if flags & (1 << 3) != 0 {
-        let icon = r.read_i64()?;
-        Some(icon)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let bg_primary = flags & (1 << 0) != 0;
+        let bg_danger = flags & (1 << 1) != 0;
+        let bg_success = flags & (1 << 2) != 0;
+        let icon = if flags & (1 << 3) != 0 {
+            let icon = r.read_i64()?;
+            Some(icon)
+        } else {
+            None
+        };
         Ok(KeyboardButtonStyle {
             flags,
             bg_primary,
@@ -755,12 +825,15 @@ impl KeyboardButtonStyle {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(KEYBOARD_BUTTON_STYLE_ID);
-    let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 } | if self.bg_danger { 1 << 1 } else { 0 } | if self.bg_success { 1 << 2 } else { 0 } | if self.icon.is_some() { 1 << 3 } else { 0 };
-    w.write_i32(flags);
-    if let Some(icon) = self.icon {
-        w.write_i64(icon);
-    }
+        w.write_u32(KEYBOARD_BUTTON_STYLE_ID);
+        let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 }
+            | if self.bg_danger { 1 << 1 } else { 0 }
+            | if self.bg_success { 1 << 2 } else { 0 }
+            | if self.icon.is_some() { 1 << 3 } else { 0 };
+        w.write_i32(flags);
+        if let Some(icon) = self.icon {
+            w.write_i64(icon);
+        }
     }
 }
 
@@ -778,16 +851,13 @@ impl KeyboardButtonRow {
                 "expected keyboardButtonRow, got {ctor:#x}"
             )));
         }
-    let n = r.read_vector_header()?;
-    let mut buttons = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        buttons.push(KeyboardButton::read_from(r)?);
+        let n = r.read_vector_header()?;
+        let mut buttons = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            buttons.push(KeyboardButton::read_from(r)?);
+        }
+        Ok(KeyboardButtonRow { buttons })
     }
-        Ok(KeyboardButtonRow {
-            buttons,
-        })
-    }
-
 }
 
 /// Union `ButtonType` (7 constructors).
@@ -796,9 +866,22 @@ pub enum ButtonType {
     /// `buttonTypeSimpleWebView#c01a597a`
     ButtonTypeSimpleWebView { url: String },
     /// `inputButtonTypeRequestPeer#3fe268fe`
-    InputButtonTypeRequestPeer { flags: i32, name_requested: bool, username_requested: bool, photo_requested: bool, button_id: i32, peer_type: RequestPeerType, max_quantity: i32 },
+    InputButtonTypeRequestPeer {
+        flags: i32,
+        name_requested: bool,
+        username_requested: bool,
+        photo_requested: bool,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
     /// `buttonTypeRequestPeer#4f58a237`
-    ButtonTypeRequestPeer { flags: i32, button_id: i32, peer_type: RequestPeerType, max_quantity: i32 },
+    ButtonTypeRequestPeer {
+        flags: i32,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
     /// `buttonTypeRequestPoll#aacfff84`
     ButtonTypeRequestPoll { flags: i32, quiz: Option<bool> },
     /// `buttonTypeRequestGeoLocation#9beee140`
@@ -814,45 +897,52 @@ impl ButtonType {
         let ctor = r.read_u32()?;
         match ctor {
             BUTTON_TYPE_SIMPLE_WEB_VIEW_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(ButtonType::ButtonTypeSimpleWebView { url })
             }
             INPUT_BUTTON_TYPE_REQUEST_PEER_ID => {
-    let flags = r.read_i32()?;
-    let name_requested = flags & (1 << 0) != 0;
-    let username_requested = flags & (1 << 1) != 0;
-    let photo_requested = flags & (1 << 2) != 0;
-    let button_id = r.read_i32()?;
-    let peer_type = RequestPeerType::read_from(r)?;
-    let max_quantity = r.read_i32()?;
-                Ok(ButtonType::InputButtonTypeRequestPeer { flags, name_requested, username_requested, photo_requested, button_id, peer_type, max_quantity })
+                let flags = r.read_i32()?;
+                let name_requested = flags & (1 << 0) != 0;
+                let username_requested = flags & (1 << 1) != 0;
+                let photo_requested = flags & (1 << 2) != 0;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(ButtonType::InputButtonTypeRequestPeer {
+                    flags,
+                    name_requested,
+                    username_requested,
+                    photo_requested,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
             }
             BUTTON_TYPE_REQUEST_PEER_ID => {
-    let flags = r.read_i32()?;
-    let button_id = r.read_i32()?;
-    let peer_type = RequestPeerType::read_from(r)?;
-    let max_quantity = r.read_i32()?;
-                Ok(ButtonType::ButtonTypeRequestPeer { flags, button_id, peer_type, max_quantity })
+                let flags = r.read_i32()?;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(ButtonType::ButtonTypeRequestPeer {
+                    flags,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
             }
             BUTTON_TYPE_REQUEST_POLL_ID => {
-    let flags = r.read_i32()?;
-    let quiz = if flags & (1 << 0) != 0 {
-        let quiz = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(quiz)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let quiz = if flags & (1 << 0) != 0 {
+                    let quiz = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(quiz)
+                } else {
+                    None
+                };
                 Ok(ButtonType::ButtonTypeRequestPoll { flags, quiz })
             }
-            BUTTON_TYPE_REQUEST_GEO_LOCATION_ID => {
-                Ok(ButtonType::ButtonTypeRequestGeoLocation {  })
-            }
-            BUTTON_TYPE_REQUEST_PHONE_ID => {
-                Ok(ButtonType::ButtonTypeRequestPhone {  })
-            }
-            BUTTON_TYPE_DEFAULT_ID => {
-                Ok(ButtonType::ButtonTypeDefault {  })
-            }
+            BUTTON_TYPE_REQUEST_GEO_LOCATION_ID => Ok(ButtonType::ButtonTypeRequestGeoLocation {}),
+            BUTTON_TYPE_REQUEST_PHONE_ID => Ok(ButtonType::ButtonTypeRequestPhone {}),
+            BUTTON_TYPE_DEFAULT_ID => Ok(ButtonType::ButtonTypeDefault {}),
             other => Err(Error::Serialization(format!(
                 "unknown ButtonType constructor {other:#x}"
             ))),
@@ -864,13 +954,36 @@ impl ButtonType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RequestPeerType {
     /// `requestPeerTypeCreateBot#3e81e078`
-    RequestPeerTypeCreateBot { flags: i32, bot_managed: bool, suggested_name: Option<String>, suggested_username: Option<String> },
+    RequestPeerTypeCreateBot {
+        flags: i32,
+        bot_managed: bool,
+        suggested_name: Option<String>,
+        suggested_username: Option<String>,
+    },
     /// `requestPeerTypeBroadcast#339bef6c`
-    RequestPeerTypeBroadcast { flags: i32, creator: bool, has_username: Option<bool>, user_admin_rights: Option<ChatAdminRights>, bot_admin_rights: Option<ChatAdminRights> },
+    RequestPeerTypeBroadcast {
+        flags: i32,
+        creator: bool,
+        has_username: Option<bool>,
+        user_admin_rights: Option<ChatAdminRights>,
+        bot_admin_rights: Option<ChatAdminRights>,
+    },
     /// `requestPeerTypeChat#c9f06e1b`
-    RequestPeerTypeChat { flags: i32, creator: bool, bot_participant: bool, has_username: Option<bool>, forum: Option<bool>, user_admin_rights: Option<ChatAdminRights>, bot_admin_rights: Option<ChatAdminRights> },
+    RequestPeerTypeChat {
+        flags: i32,
+        creator: bool,
+        bot_participant: bool,
+        has_username: Option<bool>,
+        forum: Option<bool>,
+        user_admin_rights: Option<ChatAdminRights>,
+        bot_admin_rights: Option<ChatAdminRights>,
+    },
     /// `requestPeerTypeUser#5f3b8a00`
-    RequestPeerTypeUser { flags: i32, bot: Option<bool>, premium: Option<bool> },
+    RequestPeerTypeUser {
+        flags: i32,
+        bot: Option<bool>,
+        premium: Option<bool>,
+    },
 }
 
 impl RequestPeerType {
@@ -878,90 +991,113 @@ impl RequestPeerType {
         let ctor = r.read_u32()?;
         match ctor {
             REQUEST_PEER_TYPE_CREATE_BOT_ID => {
-    let flags = r.read_i32()?;
-    let bot_managed = flags & (1 << 0) != 0;
-    let suggested_name = if flags & (1 << 1) != 0 {
-        let suggested_name = String::from_utf8(r.read_bytes()?)?;
-        Some(suggested_name)
-    } else {
-        None
-    };
-    let suggested_username = if flags & (1 << 2) != 0 {
-        let suggested_username = String::from_utf8(r.read_bytes()?)?;
-        Some(suggested_username)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeCreateBot { flags, bot_managed, suggested_name, suggested_username })
+                let flags = r.read_i32()?;
+                let bot_managed = flags & (1 << 0) != 0;
+                let suggested_name = if flags & (1 << 1) != 0 {
+                    let suggested_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(suggested_name)
+                } else {
+                    None
+                };
+                let suggested_username = if flags & (1 << 2) != 0 {
+                    let suggested_username = String::from_utf8(r.read_bytes()?)?;
+                    Some(suggested_username)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeCreateBot {
+                    flags,
+                    bot_managed,
+                    suggested_name,
+                    suggested_username,
+                })
             }
             REQUEST_PEER_TYPE_BROADCAST_ID => {
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let has_username = if flags & (1 << 3) != 0 {
-        let has_username = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(has_username)
-    } else {
-        None
-    };
-    let user_admin_rights = if flags & (1 << 1) != 0 {
-        let user_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(user_admin_rights)
-    } else {
-        None
-    };
-    let bot_admin_rights = if flags & (1 << 2) != 0 {
-        let bot_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(bot_admin_rights)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeBroadcast { flags, creator, has_username, user_admin_rights, bot_admin_rights })
+                let flags = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let has_username = if flags & (1 << 3) != 0 {
+                    let has_username = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(has_username)
+                } else {
+                    None
+                };
+                let user_admin_rights = if flags & (1 << 1) != 0 {
+                    let user_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(user_admin_rights)
+                } else {
+                    None
+                };
+                let bot_admin_rights = if flags & (1 << 2) != 0 {
+                    let bot_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(bot_admin_rights)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeBroadcast {
+                    flags,
+                    creator,
+                    has_username,
+                    user_admin_rights,
+                    bot_admin_rights,
+                })
             }
             REQUEST_PEER_TYPE_CHAT_ID => {
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let bot_participant = flags & (1 << 5) != 0;
-    let has_username = if flags & (1 << 3) != 0 {
-        let has_username = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(has_username)
-    } else {
-        None
-    };
-    let forum = if flags & (1 << 4) != 0 {
-        let forum = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(forum)
-    } else {
-        None
-    };
-    let user_admin_rights = if flags & (1 << 1) != 0 {
-        let user_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(user_admin_rights)
-    } else {
-        None
-    };
-    let bot_admin_rights = if flags & (1 << 2) != 0 {
-        let bot_admin_rights = ChatAdminRights::read_from(r)?;
-        Some(bot_admin_rights)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeChat { flags, creator, bot_participant, has_username, forum, user_admin_rights, bot_admin_rights })
+                let flags = r.read_i32()?;
+                let creator = flags & (1 << 0) != 0;
+                let bot_participant = flags & (1 << 5) != 0;
+                let has_username = if flags & (1 << 3) != 0 {
+                    let has_username = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(has_username)
+                } else {
+                    None
+                };
+                let forum = if flags & (1 << 4) != 0 {
+                    let forum = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(forum)
+                } else {
+                    None
+                };
+                let user_admin_rights = if flags & (1 << 1) != 0 {
+                    let user_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(user_admin_rights)
+                } else {
+                    None
+                };
+                let bot_admin_rights = if flags & (1 << 2) != 0 {
+                    let bot_admin_rights = ChatAdminRights::read_from(r)?;
+                    Some(bot_admin_rights)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeChat {
+                    flags,
+                    creator,
+                    bot_participant,
+                    has_username,
+                    forum,
+                    user_admin_rights,
+                    bot_admin_rights,
+                })
             }
             REQUEST_PEER_TYPE_USER_ID => {
-    let flags = r.read_i32()?;
-    let bot = if flags & (1 << 0) != 0 {
-        let bot = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(bot)
-    } else {
-        None
-    };
-    let premium = if flags & (1 << 1) != 0 {
-        let premium = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(premium)
-    } else {
-        None
-    };
-                Ok(RequestPeerType::RequestPeerTypeUser { flags, bot, premium })
+                let flags = r.read_i32()?;
+                let bot = if flags & (1 << 0) != 0 {
+                    let bot = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(bot)
+                } else {
+                    None
+                };
+                let premium = if flags & (1 << 1) != 0 {
+                    let premium = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(premium)
+                } else {
+                    None
+                };
+                Ok(RequestPeerType::RequestPeerTypeUser {
+                    flags,
+                    bot,
+                    premium,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown RequestPeerType constructor {other:#x}"
@@ -980,7 +1116,18 @@ pub enum InputReplyTo {
     /// `inputReplyToStory#5881323a`
     InputReplyToStory { peer: InputPeer, story_id: i32 },
     /// `inputReplyToMessage#3bd4b7c2`
-    InputReplyToMessage { flags: i32, reply_to_msg_id: i32, top_msg_id: Option<i32>, reply_to_peer_id: Option<InputPeer>, quote_text: Option<String>, quote_entities: Option<Vec<MessageEntity>>, quote_offset: Option<i32>, monoforum_peer_id: Option<InputPeer>, todo_item_id: Option<i32>, poll_option: Option<Vec<u8>> },
+    InputReplyToMessage {
+        flags: i32,
+        reply_to_msg_id: i32,
+        top_msg_id: Option<i32>,
+        reply_to_peer_id: Option<InputPeer>,
+        quote_text: Option<String>,
+        quote_entities: Option<Vec<MessageEntity>>,
+        quote_offset: Option<i32>,
+        monoforum_peer_id: Option<InputPeer>,
+        todo_item_id: Option<i32>,
+        poll_option: Option<Vec<u8>>,
+    },
 }
 
 impl InputReplyTo {
@@ -988,74 +1135,85 @@ impl InputReplyTo {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_REPLY_TO_EPHEMERAL_MESSAGE_ID => {
-    let id = r.read_i32()?;
+                let id = r.read_i32()?;
                 Ok(InputReplyTo::InputReplyToEphemeralMessage { id })
             }
             INPUT_REPLY_TO_MONO_FORUM_ID => {
-    let monoforum_peer_id = InputPeer::read_from(r)?;
+                let monoforum_peer_id = InputPeer::read_from(r)?;
                 Ok(InputReplyTo::InputReplyToMonoForum { monoforum_peer_id })
             }
             INPUT_REPLY_TO_STORY_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let story_id = r.read_i32()?;
+                let peer = InputPeer::read_from(r)?;
+                let story_id = r.read_i32()?;
                 Ok(InputReplyTo::InputReplyToStory { peer, story_id })
             }
             INPUT_REPLY_TO_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let reply_to_msg_id = r.read_i32()?;
-    let top_msg_id = if flags & (1 << 0) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let reply_to_peer_id = if flags & (1 << 1) != 0 {
-        let reply_to_peer_id = InputPeer::read_from(r)?;
-        Some(reply_to_peer_id)
-    } else {
-        None
-    };
-    let quote_text = if flags & (1 << 2) != 0 {
-        let quote_text = String::from_utf8(r.read_bytes()?)?;
-        Some(quote_text)
-    } else {
-        None
-    };
-    let quote_entities = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            quote_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(quote_entities)
-    } else {
-        None
-    };
-    let quote_offset = if flags & (1 << 4) != 0 {
-        let quote_offset = r.read_i32()?;
-        Some(quote_offset)
-    } else {
-        None
-    };
-    let monoforum_peer_id = if flags & (1 << 5) != 0 {
-        let monoforum_peer_id = InputPeer::read_from(r)?;
-        Some(monoforum_peer_id)
-    } else {
-        None
-    };
-    let todo_item_id = if flags & (1 << 6) != 0 {
-        let todo_item_id = r.read_i32()?;
-        Some(todo_item_id)
-    } else {
-        None
-    };
-    let poll_option = if flags & (1 << 7) != 0 {
-        let poll_option = r.read_bytes()?;
-        Some(poll_option)
-    } else {
-        None
-    };
-                Ok(InputReplyTo::InputReplyToMessage { flags, reply_to_msg_id, top_msg_id, reply_to_peer_id, quote_text, quote_entities, quote_offset, monoforum_peer_id, todo_item_id, poll_option })
+                let flags = r.read_i32()?;
+                let reply_to_msg_id = r.read_i32()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let reply_to_peer_id = if flags & (1 << 1) != 0 {
+                    let reply_to_peer_id = InputPeer::read_from(r)?;
+                    Some(reply_to_peer_id)
+                } else {
+                    None
+                };
+                let quote_text = if flags & (1 << 2) != 0 {
+                    let quote_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(quote_text)
+                } else {
+                    None
+                };
+                let quote_entities = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        quote_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(quote_entities)
+                } else {
+                    None
+                };
+                let quote_offset = if flags & (1 << 4) != 0 {
+                    let quote_offset = r.read_i32()?;
+                    Some(quote_offset)
+                } else {
+                    None
+                };
+                let monoforum_peer_id = if flags & (1 << 5) != 0 {
+                    let monoforum_peer_id = InputPeer::read_from(r)?;
+                    Some(monoforum_peer_id)
+                } else {
+                    None
+                };
+                let todo_item_id = if flags & (1 << 6) != 0 {
+                    let todo_item_id = r.read_i32()?;
+                    Some(todo_item_id)
+                } else {
+                    None
+                };
+                let poll_option = if flags & (1 << 7) != 0 {
+                    let poll_option = r.read_bytes()?;
+                    Some(poll_option)
+                } else {
+                    None
+                };
+                Ok(InputReplyTo::InputReplyToMessage {
+                    flags,
+                    reply_to_msg_id,
+                    top_msg_id,
+                    reply_to_peer_id,
+                    quote_text,
+                    quote_entities,
+                    quote_offset,
+                    monoforum_peer_id,
+                    todo_item_id,
+                    poll_option,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputReplyTo constructor {other:#x}"
@@ -1098,60 +1256,58 @@ impl InputPrivacyRule {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PRIVACY_VALUE_DISALLOW_BOTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowBots {  })
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowBots {})
             }
             INPUT_PRIVACY_VALUE_ALLOW_BOTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowBots {  })
+                Ok(InputPrivacyRule::InputPrivacyValueAllowBots {})
             }
             INPUT_PRIVACY_VALUE_ALLOW_PREMIUM_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowPremium {  })
+                Ok(InputPrivacyRule::InputPrivacyValueAllowPremium {})
             }
             INPUT_PRIVACY_VALUE_ALLOW_CLOSE_FRIENDS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowCloseFriends {  })
+                Ok(InputPrivacyRule::InputPrivacyValueAllowCloseFriends {})
             }
             INPUT_PRIVACY_VALUE_DISALLOW_CHAT_PARTICIPANTS_ID => {
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(r.read_i64()?);
+                }
                 Ok(InputPrivacyRule::InputPrivacyValueDisallowChatParticipants { chats })
             }
             INPUT_PRIVACY_VALUE_ALLOW_CHAT_PARTICIPANTS_ID => {
-    let n = r.read_vector_header()?;
-    let mut chats = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        chats.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(r.read_i64()?);
+                }
                 Ok(InputPrivacyRule::InputPrivacyValueAllowChatParticipants { chats })
             }
             INPUT_PRIVACY_VALUE_DISALLOW_USERS_ID => {
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(InputUser::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(InputUser::read_from(r)?);
+                }
                 Ok(InputPrivacyRule::InputPrivacyValueDisallowUsers { users })
             }
             INPUT_PRIVACY_VALUE_DISALLOW_ALL_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowAll {  })
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowAll {})
             }
             INPUT_PRIVACY_VALUE_DISALLOW_CONTACTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowContacts {  })
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowContacts {})
             }
             INPUT_PRIVACY_VALUE_ALLOW_USERS_ID => {
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(InputUser::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(InputUser::read_from(r)?);
+                }
                 Ok(InputPrivacyRule::InputPrivacyValueAllowUsers { users })
             }
-            INPUT_PRIVACY_VALUE_ALLOW_ALL_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowAll {  })
-            }
+            INPUT_PRIVACY_VALUE_ALLOW_ALL_ID => Ok(InputPrivacyRule::InputPrivacyValueAllowAll {}),
             INPUT_PRIVACY_VALUE_ALLOW_CONTACTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowContacts {  })
+                Ok(InputPrivacyRule::InputPrivacyValueAllowContacts {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputPrivacyRule constructor {other:#x}"
@@ -1174,16 +1330,14 @@ impl InputChatlist {
                 "expected inputChatlistDialogFilter, got {ctor:#x}"
             )));
         }
-    let filter_id = r.read_i32()?;
-        Ok(InputChatlist {
-            filter_id,
-        })
+        let filter_id = r.read_i32()?;
+        Ok(InputChatlist { filter_id })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(INPUT_CHATLIST_DIALOG_FILTER_ID);
-    w.write_i32(self.filter_id);
+        w.write_u32(INPUT_CHATLIST_DIALOG_FILTER_ID);
+        w.write_i32(self.filter_id);
     }
 }
 
@@ -1202,14 +1356,10 @@ impl InputFolderPeer {
                 "expected inputFolderPeer, got {ctor:#x}"
             )));
         }
-    let peer = InputPeer::read_from(r)?;
-    let folder_id = r.read_i32()?;
-        Ok(InputFolderPeer {
-            peer,
-            folder_id,
-        })
+        let peer = InputPeer::read_from(r)?;
+        let folder_id = r.read_i32()?;
+        Ok(InputFolderPeer { peer, folder_id })
     }
-
 }
 
 /// `inputPhoneCall#1e36fded = InputPhoneCall`
@@ -1227,20 +1377,17 @@ impl InputPhoneCall {
                 "expected inputPhoneCall, got {ctor:#x}"
             )));
         }
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-        Ok(InputPhoneCall {
-            id,
-            access_hash,
-        })
+        let id = r.read_i64()?;
+        let access_hash = r.read_i64()?;
+        let access_hash = AccessHash(access_hash);
+        Ok(InputPhoneCall { id, access_hash })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(INPUT_PHONE_CALL_ID);
-    w.write_i64(self.id);
-    w.write_i64(self.access_hash.0);
+        w.write_u32(INPUT_PHONE_CALL_ID);
+        w.write_i64(self.id);
+        w.write_i64(self.access_hash.0);
     }
 }
 
@@ -1264,20 +1411,20 @@ impl PhoneCallDiscardReason {
         let ctor = r.read_u32()?;
         match ctor {
             PHONE_CALL_DISCARD_REASON_MIGRATE_CONFERENCE_CALL_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMigrateConferenceCall { slug })
             }
             PHONE_CALL_DISCARD_REASON_BUSY_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonBusy {  })
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonBusy {})
             }
             PHONE_CALL_DISCARD_REASON_HANGUP_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonHangup {  })
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonHangup {})
             }
             PHONE_CALL_DISCARD_REASON_DISCONNECT_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonDisconnect {  })
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonDisconnect {})
             }
             PHONE_CALL_DISCARD_REASON_MISSED_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMissed {  })
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMissed {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown PhoneCallDiscardReason constructor {other:#x}"
@@ -1302,16 +1449,16 @@ impl InputSavedStarGift {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_SAVED_STAR_GIFT_SLUG_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputSavedStarGift::InputSavedStarGiftSlug { slug })
             }
             INPUT_SAVED_STAR_GIFT_CHAT_ID => {
-    let peer = InputPeer::read_from(r)?;
-    let saved_id = r.read_i64()?;
+                let peer = InputPeer::read_from(r)?;
+                let saved_id = r.read_i64()?;
                 Ok(InputSavedStarGift::InputSavedStarGiftChat { peer, saved_id })
             }
             INPUT_SAVED_STAR_GIFT_USER_ID => {
-    let msg_id = r.read_i32()?;
+                let msg_id = r.read_i32()?;
                 Ok(InputSavedStarGift::InputSavedStarGiftUser { msg_id })
             }
             other => Err(Error::Serialization(format!(
@@ -1327,7 +1474,13 @@ pub enum InputChatPhoto {
     /// `inputChatPhoto#8953ad37`
     InputChatPhoto { id: InputPhoto },
     /// `inputChatUploadedPhoto#bdcdaec0`
-    InputChatUploadedPhoto { flags: i32, file: Option<InputFile>, video: Option<InputFile>, video_start_ts: Option<f64>, video_emoji_markup: Option<VideoSize> },
+    InputChatUploadedPhoto {
+        flags: i32,
+        file: Option<InputFile>,
+        video: Option<InputFile>,
+        video_start_ts: Option<f64>,
+        video_emoji_markup: Option<VideoSize>,
+    },
     /// `inputChatPhotoEmpty#1ca48f57`
     InputChatPhotoEmpty,
 }
@@ -1337,40 +1490,44 @@ impl InputChatPhoto {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_CHAT_PHOTO_ID => {
-    let id = InputPhoto::read_from(r)?;
+                let id = InputPhoto::read_from(r)?;
                 Ok(InputChatPhoto::InputChatPhoto { id })
             }
             INPUT_CHAT_UPLOADED_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let file = if flags & (1 << 0) != 0 {
-        let file = InputFile::read_from(r)?;
-        Some(file)
-    } else {
-        None
-    };
-    let video = if flags & (1 << 1) != 0 {
-        let video = InputFile::read_from(r)?;
-        Some(video)
-    } else {
-        None
-    };
-    let video_start_ts = if flags & (1 << 2) != 0 {
-        let video_start_ts = f64::from_bits(r.read_u64()?);
-        Some(video_start_ts)
-    } else {
-        None
-    };
-    let video_emoji_markup = if flags & (1 << 3) != 0 {
-        let video_emoji_markup = VideoSize::read_from(r)?;
-        Some(video_emoji_markup)
-    } else {
-        None
-    };
-                Ok(InputChatPhoto::InputChatUploadedPhoto { flags, file, video, video_start_ts, video_emoji_markup })
+                let flags = r.read_i32()?;
+                let file = if flags & (1 << 0) != 0 {
+                    let file = InputFile::read_from(r)?;
+                    Some(file)
+                } else {
+                    None
+                };
+                let video = if flags & (1 << 1) != 0 {
+                    let video = InputFile::read_from(r)?;
+                    Some(video)
+                } else {
+                    None
+                };
+                let video_start_ts = if flags & (1 << 2) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                let video_emoji_markup = if flags & (1 << 3) != 0 {
+                    let video_emoji_markup = VideoSize::read_from(r)?;
+                    Some(video_emoji_markup)
+                } else {
+                    None
+                };
+                Ok(InputChatPhoto::InputChatUploadedPhoto {
+                    flags,
+                    file,
+                    video,
+                    video_start_ts,
+                    video_emoji_markup,
+                })
             }
-            INPUT_CHAT_PHOTO_EMPTY_ID => {
-                Ok(InputChatPhoto::InputChatPhotoEmpty {  })
-            }
+            INPUT_CHAT_PHOTO_EMPTY_ID => Ok(InputChatPhoto::InputChatPhotoEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputChatPhoto constructor {other:#x}"
             ))),
@@ -1392,12 +1549,10 @@ impl InputCheckPasswordSRP {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_CHECK_PASSWORD_SRP_ID => {
-    let srp_id = r.read_i64()?;
+                let srp_id = r.read_i64()?;
                 Ok(InputCheckPasswordSRP::InputCheckPasswordSRP { srp_id })
             }
-            INPUT_CHECK_PASSWORD_EMPTY_ID => {
-                Ok(InputCheckPasswordSRP::InputCheckPasswordEmpty {  })
-            }
+            INPUT_CHECK_PASSWORD_EMPTY_ID => Ok(InputCheckPasswordSRP::InputCheckPasswordEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputCheckPasswordSRP constructor {other:#x}"
             ))),
@@ -1421,14 +1576,14 @@ impl PaidReactionPrivacy {
         let ctor = r.read_u32()?;
         match ctor {
             PAID_REACTION_PRIVACY_PEER_ID => {
-    let peer = InputPeer::read_from(r)?;
+                let peer = InputPeer::read_from(r)?;
                 Ok(PaidReactionPrivacy::PaidReactionPrivacyPeer { peer })
             }
             PAID_REACTION_PRIVACY_ANONYMOUS_ID => {
-                Ok(PaidReactionPrivacy::PaidReactionPrivacyAnonymous {  })
+                Ok(PaidReactionPrivacy::PaidReactionPrivacyAnonymous {})
             }
             PAID_REACTION_PRIVACY_DEFAULT_ID => {
-                Ok(PaidReactionPrivacy::PaidReactionPrivacyDefault {  })
+                Ok(PaidReactionPrivacy::PaidReactionPrivacyDefault {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown PaidReactionPrivacy constructor {other:#x}"
@@ -1453,16 +1608,14 @@ impl InputChatTheme {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_CHAT_THEME_UNIQUE_GIFT_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputChatTheme::InputChatThemeUniqueGift { slug })
             }
             INPUT_CHAT_THEME_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputChatTheme::InputChatTheme { emoticon })
             }
-            INPUT_CHAT_THEME_EMPTY_ID => {
-                Ok(InputChatTheme::InputChatThemeEmpty {  })
-            }
+            INPUT_CHAT_THEME_EMPTY_ID => Ok(InputChatTheme::InputChatThemeEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputChatTheme constructor {other:#x}"
             ))),
@@ -1484,11 +1637,11 @@ impl InputQuickReplyShortcut {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_QUICK_REPLY_SHORTCUT_ID_ID => {
-    let shortcut_id = r.read_i32()?;
+                let shortcut_id = r.read_i32()?;
                 Ok(InputQuickReplyShortcut::InputQuickReplyShortcutId { shortcut_id })
             }
             INPUT_QUICK_REPLY_SHORTCUT_ID => {
-    let shortcut = String::from_utf8(r.read_bytes()?)?;
+                let shortcut = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputQuickReplyShortcut::InputQuickReplyShortcut { shortcut })
             }
             other => Err(Error::Serialization(format!(
@@ -1516,20 +1669,20 @@ impl InputSingleMedia {
                 "expected inputSingleMedia, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let media = InputMedia::read_from(r)?;
-    let random_id = r.read_i64()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let media = InputMedia::read_from(r)?;
+        let random_id = r.read_i64()?;
+        let message = String::from_utf8(r.read_bytes()?)?;
+        let entities = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut entities = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                entities.push(MessageEntity::read_from(r)?);
+            }
+            Some(entities)
+        } else {
+            None
+        };
         Ok(InputSingleMedia {
             flags,
             media,
@@ -1538,7 +1691,6 @@ impl InputSingleMedia {
             entities,
         })
     }
-
 }
 
 /// `suggestedPost#0e8e37e5 = SuggestedPost`
@@ -1559,21 +1711,21 @@ impl SuggestedPost {
                 "expected suggestedPost, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let accepted = flags & (1 << 1) != 0;
-    let rejected = flags & (1 << 2) != 0;
-    let price = if flags & (1 << 3) != 0 {
-        let price = StarsAmount::read_from(r)?;
-        Some(price)
-    } else {
-        None
-    };
-    let schedule_date = if flags & (1 << 0) != 0 {
-        let schedule_date = r.read_i32()?;
-        Some(schedule_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let accepted = flags & (1 << 1) != 0;
+        let rejected = flags & (1 << 2) != 0;
+        let price = if flags & (1 << 3) != 0 {
+            let price = StarsAmount::read_from(r)?;
+            Some(price)
+        } else {
+            None
+        };
+        let schedule_date = if flags & (1 << 0) != 0 {
+            let schedule_date = r.read_i32()?;
+            Some(schedule_date)
+        } else {
+            None
+        };
         Ok(SuggestedPost {
             flags,
             accepted,
@@ -1582,7 +1734,6 @@ impl SuggestedPost {
             schedule_date,
         })
     }
-
 }
 
 /// `birthday#6c8e1e06 = Birthday`
@@ -1602,15 +1753,15 @@ impl Birthday {
                 "expected birthday, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let day = r.read_i32()?;
-    let month = r.read_i32()?;
-    let year = if flags & (1 << 0) != 0 {
-        let year = r.read_i32()?;
-        Some(year)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let day = r.read_i32()?;
+        let month = r.read_i32()?;
+        let year = if flags & (1 << 0) != 0 {
+            let year = r.read_i32()?;
+            Some(year)
+        } else {
+            None
+        };
         Ok(Birthday {
             flags,
             day,
@@ -1621,14 +1772,14 @@ impl Birthday {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BIRTHDAY_ID);
-    let flags: i32 = if self.year.is_some() { 1 << 0 } else { 0 };
-    w.write_i32(flags);
-    w.write_i32(self.day);
-    w.write_i32(self.month);
-    if let Some(year) = self.year {
-        w.write_i32(year);
-    }
+        w.write_u32(BIRTHDAY_ID);
+        let flags: i32 = if self.year.is_some() { 1 << 0 } else { 0 };
+        w.write_i32(flags);
+        w.write_i32(self.day);
+        w.write_i32(self.month);
+        if let Some(year) = self.year {
+            w.write_i32(year);
+        }
     }
 }
 
@@ -1653,32 +1804,32 @@ impl InputBusinessBotRecipients {
                 "expected inputBusinessBotRecipients, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let existing_chats = flags & (1 << 0) != 0;
-    let new_chats = flags & (1 << 1) != 0;
-    let contacts = flags & (1 << 2) != 0;
-    let non_contacts = flags & (1 << 3) != 0;
-    let exclude_selected = flags & (1 << 5) != 0;
-    let users = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut users = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            users.push(InputUser::read_from(r)?);
-        }
-        Some(users)
-    } else {
-        None
-    };
-    let exclude_users = if flags & (1 << 6) != 0 {
-        let n = r.read_vector_header()?;
-        let mut exclude_users = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            exclude_users.push(InputUser::read_from(r)?);
-        }
-        Some(exclude_users)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let existing_chats = flags & (1 << 0) != 0;
+        let new_chats = flags & (1 << 1) != 0;
+        let contacts = flags & (1 << 2) != 0;
+        let non_contacts = flags & (1 << 3) != 0;
+        let exclude_selected = flags & (1 << 5) != 0;
+        let users = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut users = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                users.push(InputUser::read_from(r)?);
+            }
+            Some(users)
+        } else {
+            None
+        };
+        let exclude_users = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut exclude_users = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                exclude_users.push(InputUser::read_from(r)?);
+            }
+            Some(exclude_users)
+        } else {
+            None
+        };
         Ok(InputBusinessBotRecipients {
             flags,
             existing_chats,
@@ -1690,7 +1841,6 @@ impl InputBusinessBotRecipients {
             exclude_users,
         })
     }
-
 }
 
 /// `businessBotRights#a0624cf7 = BusinessBotRights`
@@ -1721,21 +1871,21 @@ impl BusinessBotRights {
                 "expected businessBotRights, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let reply = flags & (1 << 0) != 0;
-    let read_messages = flags & (1 << 1) != 0;
-    let delete_sent_messages = flags & (1 << 2) != 0;
-    let delete_received_messages = flags & (1 << 3) != 0;
-    let edit_name = flags & (1 << 4) != 0;
-    let edit_bio = flags & (1 << 5) != 0;
-    let edit_profile_photo = flags & (1 << 6) != 0;
-    let edit_username = flags & (1 << 7) != 0;
-    let view_gifts = flags & (1 << 8) != 0;
-    let sell_gifts = flags & (1 << 9) != 0;
-    let change_gift_settings = flags & (1 << 10) != 0;
-    let transfer_and_upgrade_gifts = flags & (1 << 11) != 0;
-    let transfer_stars = flags & (1 << 12) != 0;
-    let manage_stories = flags & (1 << 13) != 0;
+        let flags = r.read_i32()?;
+        let reply = flags & (1 << 0) != 0;
+        let read_messages = flags & (1 << 1) != 0;
+        let delete_sent_messages = flags & (1 << 2) != 0;
+        let delete_received_messages = flags & (1 << 3) != 0;
+        let edit_name = flags & (1 << 4) != 0;
+        let edit_bio = flags & (1 << 5) != 0;
+        let edit_profile_photo = flags & (1 << 6) != 0;
+        let edit_username = flags & (1 << 7) != 0;
+        let view_gifts = flags & (1 << 8) != 0;
+        let sell_gifts = flags & (1 << 9) != 0;
+        let change_gift_settings = flags & (1 << 10) != 0;
+        let transfer_and_upgrade_gifts = flags & (1 << 11) != 0;
+        let transfer_stars = flags & (1 << 12) != 0;
+        let manage_stories = flags & (1 << 13) != 0;
         Ok(BusinessBotRights {
             flags,
             reply,
@@ -1757,9 +1907,34 @@ impl BusinessBotRights {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BUSINESS_BOT_RIGHTS_ID);
-    let flags: i32 = if self.reply { 1 << 0 } else { 0 } | if self.read_messages { 1 << 1 } else { 0 } | if self.delete_sent_messages { 1 << 2 } else { 0 } | if self.delete_received_messages { 1 << 3 } else { 0 } | if self.edit_name { 1 << 4 } else { 0 } | if self.edit_bio { 1 << 5 } else { 0 } | if self.edit_profile_photo { 1 << 6 } else { 0 } | if self.edit_username { 1 << 7 } else { 0 } | if self.view_gifts { 1 << 8 } else { 0 } | if self.sell_gifts { 1 << 9 } else { 0 } | if self.change_gift_settings { 1 << 10 } else { 0 } | if self.transfer_and_upgrade_gifts { 1 << 11 } else { 0 } | if self.transfer_stars { 1 << 12 } else { 0 } | if self.manage_stories { 1 << 13 } else { 0 };
-    w.write_i32(flags);
+        w.write_u32(BUSINESS_BOT_RIGHTS_ID);
+        let flags: i32 = if self.reply { 1 << 0 } else { 0 }
+            | if self.read_messages { 1 << 1 } else { 0 }
+            | if self.delete_sent_messages { 1 << 2 } else { 0 }
+            | if self.delete_received_messages {
+                1 << 3
+            } else {
+                0
+            }
+            | if self.edit_name { 1 << 4 } else { 0 }
+            | if self.edit_bio { 1 << 5 } else { 0 }
+            | if self.edit_profile_photo { 1 << 6 } else { 0 }
+            | if self.edit_username { 1 << 7 } else { 0 }
+            | if self.view_gifts { 1 << 8 } else { 0 }
+            | if self.sell_gifts { 1 << 9 } else { 0 }
+            | if self.change_gift_settings {
+                1 << 10
+            } else {
+                0
+            }
+            | if self.transfer_and_upgrade_gifts {
+                1 << 11
+            } else {
+                0
+            }
+            | if self.transfer_stars { 1 << 12 } else { 0 }
+            | if self.manage_stories { 1 << 13 } else { 0 };
+        w.write_i32(flags);
     }
 }
 
@@ -1795,74 +1970,74 @@ impl EphemeralMessage {
                 "expected ephemeralMessage, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let out = flags & (1 << 0) != 0;
-    let welcome_template = flags & (1 << 5) != 0;
-    let invert_media = flags & (1 << 7) != 0;
-    let noforwards = flags & (1 << 12) != 0;
-    let id = r.read_i32()?;
-    let from_id = Peer::read_from(r)?;
-    let peer_id = if flags & (1 << 9) != 0 {
-        let peer_id = Peer::read_from(r)?;
-        Some(peer_id)
-    } else {
-        None
-    };
-    let receiver_id = r.read_i64()?;
-    let top_msg_id = if flags & (1 << 1) != 0 {
-        let top_msg_id = r.read_i32()?;
-        Some(top_msg_id)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 2) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let media = if flags & (1 << 3) != 0 {
-        let media = MessageMedia::read_from(r)?;
-        Some(media)
-    } else {
-        None
-    };
-    let reply_markup = if flags & (1 << 4) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-    let reply_to = if flags & (1 << 6) != 0 {
-        let reply_to = MessageReplyHeader::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let rich_message = if flags & (1 << 8) != 0 {
-        let rich_message = RichMessage::read_from(r)?;
-        Some(rich_message)
-    } else {
-        None
-    };
-    let chat_instance = if flags & (1 << 10) != 0 {
-        let chat_instance = r.read_i64()?;
-        Some(chat_instance)
-    } else {
-        None
-    };
-    let anchor_msg_id = if flags & (1 << 11) != 0 {
-        let anchor_msg_id = r.read_i32()?;
-        Some(anchor_msg_id)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let out = flags & (1 << 0) != 0;
+        let welcome_template = flags & (1 << 5) != 0;
+        let invert_media = flags & (1 << 7) != 0;
+        let noforwards = flags & (1 << 12) != 0;
+        let id = r.read_i32()?;
+        let from_id = Peer::read_from(r)?;
+        let peer_id = if flags & (1 << 9) != 0 {
+            let peer_id = Peer::read_from(r)?;
+            Some(peer_id)
+        } else {
+            None
+        };
+        let receiver_id = r.read_i64()?;
+        let top_msg_id = if flags & (1 << 1) != 0 {
+            let top_msg_id = r.read_i32()?;
+            Some(top_msg_id)
+        } else {
+            None
+        };
+        let date = r.read_i32()?;
+        let message = String::from_utf8(r.read_bytes()?)?;
+        let entities = if flags & (1 << 2) != 0 {
+            let n = r.read_vector_header()?;
+            let mut entities = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                entities.push(MessageEntity::read_from(r)?);
+            }
+            Some(entities)
+        } else {
+            None
+        };
+        let media = if flags & (1 << 3) != 0 {
+            let media = MessageMedia::read_from(r)?;
+            Some(media)
+        } else {
+            None
+        };
+        let reply_markup = if flags & (1 << 4) != 0 {
+            let reply_markup = ReplyMarkup::read_from(r)?;
+            Some(reply_markup)
+        } else {
+            None
+        };
+        let reply_to = if flags & (1 << 6) != 0 {
+            let reply_to = MessageReplyHeader::read_from(r)?;
+            Some(reply_to)
+        } else {
+            None
+        };
+        let rich_message = if flags & (1 << 8) != 0 {
+            let rich_message = RichMessage::read_from(r)?;
+            Some(rich_message)
+        } else {
+            None
+        };
+        let chat_instance = if flags & (1 << 10) != 0 {
+            let chat_instance = r.read_i64()?;
+            Some(chat_instance)
+        } else {
+            None
+        };
+        let anchor_msg_id = if flags & (1 << 11) != 0 {
+            let anchor_msg_id = r.read_i32()?;
+            Some(anchor_msg_id)
+        } else {
+            None
+        };
         Ok(EphemeralMessage {
             flags,
             out,
@@ -1885,7 +2060,6 @@ impl EphemeralMessage {
             anchor_msg_id,
         })
     }
-
 }
 
 /// `richMessage#baf39d8b = RichMessage`
@@ -1907,24 +2081,24 @@ impl RichMessage {
                 "expected richMessage, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let rtl = flags & (1 << 0) != 0;
-    let part = flags & (1 << 1) != 0;
-    let n = r.read_vector_header()?;
-    let mut blocks = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        blocks.push(PageBlock::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut photos = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        photos.push(Photo::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut documents = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        documents.push(Document::read_from(r)?);
-    }
+        let flags = r.read_i32()?;
+        let rtl = flags & (1 << 0) != 0;
+        let part = flags & (1 << 1) != 0;
+        let n = r.read_vector_header()?;
+        let mut blocks = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            blocks.push(PageBlock::read_from(r)?);
+        }
+        let n = r.read_vector_header()?;
+        let mut photos = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            photos.push(Photo::read_from(r)?);
+        }
+        let n = r.read_vector_header()?;
+        let mut documents = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            documents.push(Document::read_from(r)?);
+        }
         Ok(RichMessage {
             flags,
             rtl,
@@ -1934,7 +2108,6 @@ impl RichMessage {
             documents,
         })
     }
-
 }
 
 /// `webDomainException#933ca597 = WebDomainException`
@@ -1955,16 +2128,16 @@ impl WebDomainException {
                 "expected webDomainException, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let domain = String::from_utf8(r.read_bytes()?)?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let favicon = if flags & (1 << 0) != 0 {
-        let favicon = r.read_i64()?;
-        Some(favicon)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let domain = String::from_utf8(r.read_bytes()?)?;
+        let url = String::from_utf8(r.read_bytes()?)?;
+        let title = String::from_utf8(r.read_bytes()?)?;
+        let favicon = if flags & (1 << 0) != 0 {
+            let favicon = r.read_i64()?;
+            Some(favicon)
+        } else {
+            None
+        };
         Ok(WebDomainException {
             flags,
             domain,
@@ -1976,15 +2149,15 @@ impl WebDomainException {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(WEB_DOMAIN_EXCEPTION_ID);
-    let flags: i32 = if self.favicon.is_some() { 1 << 0 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.domain.as_bytes());
-    w.write_bytes(self.url.as_bytes());
-    w.write_bytes(self.title.as_bytes());
-    if let Some(favicon) = self.favicon {
-        w.write_i64(favicon);
-    }
+        w.write_u32(WEB_DOMAIN_EXCEPTION_ID);
+        let flags: i32 = if self.favicon.is_some() { 1 << 0 } else { 0 };
+        w.write_i32(flags);
+        w.write_bytes(self.domain.as_bytes());
+        w.write_bytes(self.url.as_bytes());
+        w.write_bytes(self.title.as_bytes());
+        if let Some(favicon) = self.favicon {
+            w.write_i64(favicon);
+        }
     }
 }
 
@@ -2006,18 +2179,12 @@ impl JoinChatBotResult {
         let ctor = r.read_u32()?;
         match ctor {
             JOIN_CHAT_BOT_RESULT_WEB_VIEW_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
                 Ok(JoinChatBotResult::JoinChatBotResultWebView { url })
             }
-            JOIN_CHAT_BOT_RESULT_QUEUED_ID => {
-                Ok(JoinChatBotResult::JoinChatBotResultQueued {  })
-            }
-            JOIN_CHAT_BOT_RESULT_DECLINED_ID => {
-                Ok(JoinChatBotResult::JoinChatBotResultDeclined {  })
-            }
-            JOIN_CHAT_BOT_RESULT_APPROVED_ID => {
-                Ok(JoinChatBotResult::JoinChatBotResultApproved {  })
-            }
+            JOIN_CHAT_BOT_RESULT_QUEUED_ID => Ok(JoinChatBotResult::JoinChatBotResultQueued {}),
+            JOIN_CHAT_BOT_RESULT_DECLINED_ID => Ok(JoinChatBotResult::JoinChatBotResultDeclined {}),
+            JOIN_CHAT_BOT_RESULT_APPROVED_ID => Ok(JoinChatBotResult::JoinChatBotResultApproved {}),
             other => Err(Error::Serialization(format!(
                 "unknown JoinChatBotResult constructor {other:#x}"
             ))),
@@ -2029,7 +2196,14 @@ impl JoinChatBotResult {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessagesEmojiGameInfo {
     /// `messages.emojiGameDiceInfo#44e56023`
-    MessagesEmojiGameDiceInfo { flags: i32, game_hash: String, prev_stake: i64, current_streak: i32, params: Vec<i32>, plays_left: Option<i32> },
+    MessagesEmojiGameDiceInfo {
+        flags: i32,
+        game_hash: String,
+        prev_stake: i64,
+        current_streak: i32,
+        params: Vec<i32>,
+        plays_left: Option<i32>,
+    },
     /// `messages.emojiGameUnavailable#59e65335`
     MessagesEmojiGameUnavailable,
 }
@@ -2039,25 +2213,32 @@ impl MessagesEmojiGameInfo {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGES_EMOJI_GAME_DICE_INFO_ID => {
-    let flags = r.read_i32()?;
-    let game_hash = String::from_utf8(r.read_bytes()?)?;
-    let prev_stake = r.read_i64()?;
-    let current_streak = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut params = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        params.push(r.read_i32()?);
-    }
-    let plays_left = if flags & (1 << 0) != 0 {
-        let plays_left = r.read_i32()?;
-        Some(plays_left)
-    } else {
-        None
-    };
-                Ok(MessagesEmojiGameInfo::MessagesEmojiGameDiceInfo { flags, game_hash, prev_stake, current_streak, params, plays_left })
+                let flags = r.read_i32()?;
+                let game_hash = String::from_utf8(r.read_bytes()?)?;
+                let prev_stake = r.read_i64()?;
+                let current_streak = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut params = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    params.push(r.read_i32()?);
+                }
+                let plays_left = if flags & (1 << 0) != 0 {
+                    let plays_left = r.read_i32()?;
+                    Some(plays_left)
+                } else {
+                    None
+                };
+                Ok(MessagesEmojiGameInfo::MessagesEmojiGameDiceInfo {
+                    flags,
+                    game_hash,
+                    prev_stake,
+                    current_streak,
+                    params,
+                    plays_left,
+                })
             }
             MESSAGES_EMOJI_GAME_UNAVAILABLE_ID => {
-                Ok(MessagesEmojiGameInfo::MessagesEmojiGameUnavailable {  })
+                Ok(MessagesEmojiGameInfo::MessagesEmojiGameUnavailable {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown messages.EmojiGameInfo constructor {other:#x}"
@@ -2086,33 +2267,33 @@ impl StarGiftAuctionUserState {
                 "expected starGiftAuctionUserState, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let returned = flags & (1 << 1) != 0;
-    let bid_amount = if flags & (1 << 0) != 0 {
-        let bid_amount = r.read_i64()?;
-        Some(bid_amount)
-    } else {
-        None
-    };
-    let bid_date = if flags & (1 << 0) != 0 {
-        let bid_date = r.read_i32()?;
-        Some(bid_date)
-    } else {
-        None
-    };
-    let min_bid_amount = if flags & (1 << 0) != 0 {
-        let min_bid_amount = r.read_i64()?;
-        Some(min_bid_amount)
-    } else {
-        None
-    };
-    let bid_peer = if flags & (1 << 0) != 0 {
-        let bid_peer = Peer::read_from(r)?;
-        Some(bid_peer)
-    } else {
-        None
-    };
-    let acquired_count = r.read_i32()?;
+        let flags = r.read_i32()?;
+        let returned = flags & (1 << 1) != 0;
+        let bid_amount = if flags & (1 << 0) != 0 {
+            let bid_amount = r.read_i64()?;
+            Some(bid_amount)
+        } else {
+            None
+        };
+        let bid_date = if flags & (1 << 0) != 0 {
+            let bid_date = r.read_i32()?;
+            Some(bid_date)
+        } else {
+            None
+        };
+        let min_bid_amount = if flags & (1 << 0) != 0 {
+            let min_bid_amount = r.read_i64()?;
+            Some(min_bid_amount)
+        } else {
+            None
+        };
+        let bid_peer = if flags & (1 << 0) != 0 {
+            let bid_peer = Peer::read_from(r)?;
+            Some(bid_peer)
+        } else {
+            None
+        };
+        let acquired_count = r.read_i32()?;
         Ok(StarGiftAuctionUserState {
             flags,
             returned,
@@ -2123,16 +2304,36 @@ impl StarGiftAuctionUserState {
             acquired_count,
         })
     }
-
 }
 
 /// Union `StarGiftAuctionState` (3 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum StarGiftAuctionState {
     /// `starGiftAuctionStateFinished#972dabbf`
-    StarGiftAuctionStateFinished { flags: i32, start_date: i32, end_date: i32, average_price: i64, listed_count: Option<i32>, fragment_listed_count: Option<i32>, fragment_listed_url: Option<String> },
+    StarGiftAuctionStateFinished {
+        flags: i32,
+        start_date: i32,
+        end_date: i32,
+        average_price: i64,
+        listed_count: Option<i32>,
+        fragment_listed_count: Option<i32>,
+        fragment_listed_url: Option<String>,
+    },
     /// `starGiftAuctionState#771a4e66`
-    StarGiftAuctionState { version: i32, start_date: i32, end_date: i32, min_bid_amount: i64, bid_levels: Vec<AuctionBidLevel>, top_bidders: Vec<i64>, next_round_at: i32, last_gift_num: i32, gifts_left: i32, current_round: i32, total_rounds: i32, rounds: Vec<StarGiftAuctionRound> },
+    StarGiftAuctionState {
+        version: i32,
+        start_date: i32,
+        end_date: i32,
+        min_bid_amount: i64,
+        bid_levels: Vec<AuctionBidLevel>,
+        top_bidders: Vec<i64>,
+        next_round_at: i32,
+        last_gift_num: i32,
+        gifts_left: i32,
+        current_round: i32,
+        total_rounds: i32,
+        rounds: Vec<StarGiftAuctionRound>,
+    },
     /// `starGiftAuctionStateNotModified#fe333952`
     StarGiftAuctionStateNotModified,
 }
@@ -2142,59 +2343,80 @@ impl StarGiftAuctionState {
         let ctor = r.read_u32()?;
         match ctor {
             STAR_GIFT_AUCTION_STATE_FINISHED_ID => {
-    let flags = r.read_i32()?;
-    let start_date = r.read_i32()?;
-    let end_date = r.read_i32()?;
-    let average_price = r.read_i64()?;
-    let listed_count = if flags & (1 << 0) != 0 {
-        let listed_count = r.read_i32()?;
-        Some(listed_count)
-    } else {
-        None
-    };
-    let fragment_listed_count = if flags & (1 << 1) != 0 {
-        let fragment_listed_count = r.read_i32()?;
-        Some(fragment_listed_count)
-    } else {
-        None
-    };
-    let fragment_listed_url = if flags & (1 << 1) != 0 {
-        let fragment_listed_url = String::from_utf8(r.read_bytes()?)?;
-        Some(fragment_listed_url)
-    } else {
-        None
-    };
-                Ok(StarGiftAuctionState::StarGiftAuctionStateFinished { flags, start_date, end_date, average_price, listed_count, fragment_listed_count, fragment_listed_url })
+                let flags = r.read_i32()?;
+                let start_date = r.read_i32()?;
+                let end_date = r.read_i32()?;
+                let average_price = r.read_i64()?;
+                let listed_count = if flags & (1 << 0) != 0 {
+                    let listed_count = r.read_i32()?;
+                    Some(listed_count)
+                } else {
+                    None
+                };
+                let fragment_listed_count = if flags & (1 << 1) != 0 {
+                    let fragment_listed_count = r.read_i32()?;
+                    Some(fragment_listed_count)
+                } else {
+                    None
+                };
+                let fragment_listed_url = if flags & (1 << 1) != 0 {
+                    let fragment_listed_url = String::from_utf8(r.read_bytes()?)?;
+                    Some(fragment_listed_url)
+                } else {
+                    None
+                };
+                Ok(StarGiftAuctionState::StarGiftAuctionStateFinished {
+                    flags,
+                    start_date,
+                    end_date,
+                    average_price,
+                    listed_count,
+                    fragment_listed_count,
+                    fragment_listed_url,
+                })
             }
             STAR_GIFT_AUCTION_STATE_ID => {
-    let version = r.read_i32()?;
-    let start_date = r.read_i32()?;
-    let end_date = r.read_i32()?;
-    let min_bid_amount = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut bid_levels = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        bid_levels.push(AuctionBidLevel::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut top_bidders = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        top_bidders.push(r.read_i64()?);
-    }
-    let next_round_at = r.read_i32()?;
-    let last_gift_num = r.read_i32()?;
-    let gifts_left = r.read_i32()?;
-    let current_round = r.read_i32()?;
-    let total_rounds = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut rounds = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        rounds.push(StarGiftAuctionRound::read_from(r)?);
-    }
-                Ok(StarGiftAuctionState::StarGiftAuctionState { version, start_date, end_date, min_bid_amount, bid_levels, top_bidders, next_round_at, last_gift_num, gifts_left, current_round, total_rounds, rounds })
+                let version = r.read_i32()?;
+                let start_date = r.read_i32()?;
+                let end_date = r.read_i32()?;
+                let min_bid_amount = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut bid_levels = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    bid_levels.push(AuctionBidLevel::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut top_bidders = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    top_bidders.push(r.read_i64()?);
+                }
+                let next_round_at = r.read_i32()?;
+                let last_gift_num = r.read_i32()?;
+                let gifts_left = r.read_i32()?;
+                let current_round = r.read_i32()?;
+                let total_rounds = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut rounds = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    rounds.push(StarGiftAuctionRound::read_from(r)?);
+                }
+                Ok(StarGiftAuctionState::StarGiftAuctionState {
+                    version,
+                    start_date,
+                    end_date,
+                    min_bid_amount,
+                    bid_levels,
+                    top_bidders,
+                    next_round_at,
+                    last_gift_num,
+                    gifts_left,
+                    current_round,
+                    total_rounds,
+                    rounds,
+                })
             }
             STAR_GIFT_AUCTION_STATE_NOT_MODIFIED_ID => {
-                Ok(StarGiftAuctionState::StarGiftAuctionStateNotModified {  })
+                Ok(StarGiftAuctionState::StarGiftAuctionStateNotModified {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown StarGiftAuctionState constructor {other:#x}"
@@ -2207,7 +2429,12 @@ impl StarGiftAuctionState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StarGiftAuctionRound {
     /// `starGiftAuctionRoundExtendable#0aa021e5`
-    StarGiftAuctionRoundExtendable { num: i32, duration: i32, extend_top: i32, extend_window: i32 },
+    StarGiftAuctionRoundExtendable {
+        num: i32,
+        duration: i32,
+        extend_top: i32,
+        extend_window: i32,
+    },
     /// `starGiftAuctionRound#3aae0528`
     StarGiftAuctionRound { num: i32, duration: i32 },
 }
@@ -2217,15 +2444,20 @@ impl StarGiftAuctionRound {
         let ctor = r.read_u32()?;
         match ctor {
             STAR_GIFT_AUCTION_ROUND_EXTENDABLE_ID => {
-    let num = r.read_i32()?;
-    let duration = r.read_i32()?;
-    let extend_top = r.read_i32()?;
-    let extend_window = r.read_i32()?;
-                Ok(StarGiftAuctionRound::StarGiftAuctionRoundExtendable { num, duration, extend_top, extend_window })
+                let num = r.read_i32()?;
+                let duration = r.read_i32()?;
+                let extend_top = r.read_i32()?;
+                let extend_window = r.read_i32()?;
+                Ok(StarGiftAuctionRound::StarGiftAuctionRoundExtendable {
+                    num,
+                    duration,
+                    extend_top,
+                    extend_window,
+                })
             }
             STAR_GIFT_AUCTION_ROUND_ID => {
-    let num = r.read_i32()?;
-    let duration = r.read_i32()?;
+                let num = r.read_i32()?;
+                let duration = r.read_i32()?;
                 Ok(StarGiftAuctionRound::StarGiftAuctionRound { num, duration })
             }
             other => Err(Error::Serialization(format!(
@@ -2251,22 +2483,18 @@ impl AuctionBidLevel {
                 "expected auctionBidLevel, got {ctor:#x}"
             )));
         }
-    let pos = r.read_i32()?;
-    let amount = r.read_i64()?;
-    let date = r.read_i32()?;
-        Ok(AuctionBidLevel {
-            pos,
-            amount,
-            date,
-        })
+        let pos = r.read_i32()?;
+        let amount = r.read_i64()?;
+        let date = r.read_i32()?;
+        Ok(AuctionBidLevel { pos, amount, date })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(AUCTION_BID_LEVEL_ID);
-    w.write_i32(self.pos);
-    w.write_i64(self.amount);
-    w.write_i32(self.date);
+        w.write_u32(AUCTION_BID_LEVEL_ID);
+        w.write_i32(self.pos);
+        w.write_i64(self.amount);
+        w.write_i32(self.date);
     }
 }
 
@@ -2290,18 +2518,18 @@ impl GroupCallMessage {
                 "expected groupCallMessage, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let from_admin = flags & (1 << 1) != 0;
-    let id = r.read_i32()?;
-    let from_id = Peer::read_from(r)?;
-    let date = r.read_i32()?;
-    let message = TextWithEntities::read_from(r)?;
-    let paid_message_stars = if flags & (1 << 0) != 0 {
-        let paid_message_stars = r.read_i64()?;
-        Some(paid_message_stars)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let from_admin = flags & (1 << 1) != 0;
+        let id = r.read_i32()?;
+        let from_id = Peer::read_from(r)?;
+        let date = r.read_i32()?;
+        let message = TextWithEntities::read_from(r)?;
+        let paid_message_stars = if flags & (1 << 0) != 0 {
+            let paid_message_stars = r.read_i64()?;
+            Some(paid_message_stars)
+        } else {
+            None
+        };
         Ok(GroupCallMessage {
             flags,
             from_admin,
@@ -2312,7 +2540,6 @@ impl GroupCallMessage {
             paid_message_stars,
         })
     }
-
 }
 
 /// `codeSettings#ad253d78 = CodeSettings`
@@ -2338,35 +2565,35 @@ impl CodeSettings {
                 "expected codeSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let allow_flashcall = flags & (1 << 0) != 0;
-    let current_number = flags & (1 << 1) != 0;
-    let allow_app_hash = flags & (1 << 4) != 0;
-    let allow_missed_call = flags & (1 << 5) != 0;
-    let allow_firebase = flags & (1 << 7) != 0;
-    let unknown_number = flags & (1 << 9) != 0;
-    let logout_tokens = if flags & (1 << 6) != 0 {
-        let n = r.read_vector_header()?;
-        let mut logout_tokens = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            logout_tokens.push(r.read_bytes()?);
-        }
-        Some(logout_tokens)
-    } else {
-        None
-    };
-    let token = if flags & (1 << 8) != 0 {
-        let token = String::from_utf8(r.read_bytes()?)?;
-        Some(token)
-    } else {
-        None
-    };
-    let app_sandbox = if flags & (1 << 8) != 0 {
-        let app_sandbox = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(app_sandbox)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let allow_flashcall = flags & (1 << 0) != 0;
+        let current_number = flags & (1 << 1) != 0;
+        let allow_app_hash = flags & (1 << 4) != 0;
+        let allow_missed_call = flags & (1 << 5) != 0;
+        let allow_firebase = flags & (1 << 7) != 0;
+        let unknown_number = flags & (1 << 9) != 0;
+        let logout_tokens = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut logout_tokens = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                logout_tokens.push(r.read_bytes()?);
+            }
+            Some(logout_tokens)
+        } else {
+            None
+        };
+        let token = if flags & (1 << 8) != 0 {
+            let token = String::from_utf8(r.read_bytes()?)?;
+            Some(token)
+        } else {
+            None
+        };
+        let app_sandbox = if flags & (1 << 8) != 0 {
+            let app_sandbox = r.read_u32()? == 0x997275b5; // boolTrue
+            Some(app_sandbox)
+        } else {
+            None
+        };
         Ok(CodeSettings {
             flags,
             allow_flashcall,
@@ -2383,22 +2610,42 @@ impl CodeSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(CODE_SETTINGS_ID);
-    let flags: i32 = if self.allow_flashcall { 1 << 0 } else { 0 } | if self.current_number { 1 << 1 } else { 0 } | if self.allow_app_hash { 1 << 4 } else { 0 } | if self.allow_missed_call { 1 << 5 } else { 0 } | if self.allow_firebase { 1 << 7 } else { 0 } | if self.unknown_number { 1 << 9 } else { 0 } | if self.logout_tokens.is_some() { 1 << 6 } else { 0 } | if self.token.is_some() { 1 << 8 } else { 0 } | if self.app_sandbox.is_some() { 1 << 8 } else { 0 };
-    w.write_i32(flags);
-    if let Some(logout_tokens) = self.logout_tokens.clone() {
-        w.write_u32(crate::serialize::VECTOR);
-        w.write_i32(logout_tokens.len() as i32);
-        for item in logout_tokens.iter() {
-            w.write_bytes(item);
+        w.write_u32(CODE_SETTINGS_ID);
+        let flags: i32 = if self.allow_flashcall { 1 << 0 } else { 0 }
+            | if self.current_number { 1 << 1 } else { 0 }
+            | if self.allow_app_hash { 1 << 4 } else { 0 }
+            | if self.allow_missed_call { 1 << 5 } else { 0 }
+            | if self.allow_firebase { 1 << 7 } else { 0 }
+            | if self.unknown_number { 1 << 9 } else { 0 }
+            | if self.logout_tokens.is_some() {
+                1 << 6
+            } else {
+                0
+            }
+            | if self.token.is_some() { 1 << 8 } else { 0 }
+            | if self.app_sandbox.is_some() {
+                1 << 8
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        if let Some(logout_tokens) = self.logout_tokens.clone() {
+            w.write_u32(crate::serialize::VECTOR);
+            w.write_i32(logout_tokens.len() as i32);
+            for item in logout_tokens.iter() {
+                w.write_bytes(item);
+            }
         }
-    }
-    if let Some(token) = self.token.clone() {
-        w.write_bytes(token.as_bytes());
-    }
-    if let Some(app_sandbox) = self.app_sandbox {
-        if app_sandbox { w.write_bool_true(); } else { w.write_bool_false(); }
-    }
+        if let Some(token) = self.token.clone() {
+            w.write_bytes(token.as_bytes());
+        }
+        if let Some(app_sandbox) = self.app_sandbox {
+            if app_sandbox {
+                w.write_bool_true();
+            } else {
+                w.write_bool_false();
+            }
+        }
     }
 }
 
@@ -2406,11 +2653,25 @@ impl CodeSettings {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthSentCode {
     /// `auth.sentCodePaymentRequired#f8827ebf`
-    AuthSentCodePaymentRequired { store_product: String, phone_code_hash: String, support_email_address: String, support_email_subject: String, premium_days: i32, currency: String, amount: i64 },
+    AuthSentCodePaymentRequired {
+        store_product: String,
+        phone_code_hash: String,
+        support_email_address: String,
+        support_email_subject: String,
+        premium_days: i32,
+        currency: String,
+        amount: i64,
+    },
     /// `auth.sentCodeSuccess#2390fe44`
     AuthSentCodeSuccess { authorization: AuthAuthorization },
     /// `auth.sentCode#5e002502`
-    AuthSentCode { flags: i32, r#type: AuthSentCodeType, phone_code_hash: String, next_type: Option<AuthCodeType>, timeout: Option<i32> },
+    AuthSentCode {
+        flags: i32,
+        r#type: AuthSentCodeType,
+        phone_code_hash: String,
+        next_type: Option<AuthCodeType>,
+        timeout: Option<i32>,
+    },
 }
 
 impl AuthSentCode {
@@ -2418,36 +2679,50 @@ impl AuthSentCode {
         let ctor = r.read_u32()?;
         match ctor {
             AUTH_SENT_CODE_PAYMENT_REQUIRED_ID => {
-    let store_product = String::from_utf8(r.read_bytes()?)?;
-    let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
-    let support_email_address = String::from_utf8(r.read_bytes()?)?;
-    let support_email_subject = String::from_utf8(r.read_bytes()?)?;
-    let premium_days = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-                Ok(AuthSentCode::AuthSentCodePaymentRequired { store_product, phone_code_hash, support_email_address, support_email_subject, premium_days, currency, amount })
+                let store_product = String::from_utf8(r.read_bytes()?)?;
+                let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
+                let support_email_address = String::from_utf8(r.read_bytes()?)?;
+                let support_email_subject = String::from_utf8(r.read_bytes()?)?;
+                let premium_days = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                Ok(AuthSentCode::AuthSentCodePaymentRequired {
+                    store_product,
+                    phone_code_hash,
+                    support_email_address,
+                    support_email_subject,
+                    premium_days,
+                    currency,
+                    amount,
+                })
             }
             AUTH_SENT_CODE_SUCCESS_ID => {
-    let authorization = AuthAuthorization::read_from(r)?;
+                let authorization = AuthAuthorization::read_from(r)?;
                 Ok(AuthSentCode::AuthSentCodeSuccess { authorization })
             }
             AUTH_SENT_CODE_ID => {
-    let flags = r.read_i32()?;
-    let r#type = AuthSentCodeType::read_from(r)?;
-    let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
-    let next_type = if flags & (1 << 1) != 0 {
-        let next_type = AuthCodeType::read_from(r)?;
-        Some(next_type)
-    } else {
-        None
-    };
-    let timeout = if flags & (1 << 2) != 0 {
-        let timeout = r.read_i32()?;
-        Some(timeout)
-    } else {
-        None
-    };
-                Ok(AuthSentCode::AuthSentCode { flags, r#type, phone_code_hash, next_type, timeout })
+                let flags = r.read_i32()?;
+                let r#type = AuthSentCodeType::read_from(r)?;
+                let phone_code_hash = String::from_utf8(r.read_bytes()?)?;
+                let next_type = if flags & (1 << 1) != 0 {
+                    let next_type = AuthCodeType::read_from(r)?;
+                    Some(next_type)
+                } else {
+                    None
+                };
+                let timeout = if flags & (1 << 2) != 0 {
+                    let timeout = r.read_i32()?;
+                    Some(timeout)
+                } else {
+                    None
+                };
+                Ok(AuthSentCode::AuthSentCode {
+                    flags,
+                    r#type,
+                    phone_code_hash,
+                    next_type,
+                    timeout,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown auth.SentCode constructor {other:#x}"
@@ -2462,7 +2737,11 @@ pub enum InputPasskeyCredential {
     /// `inputPasskeyCredentialFirebasePNV#5b1ccb28`
     InputPasskeyCredentialFirebasePNV { pnv_token: String },
     /// `inputPasskeyCredentialPublicKey#3c27b78f`
-    InputPasskeyCredentialPublicKey { id: String, raw_id: String, response: InputPasskeyResponse },
+    InputPasskeyCredentialPublicKey {
+        id: String,
+        raw_id: String,
+        response: InputPasskeyResponse,
+    },
 }
 
 impl InputPasskeyCredential {
@@ -2470,14 +2749,18 @@ impl InputPasskeyCredential {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PASSKEY_CREDENTIAL_FIREBASE_PNV_ID => {
-    let pnv_token = String::from_utf8(r.read_bytes()?)?;
+                let pnv_token = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputPasskeyCredential::InputPasskeyCredentialFirebasePNV { pnv_token })
             }
             INPUT_PASSKEY_CREDENTIAL_PUBLIC_KEY_ID => {
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let raw_id = String::from_utf8(r.read_bytes()?)?;
-    let response = InputPasskeyResponse::read_from(r)?;
-                Ok(InputPasskeyCredential::InputPasskeyCredentialPublicKey { id, raw_id, response })
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let raw_id = String::from_utf8(r.read_bytes()?)?;
+                let response = InputPasskeyResponse::read_from(r)?;
+                Ok(InputPasskeyCredential::InputPasskeyCredentialPublicKey {
+                    id,
+                    raw_id,
+                    response,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputPasskeyCredential constructor {other:#x}"
@@ -2490,9 +2773,17 @@ impl InputPasskeyCredential {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPasskeyResponse {
     /// `inputPasskeyResponseLogin#c31fc14a`
-    InputPasskeyResponseLogin { client_data: DataJSON, authenticator_data: Vec<u8>, signature: Vec<u8>, user_handle: String },
+    InputPasskeyResponseLogin {
+        client_data: DataJSON,
+        authenticator_data: Vec<u8>,
+        signature: Vec<u8>,
+        user_handle: String,
+    },
     /// `inputPasskeyResponseRegister#3e63935c`
-    InputPasskeyResponseRegister { client_data: DataJSON, attestation_data: Vec<u8> },
+    InputPasskeyResponseRegister {
+        client_data: DataJSON,
+        attestation_data: Vec<u8>,
+    },
 }
 
 impl InputPasskeyResponse {
@@ -2500,16 +2791,24 @@ impl InputPasskeyResponse {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_PASSKEY_RESPONSE_LOGIN_ID => {
-    let client_data = DataJSON::read_from(r)?;
-    let authenticator_data = r.read_bytes()?;
-    let signature = r.read_bytes()?;
-    let user_handle = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputPasskeyResponse::InputPasskeyResponseLogin { client_data, authenticator_data, signature, user_handle })
+                let client_data = DataJSON::read_from(r)?;
+                let authenticator_data = r.read_bytes()?;
+                let signature = r.read_bytes()?;
+                let user_handle = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputPasskeyResponse::InputPasskeyResponseLogin {
+                    client_data,
+                    authenticator_data,
+                    signature,
+                    user_handle,
+                })
             }
             INPUT_PASSKEY_RESPONSE_REGISTER_ID => {
-    let client_data = DataJSON::read_from(r)?;
-    let attestation_data = r.read_bytes()?;
-                Ok(InputPasskeyResponse::InputPasskeyResponseRegister { client_data, attestation_data })
+                let client_data = DataJSON::read_from(r)?;
+                let attestation_data = r.read_bytes()?;
+                Ok(InputPasskeyResponse::InputPasskeyResponseRegister {
+                    client_data,
+                    attestation_data,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputPasskeyResponse constructor {other:#x}"
@@ -2537,37 +2836,37 @@ impl AccountPasswordInputSettings {
                 "expected account.passwordInputSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let new_algo = if flags & (1 << 0) != 0 {
-        let new_algo = PasswordKdfAlgo::read_from(r)?;
-        Some(new_algo)
-    } else {
-        None
-    };
-    let new_password_hash = if flags & (1 << 0) != 0 {
-        let new_password_hash = r.read_bytes()?;
-        Some(new_password_hash)
-    } else {
-        None
-    };
-    let hint = if flags & (1 << 0) != 0 {
-        let hint = String::from_utf8(r.read_bytes()?)?;
-        Some(hint)
-    } else {
-        None
-    };
-    let email = if flags & (1 << 1) != 0 {
-        let email = String::from_utf8(r.read_bytes()?)?;
-        Some(email)
-    } else {
-        None
-    };
-    let new_secure_settings = if flags & (1 << 2) != 0 {
-        let new_secure_settings = SecureSecretSettings::read_from(r)?;
-        Some(new_secure_settings)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let new_algo = if flags & (1 << 0) != 0 {
+            let new_algo = PasswordKdfAlgo::read_from(r)?;
+            Some(new_algo)
+        } else {
+            None
+        };
+        let new_password_hash = if flags & (1 << 0) != 0 {
+            let new_password_hash = r.read_bytes()?;
+            Some(new_password_hash)
+        } else {
+            None
+        };
+        let hint = if flags & (1 << 0) != 0 {
+            let hint = String::from_utf8(r.read_bytes()?)?;
+            Some(hint)
+        } else {
+            None
+        };
+        let email = if flags & (1 << 1) != 0 {
+            let email = String::from_utf8(r.read_bytes()?)?;
+            Some(email)
+        } else {
+            None
+        };
+        let new_secure_settings = if flags & (1 << 2) != 0 {
+            let new_secure_settings = SecureSecretSettings::read_from(r)?;
+            Some(new_secure_settings)
+        } else {
+            None
+        };
         Ok(AccountPasswordInputSettings {
             flags,
             new_algo,
@@ -2577,7 +2876,6 @@ impl AccountPasswordInputSettings {
             new_secure_settings,
         })
     }
-
 }
 
 /// `secureSecretSettings#1527bcac = SecureSecretSettings`
@@ -2596,16 +2894,15 @@ impl SecureSecretSettings {
                 "expected secureSecretSettings, got {ctor:#x}"
             )));
         }
-    let secure_algo = SecurePasswordKdfAlgo::read_from(r)?;
-    let secure_secret = r.read_bytes()?;
-    let secure_secret_id = r.read_i64()?;
+        let secure_algo = SecurePasswordKdfAlgo::read_from(r)?;
+        let secure_secret = r.read_bytes()?;
+        let secure_secret_id = r.read_i64()?;
         Ok(SecureSecretSettings {
             secure_algo,
             secure_secret,
             secure_secret_id,
         })
     }
-
 }
 
 /// Union `SecurePasswordKdfAlgo` (3 constructors).
@@ -2624,15 +2921,15 @@ impl SecurePasswordKdfAlgo {
         let ctor = r.read_u32()?;
         match ctor {
             SECURE_PASSWORD_KDF_ALGO_SHA512_ID => {
-    let salt = r.read_bytes()?;
+                let salt = r.read_bytes()?;
                 Ok(SecurePasswordKdfAlgo::SecurePasswordKdfAlgoSHA512 { salt })
             }
             SECURE_PASSWORD_KDF_ALGO_PBKDF2_HMACSHA512ITER100000_ID => {
-    let salt = r.read_bytes()?;
+                let salt = r.read_bytes()?;
                 Ok(SecurePasswordKdfAlgo::SecurePasswordKdfAlgoPBKDF2HMACSHA512iter100000 { salt })
             }
             SECURE_PASSWORD_KDF_ALGO_UNKNOWN_ID => {
-                Ok(SecurePasswordKdfAlgo::SecurePasswordKdfAlgoUnknown {  })
+                Ok(SecurePasswordKdfAlgo::SecurePasswordKdfAlgoUnknown {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown SecurePasswordKdfAlgo constructor {other:#x}"
@@ -2645,7 +2942,12 @@ impl SecurePasswordKdfAlgo {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PasswordKdfAlgo {
     /// `passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow#3a912d4a`
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow { salt1: Vec<u8>, salt2: Vec<u8>, g: i32, p: Vec<u8> },
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow {
+        salt1: Vec<u8>,
+        salt2: Vec<u8>,
+        g: i32,
+        p: Vec<u8>,
+    },
     /// `passwordKdfAlgoUnknown#d45ab096`
     PasswordKdfAlgoUnknown,
 }
@@ -2655,15 +2957,13 @@ impl PasswordKdfAlgo {
         let ctor = r.read_u32()?;
         match ctor {
             PASSWORD_KDF_ALGO_SHA256_SHA256_PBKDF2_HMACSHA512ITER100000_SHA256_MOD_POW_ID => {
-    let salt1 = r.read_bytes()?;
-    let salt2 = r.read_bytes()?;
-    let g = r.read_i32()?;
-    let p = r.read_bytes()?;
+                let salt1 = r.read_bytes()?;
+                let salt2 = r.read_bytes()?;
+                let g = r.read_i32()?;
+                let p = r.read_bytes()?;
                 Ok(PasswordKdfAlgo::PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow { salt1, salt2, g, p })
             }
-            PASSWORD_KDF_ALGO_UNKNOWN_ID => {
-                Ok(PasswordKdfAlgo::PasswordKdfAlgoUnknown {  })
-            }
+            PASSWORD_KDF_ALGO_UNKNOWN_ID => Ok(PasswordKdfAlgo::PasswordKdfAlgoUnknown {}),
             other => Err(Error::Serialization(format!(
                 "unknown PasswordKdfAlgo constructor {other:#x}"
             ))),
@@ -2687,15 +2987,15 @@ impl EmailVerification {
         let ctor = r.read_u32()?;
         match ctor {
             EMAIL_VERIFICATION_APPLE_ID => {
-    let token = String::from_utf8(r.read_bytes()?)?;
+                let token = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationApple { token })
             }
             EMAIL_VERIFICATION_GOOGLE_ID => {
-    let token = String::from_utf8(r.read_bytes()?)?;
+                let token = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationGoogle { token })
             }
             EMAIL_VERIFICATION_CODE_ID => {
-    let code = String::from_utf8(r.read_bytes()?)?;
+                let code = String::from_utf8(r.read_bytes()?)?;
                 Ok(EmailVerification::EmailVerificationCode { code })
             }
             other => Err(Error::Serialization(format!(
@@ -2709,9 +3009,19 @@ impl EmailVerification {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthAuthorization {
     /// `auth.authorizationSignUpRequired#44747e9a`
-    AuthAuthorizationSignUpRequired { flags: i32, terms_of_service: Option<HelpTermsOfService> },
+    AuthAuthorizationSignUpRequired {
+        flags: i32,
+        terms_of_service: Option<HelpTermsOfService>,
+    },
     /// `auth.authorization#2ea2c0d4`
-    AuthAuthorization { flags: i32, setup_password_required: bool, otherwise_relogin_days: Option<i32>, tmp_sessions: Option<i32>, future_auth_token: Option<Vec<u8>>, user: User },
+    AuthAuthorization {
+        flags: i32,
+        setup_password_required: bool,
+        otherwise_relogin_days: Option<i32>,
+        tmp_sessions: Option<i32>,
+        future_auth_token: Option<Vec<u8>>,
+        user: User,
+    },
 }
 
 impl AuthAuthorization {
@@ -2719,38 +3029,48 @@ impl AuthAuthorization {
         let ctor = r.read_u32()?;
         match ctor {
             AUTH_AUTHORIZATION_SIGN_UP_REQUIRED_ID => {
-    let flags = r.read_i32()?;
-    let terms_of_service = if flags & (1 << 0) != 0 {
-        let terms_of_service = HelpTermsOfService::read_from(r)?;
-        Some(terms_of_service)
-    } else {
-        None
-    };
-                Ok(AuthAuthorization::AuthAuthorizationSignUpRequired { flags, terms_of_service })
+                let flags = r.read_i32()?;
+                let terms_of_service = if flags & (1 << 0) != 0 {
+                    let terms_of_service = HelpTermsOfService::read_from(r)?;
+                    Some(terms_of_service)
+                } else {
+                    None
+                };
+                Ok(AuthAuthorization::AuthAuthorizationSignUpRequired {
+                    flags,
+                    terms_of_service,
+                })
             }
             AUTH_AUTHORIZATION_ID => {
-    let flags = r.read_i32()?;
-    let setup_password_required = flags & (1 << 1) != 0;
-    let otherwise_relogin_days = if flags & (1 << 1) != 0 {
-        let otherwise_relogin_days = r.read_i32()?;
-        Some(otherwise_relogin_days)
-    } else {
-        None
-    };
-    let tmp_sessions = if flags & (1 << 0) != 0 {
-        let tmp_sessions = r.read_i32()?;
-        Some(tmp_sessions)
-    } else {
-        None
-    };
-    let future_auth_token = if flags & (1 << 2) != 0 {
-        let future_auth_token = r.read_bytes()?;
-        Some(future_auth_token)
-    } else {
-        None
-    };
-    let user = User::read_from(r)?;
-                Ok(AuthAuthorization::AuthAuthorization { flags, setup_password_required, otherwise_relogin_days, tmp_sessions, future_auth_token, user })
+                let flags = r.read_i32()?;
+                let setup_password_required = flags & (1 << 1) != 0;
+                let otherwise_relogin_days = if flags & (1 << 1) != 0 {
+                    let otherwise_relogin_days = r.read_i32()?;
+                    Some(otherwise_relogin_days)
+                } else {
+                    None
+                };
+                let tmp_sessions = if flags & (1 << 0) != 0 {
+                    let tmp_sessions = r.read_i32()?;
+                    Some(tmp_sessions)
+                } else {
+                    None
+                };
+                let future_auth_token = if flags & (1 << 2) != 0 {
+                    let future_auth_token = r.read_bytes()?;
+                    Some(future_auth_token)
+                } else {
+                    None
+                };
+                let user = User::read_from(r)?;
+                Ok(AuthAuthorization::AuthAuthorization {
+                    flags,
+                    setup_password_required,
+                    otherwise_relogin_days,
+                    tmp_sessions,
+                    future_auth_token,
+                    user,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown auth.Authorization constructor {other:#x}"
@@ -2778,21 +3098,21 @@ impl HelpTermsOfService {
                 "expected help.termsOfService, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let popup = flags & (1 << 0) != 0;
-    let id = DataJSON::read_from(r)?;
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut entities = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        entities.push(MessageEntity::read_from(r)?);
-    }
-    let min_age_confirm = if flags & (1 << 1) != 0 {
-        let min_age_confirm = r.read_i32()?;
-        Some(min_age_confirm)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let popup = flags & (1 << 0) != 0;
+        let id = DataJSON::read_from(r)?;
+        let text = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut entities = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            entities.push(MessageEntity::read_from(r)?);
+        }
+        let min_age_confirm = if flags & (1 << 1) != 0 {
+            let min_age_confirm = r.read_i32()?;
+            Some(min_age_confirm)
+        } else {
+            None
+        };
         Ok(HelpTermsOfService {
             flags,
             popup,
@@ -2802,7 +3122,6 @@ impl HelpTermsOfService {
             min_age_confirm,
         })
     }
-
 }
 
 /// Union `auth.CodeType` (5 constructors).
@@ -2824,21 +3143,11 @@ impl AuthCodeType {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            AUTH_CODE_TYPE_FRAGMENT_SMS_ID => {
-                Ok(AuthCodeType::AuthCodeTypeFragmentSms {  })
-            }
-            AUTH_CODE_TYPE_MISSED_CALL_ID => {
-                Ok(AuthCodeType::AuthCodeTypeMissedCall {  })
-            }
-            AUTH_CODE_TYPE_FLASH_CALL_ID => {
-                Ok(AuthCodeType::AuthCodeTypeFlashCall {  })
-            }
-            AUTH_CODE_TYPE_CALL_ID => {
-                Ok(AuthCodeType::AuthCodeTypeCall {  })
-            }
-            AUTH_CODE_TYPE_SMS_ID => {
-                Ok(AuthCodeType::AuthCodeTypeSms {  })
-            }
+            AUTH_CODE_TYPE_FRAGMENT_SMS_ID => Ok(AuthCodeType::AuthCodeTypeFragmentSms {}),
+            AUTH_CODE_TYPE_MISSED_CALL_ID => Ok(AuthCodeType::AuthCodeTypeMissedCall {}),
+            AUTH_CODE_TYPE_FLASH_CALL_ID => Ok(AuthCodeType::AuthCodeTypeFlashCall {}),
+            AUTH_CODE_TYPE_CALL_ID => Ok(AuthCodeType::AuthCodeTypeCall {}),
+            AUTH_CODE_TYPE_SMS_ID => Ok(AuthCodeType::AuthCodeTypeSms {}),
             other => Err(Error::Serialization(format!(
                 "unknown auth.CodeType constructor {other:#x}"
             ))),
@@ -2850,17 +3159,43 @@ impl AuthCodeType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthSentCodeType {
     /// `auth.sentCodeTypeSmsPhrase#b37794af`
-    AuthSentCodeTypeSmsPhrase { flags: i32, beginning: Option<String> },
+    AuthSentCodeTypeSmsPhrase {
+        flags: i32,
+        beginning: Option<String>,
+    },
     /// `auth.sentCodeTypeSmsWord#a416ac81`
-    AuthSentCodeTypeSmsWord { flags: i32, beginning: Option<String> },
+    AuthSentCodeTypeSmsWord {
+        flags: i32,
+        beginning: Option<String>,
+    },
     /// `auth.sentCodeTypeFirebaseSms#009fd736`
-    AuthSentCodeTypeFirebaseSms { flags: i32, nonce: Option<Vec<u8>>, play_integrity_project_id: Option<i64>, play_integrity_nonce: Option<Vec<u8>>, receipt: Option<String>, push_timeout: Option<i32>, length: i32 },
+    AuthSentCodeTypeFirebaseSms {
+        flags: i32,
+        nonce: Option<Vec<u8>>,
+        play_integrity_project_id: Option<i64>,
+        play_integrity_nonce: Option<Vec<u8>>,
+        receipt: Option<String>,
+        push_timeout: Option<i32>,
+        length: i32,
+    },
     /// `auth.sentCodeTypeFragmentSms#d9565c39`
     AuthSentCodeTypeFragmentSms { url: String, length: i32 },
     /// `auth.sentCodeTypeSetUpEmailRequired#a5491dea`
-    AuthSentCodeTypeSetUpEmailRequired { flags: i32, apple_signin_allowed: bool, google_signin_allowed: bool },
+    AuthSentCodeTypeSetUpEmailRequired {
+        flags: i32,
+        apple_signin_allowed: bool,
+        google_signin_allowed: bool,
+    },
     /// `auth.sentCodeTypeEmailCode#f450f59b`
-    AuthSentCodeTypeEmailCode { flags: i32, apple_signin_allowed: bool, google_signin_allowed: bool, email_pattern: String, length: i32, reset_available_period: Option<i32>, reset_pending_date: Option<i32> },
+    AuthSentCodeTypeEmailCode {
+        flags: i32,
+        apple_signin_allowed: bool,
+        google_signin_allowed: bool,
+        email_pattern: String,
+        length: i32,
+        reset_available_period: Option<i32>,
+        reset_pending_date: Option<i32>,
+    },
     /// `auth.sentCodeTypeMissedCall#82006484`
     AuthSentCodeTypeMissedCall { prefix: String, length: i32 },
     /// `auth.sentCodeTypeFlashCall#ab03c6d9`
@@ -2878,110 +3213,130 @@ impl AuthSentCodeType {
         let ctor = r.read_u32()?;
         match ctor {
             AUTH_SENT_CODE_TYPE_SMS_PHRASE_ID => {
-    let flags = r.read_i32()?;
-    let beginning = if flags & (1 << 0) != 0 {
-        let beginning = String::from_utf8(r.read_bytes()?)?;
-        Some(beginning)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let beginning = if flags & (1 << 0) != 0 {
+                    let beginning = String::from_utf8(r.read_bytes()?)?;
+                    Some(beginning)
+                } else {
+                    None
+                };
                 Ok(AuthSentCodeType::AuthSentCodeTypeSmsPhrase { flags, beginning })
             }
             AUTH_SENT_CODE_TYPE_SMS_WORD_ID => {
-    let flags = r.read_i32()?;
-    let beginning = if flags & (1 << 0) != 0 {
-        let beginning = String::from_utf8(r.read_bytes()?)?;
-        Some(beginning)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let beginning = if flags & (1 << 0) != 0 {
+                    let beginning = String::from_utf8(r.read_bytes()?)?;
+                    Some(beginning)
+                } else {
+                    None
+                };
                 Ok(AuthSentCodeType::AuthSentCodeTypeSmsWord { flags, beginning })
             }
             AUTH_SENT_CODE_TYPE_FIREBASE_SMS_ID => {
-    let flags = r.read_i32()?;
-    let nonce = if flags & (1 << 0) != 0 {
-        let nonce = r.read_bytes()?;
-        Some(nonce)
-    } else {
-        None
-    };
-    let play_integrity_project_id = if flags & (1 << 2) != 0 {
-        let play_integrity_project_id = r.read_i64()?;
-        Some(play_integrity_project_id)
-    } else {
-        None
-    };
-    let play_integrity_nonce = if flags & (1 << 2) != 0 {
-        let play_integrity_nonce = r.read_bytes()?;
-        Some(play_integrity_nonce)
-    } else {
-        None
-    };
-    let receipt = if flags & (1 << 1) != 0 {
-        let receipt = String::from_utf8(r.read_bytes()?)?;
-        Some(receipt)
-    } else {
-        None
-    };
-    let push_timeout = if flags & (1 << 1) != 0 {
-        let push_timeout = r.read_i32()?;
-        Some(push_timeout)
-    } else {
-        None
-    };
-    let length = r.read_i32()?;
-                Ok(AuthSentCodeType::AuthSentCodeTypeFirebaseSms { flags, nonce, play_integrity_project_id, play_integrity_nonce, receipt, push_timeout, length })
+                let flags = r.read_i32()?;
+                let nonce = if flags & (1 << 0) != 0 {
+                    let nonce = r.read_bytes()?;
+                    Some(nonce)
+                } else {
+                    None
+                };
+                let play_integrity_project_id = if flags & (1 << 2) != 0 {
+                    let play_integrity_project_id = r.read_i64()?;
+                    Some(play_integrity_project_id)
+                } else {
+                    None
+                };
+                let play_integrity_nonce = if flags & (1 << 2) != 0 {
+                    let play_integrity_nonce = r.read_bytes()?;
+                    Some(play_integrity_nonce)
+                } else {
+                    None
+                };
+                let receipt = if flags & (1 << 1) != 0 {
+                    let receipt = String::from_utf8(r.read_bytes()?)?;
+                    Some(receipt)
+                } else {
+                    None
+                };
+                let push_timeout = if flags & (1 << 1) != 0 {
+                    let push_timeout = r.read_i32()?;
+                    Some(push_timeout)
+                } else {
+                    None
+                };
+                let length = r.read_i32()?;
+                Ok(AuthSentCodeType::AuthSentCodeTypeFirebaseSms {
+                    flags,
+                    nonce,
+                    play_integrity_project_id,
+                    play_integrity_nonce,
+                    receipt,
+                    push_timeout,
+                    length,
+                })
             }
             AUTH_SENT_CODE_TYPE_FRAGMENT_SMS_ID => {
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let length = r.read_i32()?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let length = r.read_i32()?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeFragmentSms { url, length })
             }
             AUTH_SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED_ID => {
-    let flags = r.read_i32()?;
-    let apple_signin_allowed = flags & (1 << 0) != 0;
-    let google_signin_allowed = flags & (1 << 1) != 0;
-                Ok(AuthSentCodeType::AuthSentCodeTypeSetUpEmailRequired { flags, apple_signin_allowed, google_signin_allowed })
+                let flags = r.read_i32()?;
+                let apple_signin_allowed = flags & (1 << 0) != 0;
+                let google_signin_allowed = flags & (1 << 1) != 0;
+                Ok(AuthSentCodeType::AuthSentCodeTypeSetUpEmailRequired {
+                    flags,
+                    apple_signin_allowed,
+                    google_signin_allowed,
+                })
             }
             AUTH_SENT_CODE_TYPE_EMAIL_CODE_ID => {
-    let flags = r.read_i32()?;
-    let apple_signin_allowed = flags & (1 << 0) != 0;
-    let google_signin_allowed = flags & (1 << 1) != 0;
-    let email_pattern = String::from_utf8(r.read_bytes()?)?;
-    let length = r.read_i32()?;
-    let reset_available_period = if flags & (1 << 3) != 0 {
-        let reset_available_period = r.read_i32()?;
-        Some(reset_available_period)
-    } else {
-        None
-    };
-    let reset_pending_date = if flags & (1 << 4) != 0 {
-        let reset_pending_date = r.read_i32()?;
-        Some(reset_pending_date)
-    } else {
-        None
-    };
-                Ok(AuthSentCodeType::AuthSentCodeTypeEmailCode { flags, apple_signin_allowed, google_signin_allowed, email_pattern, length, reset_available_period, reset_pending_date })
+                let flags = r.read_i32()?;
+                let apple_signin_allowed = flags & (1 << 0) != 0;
+                let google_signin_allowed = flags & (1 << 1) != 0;
+                let email_pattern = String::from_utf8(r.read_bytes()?)?;
+                let length = r.read_i32()?;
+                let reset_available_period = if flags & (1 << 3) != 0 {
+                    let reset_available_period = r.read_i32()?;
+                    Some(reset_available_period)
+                } else {
+                    None
+                };
+                let reset_pending_date = if flags & (1 << 4) != 0 {
+                    let reset_pending_date = r.read_i32()?;
+                    Some(reset_pending_date)
+                } else {
+                    None
+                };
+                Ok(AuthSentCodeType::AuthSentCodeTypeEmailCode {
+                    flags,
+                    apple_signin_allowed,
+                    google_signin_allowed,
+                    email_pattern,
+                    length,
+                    reset_available_period,
+                    reset_pending_date,
+                })
             }
             AUTH_SENT_CODE_TYPE_MISSED_CALL_ID => {
-    let prefix = String::from_utf8(r.read_bytes()?)?;
-    let length = r.read_i32()?;
+                let prefix = String::from_utf8(r.read_bytes()?)?;
+                let length = r.read_i32()?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeMissedCall { prefix, length })
             }
             AUTH_SENT_CODE_TYPE_FLASH_CALL_ID => {
-    let pattern = String::from_utf8(r.read_bytes()?)?;
+                let pattern = String::from_utf8(r.read_bytes()?)?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeFlashCall { pattern })
             }
             AUTH_SENT_CODE_TYPE_CALL_ID => {
-    let length = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeCall { length })
             }
             AUTH_SENT_CODE_TYPE_SMS_ID => {
-    let length = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeSms { length })
             }
             AUTH_SENT_CODE_TYPE_APP_ID => {
-    let length = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(AuthSentCodeType::AuthSentCodeTypeApp { length })
             }
             other => Err(Error::Serialization(format!(
@@ -3010,17 +3365,17 @@ impl StarsRevenueStatus {
                 "expected starsRevenueStatus, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let withdrawal_enabled = flags & (1 << 0) != 0;
-    let current_balance = StarsAmount::read_from(r)?;
-    let available_balance = StarsAmount::read_from(r)?;
-    let overall_revenue = StarsAmount::read_from(r)?;
-    let next_withdrawal_at = if flags & (1 << 1) != 0 {
-        let next_withdrawal_at = r.read_i32()?;
-        Some(next_withdrawal_at)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let withdrawal_enabled = flags & (1 << 0) != 0;
+        let current_balance = StarsAmount::read_from(r)?;
+        let available_balance = StarsAmount::read_from(r)?;
+        let overall_revenue = StarsAmount::read_from(r)?;
+        let next_withdrawal_at = if flags & (1 << 1) != 0 {
+            let next_withdrawal_at = r.read_i32()?;
+            Some(next_withdrawal_at)
+        } else {
+            None
+        };
         Ok(StarsRevenueStatus {
             flags,
             withdrawal_enabled,
@@ -3030,7 +3385,6 @@ impl StarsRevenueStatus {
             next_withdrawal_at,
         })
     }
-
 }
 
 /// `botBusinessConnection#8f34b2f5 = BotBusinessConnection`
@@ -3053,19 +3407,19 @@ impl BotBusinessConnection {
                 "expected botBusinessConnection, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let disabled = flags & (1 << 1) != 0;
-    let connection_id = String::from_utf8(r.read_bytes()?)?;
-    let user_id = r.read_i64()?;
-    let dc_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let rights = if flags & (1 << 2) != 0 {
-        let rights = BusinessBotRights::read_from(r)?;
-        Some(rights)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
+        let flags = r.read_i32()?;
+        let disabled = flags & (1 << 1) != 0;
+        let connection_id = String::from_utf8(r.read_bytes()?)?;
+        let user_id = r.read_i64()?;
+        let dc_id = r.read_i32()?;
+        let date = r.read_i32()?;
+        let rights = if flags & (1 << 2) != 0 {
+            let rights = BusinessBotRights::read_from(r)?;
+            Some(rights)
+        } else {
+            None
+        };
+        let user_id = UserId(user_id);
         Ok(BotBusinessConnection {
             flags,
             disabled,
@@ -3076,7 +3430,6 @@ impl BotBusinessConnection {
             rights,
         })
     }
-
 }
 
 /// `quickReply#0697102b = QuickReply`
@@ -3096,10 +3449,10 @@ impl QuickReply {
                 "expected quickReply, got {ctor:#x}"
             )));
         }
-    let shortcut_id = r.read_i32()?;
-    let shortcut = String::from_utf8(r.read_bytes()?)?;
-    let top_message = r.read_i32()?;
-    let count = r.read_i32()?;
+        let shortcut_id = r.read_i32()?;
+        let shortcut = String::from_utf8(r.read_bytes()?)?;
+        let top_message = r.read_i32()?;
+        let count = r.read_i32()?;
         Ok(QuickReply {
             shortcut_id,
             shortcut,
@@ -3110,11 +3463,11 @@ impl QuickReply {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(QUICK_REPLY_ID);
-    w.write_i32(self.shortcut_id);
-    w.write_bytes(self.shortcut.as_bytes());
-    w.write_i32(self.top_message);
-    w.write_i32(self.count);
+        w.write_u32(QUICK_REPLY_ID);
+        w.write_i32(self.shortcut_id);
+        w.write_bytes(self.shortcut.as_bytes());
+        w.write_i32(self.top_message);
+        w.write_i32(self.count);
     }
 }
 
@@ -3134,15 +3487,15 @@ impl DialogPeer {
         let ctor = r.read_u32()?;
         match ctor {
             DIALOG_PEER_COMMUNITY_ID => {
-    let community_id = r.read_i64()?;
+                let community_id = r.read_i64()?;
                 Ok(DialogPeer::DialogPeerCommunity { community_id })
             }
             DIALOG_PEER_FOLDER_ID => {
-    let folder_id = r.read_i32()?;
+                let folder_id = r.read_i32()?;
                 Ok(DialogPeer::DialogPeerFolder { folder_id })
             }
             DIALOG_PEER_ID => {
-    let peer = Peer::read_from(r)?;
+                let peer = Peer::read_from(r)?;
                 Ok(DialogPeer::DialogPeer { peer })
             }
             other => Err(Error::Serialization(format!(
@@ -3177,43 +3530,43 @@ impl Boost {
                 "expected boost, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let gift = flags & (1 << 1) != 0;
-    let giveaway = flags & (1 << 2) != 0;
-    let unclaimed = flags & (1 << 3) != 0;
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let user_id = if flags & (1 << 0) != 0 {
-        let user_id = r.read_i64()?;
-        Some(UserId(user_id))
-    } else {
-        None
-    };
-    let giveaway_msg_id = if flags & (1 << 2) != 0 {
-        let giveaway_msg_id = r.read_i32()?;
-        Some(giveaway_msg_id)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let expires = r.read_i32()?;
-    let used_gift_slug = if flags & (1 << 4) != 0 {
-        let used_gift_slug = String::from_utf8(r.read_bytes()?)?;
-        Some(used_gift_slug)
-    } else {
-        None
-    };
-    let multiplier = if flags & (1 << 5) != 0 {
-        let multiplier = r.read_i32()?;
-        Some(multiplier)
-    } else {
-        None
-    };
-    let stars = if flags & (1 << 6) != 0 {
-        let stars = r.read_i64()?;
-        Some(stars)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let gift = flags & (1 << 1) != 0;
+        let giveaway = flags & (1 << 2) != 0;
+        let unclaimed = flags & (1 << 3) != 0;
+        let id = String::from_utf8(r.read_bytes()?)?;
+        let user_id = if flags & (1 << 0) != 0 {
+            let user_id = r.read_i64()?;
+            Some(UserId(user_id))
+        } else {
+            None
+        };
+        let giveaway_msg_id = if flags & (1 << 2) != 0 {
+            let giveaway_msg_id = r.read_i32()?;
+            Some(giveaway_msg_id)
+        } else {
+            None
+        };
+        let date = r.read_i32()?;
+        let expires = r.read_i32()?;
+        let used_gift_slug = if flags & (1 << 4) != 0 {
+            let used_gift_slug = String::from_utf8(r.read_bytes()?)?;
+            Some(used_gift_slug)
+        } else {
+            None
+        };
+        let multiplier = if flags & (1 << 5) != 0 {
+            let multiplier = r.read_i32()?;
+            Some(multiplier)
+        } else {
+            None
+        };
+        let stars = if flags & (1 << 6) != 0 {
+            let stars = r.read_i64()?;
+            Some(stars)
+        } else {
+            None
+        };
         Ok(Boost {
             flags,
             gift,
@@ -3232,27 +3585,42 @@ impl Boost {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(BOOST_ID);
-    let flags: i32 = if self.gift { 1 << 1 } else { 0 } | if self.giveaway { 1 << 2 } else { 0 } | if self.unclaimed { 1 << 3 } else { 0 } | if self.user_id.is_some() { 1 << 0 } else { 0 } | if self.giveaway_msg_id.is_some() { 1 << 2 } else { 0 } | if self.used_gift_slug.is_some() { 1 << 4 } else { 0 } | if self.multiplier.is_some() { 1 << 5 } else { 0 } | if self.stars.is_some() { 1 << 6 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.id.as_bytes());
-    if let Some(user_id) = self.user_id.clone() {
-        w.write_i64(user_id.0);
-    }
-    if let Some(giveaway_msg_id) = self.giveaway_msg_id {
-        w.write_i32(giveaway_msg_id);
-    }
-    w.write_i32(self.date);
-    w.write_i32(self.expires);
-    if let Some(used_gift_slug) = self.used_gift_slug.clone() {
-        w.write_bytes(used_gift_slug.as_bytes());
-    }
-    if let Some(multiplier) = self.multiplier {
-        w.write_i32(multiplier);
-    }
-    if let Some(stars) = self.stars {
-        w.write_i64(stars);
-    }
+        w.write_u32(BOOST_ID);
+        let flags: i32 = if self.gift { 1 << 1 } else { 0 }
+            | if self.giveaway { 1 << 2 } else { 0 }
+            | if self.unclaimed { 1 << 3 } else { 0 }
+            | if self.user_id.is_some() { 1 << 0 } else { 0 }
+            | if self.giveaway_msg_id.is_some() {
+                1 << 2
+            } else {
+                0
+            }
+            | if self.used_gift_slug.is_some() {
+                1 << 4
+            } else {
+                0
+            }
+            | if self.multiplier.is_some() { 1 << 5 } else { 0 }
+            | if self.stars.is_some() { 1 << 6 } else { 0 };
+        w.write_i32(flags);
+        w.write_bytes(self.id.as_bytes());
+        if let Some(user_id) = self.user_id.clone() {
+            w.write_i64(user_id.0);
+        }
+        if let Some(giveaway_msg_id) = self.giveaway_msg_id {
+            w.write_i32(giveaway_msg_id);
+        }
+        w.write_i32(self.date);
+        w.write_i32(self.expires);
+        if let Some(used_gift_slug) = self.used_gift_slug.clone() {
+            w.write_bytes(used_gift_slug.as_bytes());
+        }
+        if let Some(multiplier) = self.multiplier {
+            w.write_i32(multiplier);
+        }
+        if let Some(stars) = self.stars {
+            w.write_i64(stars);
+        }
     }
 }
 
@@ -3272,19 +3640,19 @@ impl StoriesStealthMode {
                 "expected storiesStealthMode, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let active_until_date = if flags & (1 << 0) != 0 {
-        let active_until_date = r.read_i32()?;
-        Some(active_until_date)
-    } else {
-        None
-    };
-    let cooldown_until_date = if flags & (1 << 1) != 0 {
-        let cooldown_until_date = r.read_i32()?;
-        Some(cooldown_until_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let active_until_date = if flags & (1 << 0) != 0 {
+            let active_until_date = r.read_i32()?;
+            Some(active_until_date)
+        } else {
+            None
+        };
+        let cooldown_until_date = if flags & (1 << 1) != 0 {
+            let cooldown_until_date = r.read_i32()?;
+            Some(cooldown_until_date)
+        } else {
+            None
+        };
         Ok(StoriesStealthMode {
             flags,
             active_until_date,
@@ -3294,15 +3662,23 @@ impl StoriesStealthMode {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(STORIES_STEALTH_MODE_ID);
-    let flags: i32 = if self.active_until_date.is_some() { 1 << 0 } else { 0 } | if self.cooldown_until_date.is_some() { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    if let Some(active_until_date) = self.active_until_date {
-        w.write_i32(active_until_date);
-    }
-    if let Some(cooldown_until_date) = self.cooldown_until_date {
-        w.write_i32(cooldown_until_date);
-    }
+        w.write_u32(STORIES_STEALTH_MODE_ID);
+        let flags: i32 = if self.active_until_date.is_some() {
+            1 << 0
+        } else {
+            0
+        } | if self.cooldown_until_date.is_some() {
+            1 << 1
+        } else {
+            0
+        };
+        w.write_i32(flags);
+        if let Some(active_until_date) = self.active_until_date {
+            w.write_i32(active_until_date);
+        }
+        if let Some(cooldown_until_date) = self.cooldown_until_date {
+            w.write_i32(cooldown_until_date);
+        }
     }
 }
 
@@ -3326,35 +3702,35 @@ impl MessageReactions {
                 "expected messageReactions, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let min = flags & (1 << 0) != 0;
-    let can_see_list = flags & (1 << 2) != 0;
-    let reactions_as_tags = flags & (1 << 3) != 0;
-    let n = r.read_vector_header()?;
-    let mut results = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        results.push(ReactionCount::read_from(r)?);
-    }
-    let recent_reactions = if flags & (1 << 1) != 0 {
+        let flags = r.read_i32()?;
+        let min = flags & (1 << 0) != 0;
+        let can_see_list = flags & (1 << 2) != 0;
+        let reactions_as_tags = flags & (1 << 3) != 0;
         let n = r.read_vector_header()?;
-        let mut recent_reactions = Vec::with_capacity(n.max(0) as usize);
+        let mut results = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            recent_reactions.push(MessagePeerReaction::read_from(r)?);
+            results.push(ReactionCount::read_from(r)?);
         }
-        Some(recent_reactions)
-    } else {
-        None
-    };
-    let top_reactors = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut top_reactors = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            top_reactors.push(MessageReactor::read_from(r)?);
-        }
-        Some(top_reactors)
-    } else {
-        None
-    };
+        let recent_reactions = if flags & (1 << 1) != 0 {
+            let n = r.read_vector_header()?;
+            let mut recent_reactions = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                recent_reactions.push(MessagePeerReaction::read_from(r)?);
+            }
+            Some(recent_reactions)
+        } else {
+            None
+        };
+        let top_reactors = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut top_reactors = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                top_reactors.push(MessageReactor::read_from(r)?);
+            }
+            Some(top_reactors)
+        } else {
+            None
+        };
         Ok(MessageReactions {
             flags,
             min,
@@ -3365,7 +3741,6 @@ impl MessageReactions {
             top_reactors,
         })
     }
-
 }
 
 /// `messageReactor#4ba3a95a = MessageReactor`
@@ -3387,17 +3762,17 @@ impl MessageReactor {
                 "expected messageReactor, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let top = flags & (1 << 0) != 0;
-    let my = flags & (1 << 1) != 0;
-    let anonymous = flags & (1 << 2) != 0;
-    let peer_id = if flags & (1 << 3) != 0 {
-        let peer_id = Peer::read_from(r)?;
-        Some(peer_id)
-    } else {
-        None
-    };
-    let count = r.read_i32()?;
+        let flags = r.read_i32()?;
+        let top = flags & (1 << 0) != 0;
+        let my = flags & (1 << 1) != 0;
+        let anonymous = flags & (1 << 2) != 0;
+        let peer_id = if flags & (1 << 3) != 0 {
+            let peer_id = Peer::read_from(r)?;
+            Some(peer_id)
+        } else {
+            None
+        };
+        let count = r.read_i32()?;
         Ok(MessageReactor {
             flags,
             top,
@@ -3407,7 +3782,6 @@ impl MessageReactor {
             count,
         })
     }
-
 }
 
 /// `messagePeerReaction#8c79b63c = MessagePeerReaction`
@@ -3430,13 +3804,13 @@ impl MessagePeerReaction {
                 "expected messagePeerReaction, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let big = flags & (1 << 0) != 0;
-    let unread = flags & (1 << 1) != 0;
-    let my = flags & (1 << 2) != 0;
-    let peer_id = Peer::read_from(r)?;
-    let date = r.read_i32()?;
-    let reaction = Reaction::read_from(r)?;
+        let flags = r.read_i32()?;
+        let big = flags & (1 << 0) != 0;
+        let unread = flags & (1 << 1) != 0;
+        let my = flags & (1 << 2) != 0;
+        let peer_id = Peer::read_from(r)?;
+        let date = r.read_i32()?;
+        let reaction = Reaction::read_from(r)?;
         Ok(MessagePeerReaction {
             flags,
             big,
@@ -3447,7 +3821,6 @@ impl MessagePeerReaction {
             reaction,
         })
     }
-
 }
 
 /// Union `ChannelParticipant` (6 constructors).
@@ -3456,15 +3829,52 @@ pub enum ChannelParticipant {
     /// `channelParticipantLeft#1b03f006`
     ChannelParticipantLeft { peer: Peer },
     /// `channelParticipantBanned#d5f0ad91`
-    ChannelParticipantBanned { flags: i32, left: bool, peer: Peer, kicked_by: i64, date: i32, banned_rights: ChatBannedRights, rank: Option<String> },
+    ChannelParticipantBanned {
+        flags: i32,
+        left: bool,
+        peer: Peer,
+        kicked_by: i64,
+        date: i32,
+        banned_rights: ChatBannedRights,
+        rank: Option<String>,
+    },
     /// `channelParticipantAdmin#34c3bb53`
-    ChannelParticipantAdmin { flags: i32, can_edit: bool, self_: bool, user_id: UserId, inviter_id: Option<i64>, promoted_by: i64, date: i32, admin_rights: ChatAdminRights, rank: Option<String> },
+    ChannelParticipantAdmin {
+        flags: i32,
+        can_edit: bool,
+        self_: bool,
+        user_id: UserId,
+        inviter_id: Option<i64>,
+        promoted_by: i64,
+        date: i32,
+        admin_rights: ChatAdminRights,
+        rank: Option<String>,
+    },
     /// `channelParticipantCreator#2fe601d3`
-    ChannelParticipantCreator { flags: i32, user_id: UserId, admin_rights: ChatAdminRights, rank: Option<String> },
+    ChannelParticipantCreator {
+        flags: i32,
+        user_id: UserId,
+        admin_rights: ChatAdminRights,
+        rank: Option<String>,
+    },
     /// `channelParticipantSelf#a9478a1a`
-    ChannelParticipantSelf { flags: i32, via_request: bool, user_id: UserId, inviter_id: i64, date: i32, subscription_until_date: Option<i32>, rank: Option<String> },
+    ChannelParticipantSelf {
+        flags: i32,
+        via_request: bool,
+        user_id: UserId,
+        inviter_id: i64,
+        date: i32,
+        subscription_until_date: Option<i32>,
+        rank: Option<String>,
+    },
     /// `channelParticipant#1bd54456`
-    ChannelParticipant { flags: i32, user_id: UserId, date: i32, subscription_until_date: Option<i32>, rank: Option<String> },
+    ChannelParticipant {
+        flags: i32,
+        user_id: UserId,
+        date: i32,
+        subscription_until_date: Option<i32>,
+        rank: Option<String>,
+    },
 }
 
 impl ChannelParticipant {
@@ -3472,99 +3882,136 @@ impl ChannelParticipant {
         let ctor = r.read_u32()?;
         match ctor {
             CHANNEL_PARTICIPANT_LEFT_ID => {
-    let peer = Peer::read_from(r)?;
+                let peer = Peer::read_from(r)?;
                 Ok(ChannelParticipant::ChannelParticipantLeft { peer })
             }
             CHANNEL_PARTICIPANT_BANNED_ID => {
-    let flags = r.read_i32()?;
-    let left = flags & (1 << 0) != 0;
-    let peer = Peer::read_from(r)?;
-    let kicked_by = r.read_i64()?;
-    let date = r.read_i32()?;
-    let banned_rights = ChatBannedRights::read_from(r)?;
-    let rank = if flags & (1 << 2) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-                Ok(ChannelParticipant::ChannelParticipantBanned { flags, left, peer, kicked_by, date, banned_rights, rank })
+                let flags = r.read_i32()?;
+                let left = flags & (1 << 0) != 0;
+                let peer = Peer::read_from(r)?;
+                let kicked_by = r.read_i64()?;
+                let date = r.read_i32()?;
+                let banned_rights = ChatBannedRights::read_from(r)?;
+                let rank = if flags & (1 << 2) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                Ok(ChannelParticipant::ChannelParticipantBanned {
+                    flags,
+                    left,
+                    peer,
+                    kicked_by,
+                    date,
+                    banned_rights,
+                    rank,
+                })
             }
             CHANNEL_PARTICIPANT_ADMIN_ID => {
-    let flags = r.read_i32()?;
-    let can_edit = flags & (1 << 0) != 0;
-    let self_ = flags & (1 << 1) != 0;
-    let user_id = r.read_i64()?;
-    let inviter_id = if flags & (1 << 1) != 0 {
-        let inviter_id = r.read_i64()?;
-        Some(inviter_id)
-    } else {
-        None
-    };
-    let promoted_by = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_rights = ChatAdminRights::read_from(r)?;
-    let rank = if flags & (1 << 2) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChannelParticipant::ChannelParticipantAdmin { flags, can_edit, self_, user_id, inviter_id, promoted_by, date, admin_rights, rank })
+                let flags = r.read_i32()?;
+                let can_edit = flags & (1 << 0) != 0;
+                let self_ = flags & (1 << 1) != 0;
+                let user_id = r.read_i64()?;
+                let inviter_id = if flags & (1 << 1) != 0 {
+                    let inviter_id = r.read_i64()?;
+                    Some(inviter_id)
+                } else {
+                    None
+                };
+                let promoted_by = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_rights = ChatAdminRights::read_from(r)?;
+                let rank = if flags & (1 << 2) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChannelParticipant::ChannelParticipantAdmin {
+                    flags,
+                    can_edit,
+                    self_,
+                    user_id,
+                    inviter_id,
+                    promoted_by,
+                    date,
+                    admin_rights,
+                    rank,
+                })
             }
             CHANNEL_PARTICIPANT_CREATOR_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let admin_rights = ChatAdminRights::read_from(r)?;
-    let rank = if flags & (1 << 0) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChannelParticipant::ChannelParticipantCreator { flags, user_id, admin_rights, rank })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let admin_rights = ChatAdminRights::read_from(r)?;
+                let rank = if flags & (1 << 0) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChannelParticipant::ChannelParticipantCreator {
+                    flags,
+                    user_id,
+                    admin_rights,
+                    rank,
+                })
             }
             CHANNEL_PARTICIPANT_SELF_ID => {
-    let flags = r.read_i32()?;
-    let via_request = flags & (1 << 0) != 0;
-    let user_id = r.read_i64()?;
-    let inviter_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let subscription_until_date = if flags & (1 << 1) != 0 {
-        let subscription_until_date = r.read_i32()?;
-        Some(subscription_until_date)
-    } else {
-        None
-    };
-    let rank = if flags & (1 << 2) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChannelParticipant::ChannelParticipantSelf { flags, via_request, user_id, inviter_id, date, subscription_until_date, rank })
+                let flags = r.read_i32()?;
+                let via_request = flags & (1 << 0) != 0;
+                let user_id = r.read_i64()?;
+                let inviter_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let subscription_until_date = if flags & (1 << 1) != 0 {
+                    let subscription_until_date = r.read_i32()?;
+                    Some(subscription_until_date)
+                } else {
+                    None
+                };
+                let rank = if flags & (1 << 2) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChannelParticipant::ChannelParticipantSelf {
+                    flags,
+                    via_request,
+                    user_id,
+                    inviter_id,
+                    date,
+                    subscription_until_date,
+                    rank,
+                })
             }
             CHANNEL_PARTICIPANT_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let date = r.read_i32()?;
-    let subscription_until_date = if flags & (1 << 0) != 0 {
-        let subscription_until_date = r.read_i32()?;
-        Some(subscription_until_date)
-    } else {
-        None
-    };
-    let rank = if flags & (1 << 2) != 0 {
-        let rank = String::from_utf8(r.read_bytes()?)?;
-        Some(rank)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(ChannelParticipant::ChannelParticipant { flags, user_id, date, subscription_until_date, rank })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let date = r.read_i32()?;
+                let subscription_until_date = if flags & (1 << 0) != 0 {
+                    let subscription_until_date = r.read_i32()?;
+                    Some(subscription_until_date)
+                } else {
+                    None
+                };
+                let rank = if flags & (1 << 2) != 0 {
+                    let rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(rank)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(ChannelParticipant::ChannelParticipant {
+                    flags,
+                    user_id,
+                    date,
+                    subscription_until_date,
+                    rank,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChannelParticipant constructor {other:#x}"
@@ -3577,9 +4024,41 @@ impl ChannelParticipant {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GroupCall {
     /// `groupCall#efb2b617`
-    GroupCall { flags: i32, join_muted: bool, can_change_join_muted: bool, join_date_asc: bool, schedule_start_subscribed: bool, can_start_video: bool, record_video_active: bool, rtmp_stream: bool, listeners_hidden: bool, conference: bool, creator: bool, messages_enabled: bool, can_change_messages_enabled: bool, min: bool, id: i64, access_hash: AccessHash, participants_count: i32, title: Option<String>, stream_dc_id: Option<i32>, record_start_date: Option<i32>, schedule_date: Option<i32>, unmuted_video_count: Option<i32>, unmuted_video_limit: i32, version: i32, invite_link: Option<String>, send_paid_messages_stars: Option<i64>, default_send_as: Option<Peer> },
+    GroupCall {
+        flags: i32,
+        join_muted: bool,
+        can_change_join_muted: bool,
+        join_date_asc: bool,
+        schedule_start_subscribed: bool,
+        can_start_video: bool,
+        record_video_active: bool,
+        rtmp_stream: bool,
+        listeners_hidden: bool,
+        conference: bool,
+        creator: bool,
+        messages_enabled: bool,
+        can_change_messages_enabled: bool,
+        min: bool,
+        id: i64,
+        access_hash: AccessHash,
+        participants_count: i32,
+        title: Option<String>,
+        stream_dc_id: Option<i32>,
+        record_start_date: Option<i32>,
+        schedule_date: Option<i32>,
+        unmuted_video_count: Option<i32>,
+        unmuted_video_limit: i32,
+        version: i32,
+        invite_link: Option<String>,
+        send_paid_messages_stars: Option<i64>,
+        default_send_as: Option<Peer>,
+    },
     /// `groupCallDiscarded#7780bcb4`
-    GroupCallDiscarded { id: i64, access_hash: AccessHash, duration: i32 },
+    GroupCallDiscarded {
+        id: i64,
+        access_hash: AccessHash,
+        duration: i32,
+    },
 }
 
 impl GroupCall {
@@ -3587,82 +4066,114 @@ impl GroupCall {
         let ctor = r.read_u32()?;
         match ctor {
             GROUP_CALL_ID => {
-    let flags = r.read_i32()?;
-    let join_muted = flags & (1 << 1) != 0;
-    let can_change_join_muted = flags & (1 << 2) != 0;
-    let join_date_asc = flags & (1 << 6) != 0;
-    let schedule_start_subscribed = flags & (1 << 8) != 0;
-    let can_start_video = flags & (1 << 9) != 0;
-    let record_video_active = flags & (1 << 11) != 0;
-    let rtmp_stream = flags & (1 << 12) != 0;
-    let listeners_hidden = flags & (1 << 13) != 0;
-    let conference = flags & (1 << 14) != 0;
-    let creator = flags & (1 << 15) != 0;
-    let messages_enabled = flags & (1 << 17) != 0;
-    let can_change_messages_enabled = flags & (1 << 18) != 0;
-    let min = flags & (1 << 19) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let participants_count = r.read_i32()?;
-    let title = if flags & (1 << 3) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let stream_dc_id = if flags & (1 << 4) != 0 {
-        let stream_dc_id = r.read_i32()?;
-        Some(stream_dc_id)
-    } else {
-        None
-    };
-    let record_start_date = if flags & (1 << 5) != 0 {
-        let record_start_date = r.read_i32()?;
-        Some(record_start_date)
-    } else {
-        None
-    };
-    let schedule_date = if flags & (1 << 7) != 0 {
-        let schedule_date = r.read_i32()?;
-        Some(schedule_date)
-    } else {
-        None
-    };
-    let unmuted_video_count = if flags & (1 << 10) != 0 {
-        let unmuted_video_count = r.read_i32()?;
-        Some(unmuted_video_count)
-    } else {
-        None
-    };
-    let unmuted_video_limit = r.read_i32()?;
-    let version = r.read_i32()?;
-    let invite_link = if flags & (1 << 16) != 0 {
-        let invite_link = String::from_utf8(r.read_bytes()?)?;
-        Some(invite_link)
-    } else {
-        None
-    };
-    let send_paid_messages_stars = if flags & (1 << 20) != 0 {
-        let send_paid_messages_stars = r.read_i64()?;
-        Some(send_paid_messages_stars)
-    } else {
-        None
-    };
-    let default_send_as = if flags & (1 << 21) != 0 {
-        let default_send_as = Peer::read_from(r)?;
-        Some(default_send_as)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
-                Ok(GroupCall::GroupCall { flags, join_muted, can_change_join_muted, join_date_asc, schedule_start_subscribed, can_start_video, record_video_active, rtmp_stream, listeners_hidden, conference, creator, messages_enabled, can_change_messages_enabled, min, id, access_hash, participants_count, title, stream_dc_id, record_start_date, schedule_date, unmuted_video_count, unmuted_video_limit, version, invite_link, send_paid_messages_stars, default_send_as })
+                let flags = r.read_i32()?;
+                let join_muted = flags & (1 << 1) != 0;
+                let can_change_join_muted = flags & (1 << 2) != 0;
+                let join_date_asc = flags & (1 << 6) != 0;
+                let schedule_start_subscribed = flags & (1 << 8) != 0;
+                let can_start_video = flags & (1 << 9) != 0;
+                let record_video_active = flags & (1 << 11) != 0;
+                let rtmp_stream = flags & (1 << 12) != 0;
+                let listeners_hidden = flags & (1 << 13) != 0;
+                let conference = flags & (1 << 14) != 0;
+                let creator = flags & (1 << 15) != 0;
+                let messages_enabled = flags & (1 << 17) != 0;
+                let can_change_messages_enabled = flags & (1 << 18) != 0;
+                let min = flags & (1 << 19) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let participants_count = r.read_i32()?;
+                let title = if flags & (1 << 3) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let stream_dc_id = if flags & (1 << 4) != 0 {
+                    let stream_dc_id = r.read_i32()?;
+                    Some(stream_dc_id)
+                } else {
+                    None
+                };
+                let record_start_date = if flags & (1 << 5) != 0 {
+                    let record_start_date = r.read_i32()?;
+                    Some(record_start_date)
+                } else {
+                    None
+                };
+                let schedule_date = if flags & (1 << 7) != 0 {
+                    let schedule_date = r.read_i32()?;
+                    Some(schedule_date)
+                } else {
+                    None
+                };
+                let unmuted_video_count = if flags & (1 << 10) != 0 {
+                    let unmuted_video_count = r.read_i32()?;
+                    Some(unmuted_video_count)
+                } else {
+                    None
+                };
+                let unmuted_video_limit = r.read_i32()?;
+                let version = r.read_i32()?;
+                let invite_link = if flags & (1 << 16) != 0 {
+                    let invite_link = String::from_utf8(r.read_bytes()?)?;
+                    Some(invite_link)
+                } else {
+                    None
+                };
+                let send_paid_messages_stars = if flags & (1 << 20) != 0 {
+                    let send_paid_messages_stars = r.read_i64()?;
+                    Some(send_paid_messages_stars)
+                } else {
+                    None
+                };
+                let default_send_as = if flags & (1 << 21) != 0 {
+                    let default_send_as = Peer::read_from(r)?;
+                    Some(default_send_as)
+                } else {
+                    None
+                };
+                let access_hash = AccessHash(access_hash);
+                Ok(GroupCall::GroupCall {
+                    flags,
+                    join_muted,
+                    can_change_join_muted,
+                    join_date_asc,
+                    schedule_start_subscribed,
+                    can_start_video,
+                    record_video_active,
+                    rtmp_stream,
+                    listeners_hidden,
+                    conference,
+                    creator,
+                    messages_enabled,
+                    can_change_messages_enabled,
+                    min,
+                    id,
+                    access_hash,
+                    participants_count,
+                    title,
+                    stream_dc_id,
+                    record_start_date,
+                    schedule_date,
+                    unmuted_video_count,
+                    unmuted_video_limit,
+                    version,
+                    invite_link,
+                    send_paid_messages_stars,
+                    default_send_as,
+                })
             }
             GROUP_CALL_DISCARDED_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let duration = r.read_i32()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(GroupCall::GroupCallDiscarded { id, access_hash, duration })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let duration = r.read_i32()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(GroupCall::GroupCallDiscarded {
+                    id,
+                    access_hash,
+                    duration,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown GroupCall constructor {other:#x}"
@@ -3705,62 +4216,62 @@ impl GroupCallParticipant {
                 "expected groupCallParticipant, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let muted = flags & (1 << 0) != 0;
-    let left = flags & (1 << 1) != 0;
-    let can_self_unmute = flags & (1 << 2) != 0;
-    let just_joined = flags & (1 << 4) != 0;
-    let versioned = flags & (1 << 5) != 0;
-    let min = flags & (1 << 8) != 0;
-    let muted_by_you = flags & (1 << 9) != 0;
-    let volume_by_admin = flags & (1 << 10) != 0;
-    let self_ = flags & (1 << 12) != 0;
-    let video_joined = flags & (1 << 15) != 0;
-    let peer = Peer::read_from(r)?;
-    let date = r.read_i32()?;
-    let active_date = if flags & (1 << 3) != 0 {
-        let active_date = r.read_i32()?;
-        Some(active_date)
-    } else {
-        None
-    };
-    let source = r.read_i32()?;
-    let volume = if flags & (1 << 7) != 0 {
-        let volume = r.read_i32()?;
-        Some(volume)
-    } else {
-        None
-    };
-    let about = if flags & (1 << 11) != 0 {
-        let about = String::from_utf8(r.read_bytes()?)?;
-        Some(about)
-    } else {
-        None
-    };
-    let raise_hand_rating = if flags & (1 << 13) != 0 {
-        let raise_hand_rating = r.read_i64()?;
-        Some(raise_hand_rating)
-    } else {
-        None
-    };
-    let video = if flags & (1 << 6) != 0 {
-        let video = GroupCallParticipantVideo::read_from(r)?;
-        Some(video)
-    } else {
-        None
-    };
-    let presentation = if flags & (1 << 14) != 0 {
-        let presentation = GroupCallParticipantVideo::read_from(r)?;
-        Some(presentation)
-    } else {
-        None
-    };
-    let paid_stars_total = if flags & (1 << 16) != 0 {
-        let paid_stars_total = r.read_i64()?;
-        Some(paid_stars_total)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let muted = flags & (1 << 0) != 0;
+        let left = flags & (1 << 1) != 0;
+        let can_self_unmute = flags & (1 << 2) != 0;
+        let just_joined = flags & (1 << 4) != 0;
+        let versioned = flags & (1 << 5) != 0;
+        let min = flags & (1 << 8) != 0;
+        let muted_by_you = flags & (1 << 9) != 0;
+        let volume_by_admin = flags & (1 << 10) != 0;
+        let self_ = flags & (1 << 12) != 0;
+        let video_joined = flags & (1 << 15) != 0;
+        let peer = Peer::read_from(r)?;
+        let date = r.read_i32()?;
+        let active_date = if flags & (1 << 3) != 0 {
+            let active_date = r.read_i32()?;
+            Some(active_date)
+        } else {
+            None
+        };
+        let source = r.read_i32()?;
+        let volume = if flags & (1 << 7) != 0 {
+            let volume = r.read_i32()?;
+            Some(volume)
+        } else {
+            None
+        };
+        let about = if flags & (1 << 11) != 0 {
+            let about = String::from_utf8(r.read_bytes()?)?;
+            Some(about)
+        } else {
+            None
+        };
+        let raise_hand_rating = if flags & (1 << 13) != 0 {
+            let raise_hand_rating = r.read_i64()?;
+            Some(raise_hand_rating)
+        } else {
+            None
+        };
+        let video = if flags & (1 << 6) != 0 {
+            let video = GroupCallParticipantVideo::read_from(r)?;
+            Some(video)
+        } else {
+            None
+        };
+        let presentation = if flags & (1 << 14) != 0 {
+            let presentation = GroupCallParticipantVideo::read_from(r)?;
+            Some(presentation)
+        } else {
+            None
+        };
+        let paid_stars_total = if flags & (1 << 16) != 0 {
+            let paid_stars_total = r.read_i64()?;
+            Some(paid_stars_total)
+        } else {
+            None
+        };
         Ok(GroupCallParticipant {
             flags,
             muted,
@@ -3785,7 +4296,6 @@ impl GroupCallParticipant {
             paid_stars_total,
         })
     }
-
 }
 
 /// `groupCallParticipantVideo#67753ac8 = GroupCallParticipantVideo`
@@ -3806,20 +4316,20 @@ impl GroupCallParticipantVideo {
                 "expected groupCallParticipantVideo, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let paused = flags & (1 << 0) != 0;
-    let endpoint = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut source_groups = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        source_groups.push(GroupCallParticipantVideoSourceGroup::read_from(r)?);
-    }
-    let audio_source = if flags & (1 << 1) != 0 {
-        let audio_source = r.read_i32()?;
-        Some(audio_source)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let paused = flags & (1 << 0) != 0;
+        let endpoint = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut source_groups = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            source_groups.push(GroupCallParticipantVideoSourceGroup::read_from(r)?);
+        }
+        let audio_source = if flags & (1 << 1) != 0 {
+            let audio_source = r.read_i32()?;
+            Some(audio_source)
+        } else {
+            None
+        };
         Ok(GroupCallParticipantVideo {
             flags,
             paused,
@@ -3831,18 +4341,23 @@ impl GroupCallParticipantVideo {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(GROUP_CALL_PARTICIPANT_VIDEO_ID);
-    let flags: i32 = if self.paused { 1 << 0 } else { 0 } | if self.audio_source.is_some() { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    w.write_bytes(self.endpoint.as_bytes());
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.source_groups.len() as i32);
-    for item in self.source_groups.iter() {
-        item.write_to(w);
-    }
-    if let Some(audio_source) = self.audio_source {
-        w.write_i32(audio_source);
-    }
+        w.write_u32(GROUP_CALL_PARTICIPANT_VIDEO_ID);
+        let flags: i32 = if self.paused { 1 << 0 } else { 0 }
+            | if self.audio_source.is_some() {
+                1 << 1
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        w.write_bytes(self.endpoint.as_bytes());
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(self.source_groups.len() as i32);
+        for item in self.source_groups.iter() {
+            item.write_to(w);
+        }
+        if let Some(audio_source) = self.audio_source {
+            w.write_i32(audio_source);
+        }
     }
 }
 
@@ -3861,27 +4376,24 @@ impl GroupCallParticipantVideoSourceGroup {
                 "expected groupCallParticipantVideoSourceGroup, got {ctor:#x}"
             )));
         }
-    let semantics = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut sources = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        sources.push(r.read_i32()?);
-    }
-        Ok(GroupCallParticipantVideoSourceGroup {
-            semantics,
-            sources,
-        })
+        let semantics = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut sources = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            sources.push(r.read_i32()?);
+        }
+        Ok(GroupCallParticipantVideoSourceGroup { semantics, sources })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(GROUP_CALL_PARTICIPANT_VIDEO_SOURCE_GROUP_ID);
-    w.write_bytes(self.semantics.as_bytes());
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.sources.len() as i32);
-    for item in self.sources.iter().copied() {
-        w.write_i32(item);
-    }
+        w.write_u32(GROUP_CALL_PARTICIPANT_VIDEO_SOURCE_GROUP_ID);
+        w.write_bytes(self.semantics.as_bytes());
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(self.sources.len() as i32);
+        for item in self.sources.iter().copied() {
+            w.write_i32(item);
+        }
     }
 }
 
@@ -3891,15 +4403,37 @@ pub enum SendMessageAction {
     /// `sendMessageStopDraftAction#fbf902b0`
     SendMessageStopDraftAction { random_id: i64 },
     /// `sendMessageRichMessageDraftAction#52564893`
-    SendMessageRichMessageDraftAction { flags: i32, can_stop: bool, keep_on_stop: bool, random_id: i64, rich_message: RichMessage },
+    SendMessageRichMessageDraftAction {
+        flags: i32,
+        can_stop: bool,
+        keep_on_stop: bool,
+        random_id: i64,
+        rich_message: RichMessage,
+    },
     /// `inputSendMessageRichMessageDraftAction#a937c7be`
-    InputSendMessageRichMessageDraftAction { flags: i32, can_stop: bool, keep_on_stop: bool, random_id: i64, rich_message: InputRichMessage },
+    InputSendMessageRichMessageDraftAction {
+        flags: i32,
+        can_stop: bool,
+        keep_on_stop: bool,
+        random_id: i64,
+        rich_message: InputRichMessage,
+    },
     /// `sendMessageTextDraftAction#3630b85a`
-    SendMessageTextDraftAction { flags: i32, can_stop: bool, keep_on_stop: bool, random_id: i64, text: TextWithEntities },
+    SendMessageTextDraftAction {
+        flags: i32,
+        can_stop: bool,
+        keep_on_stop: bool,
+        random_id: i64,
+        text: TextWithEntities,
+    },
     /// `sendMessageEmojiInteractionSeen#b665902e`
     SendMessageEmojiInteractionSeen { emoticon: String },
     /// `sendMessageEmojiInteraction#25972bcb`
-    SendMessageEmojiInteraction { emoticon: String, msg_id: i32, interaction: DataJSON },
+    SendMessageEmojiInteraction {
+        emoticon: String,
+        msg_id: i32,
+        interaction: DataJSON,
+    },
     /// `sendMessageChooseStickerAction#b05ac6b1`
     SendMessageChooseStickerAction,
     /// `sendMessageHistoryImportAction#dbda9246`
@@ -3939,97 +4473,111 @@ impl SendMessageAction {
         let ctor = r.read_u32()?;
         match ctor {
             SEND_MESSAGE_STOP_DRAFT_ACTION_ID => {
-    let random_id = r.read_i64()?;
+                let random_id = r.read_i64()?;
                 Ok(SendMessageAction::SendMessageStopDraftAction { random_id })
             }
             SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID => {
-    let flags = r.read_i32()?;
-    let can_stop = flags & (1 << 0) != 0;
-    let keep_on_stop = flags & (1 << 1) != 0;
-    let random_id = r.read_i64()?;
-    let rich_message = RichMessage::read_from(r)?;
-                Ok(SendMessageAction::SendMessageRichMessageDraftAction { flags, can_stop, keep_on_stop, random_id, rich_message })
+                let flags = r.read_i32()?;
+                let can_stop = flags & (1 << 0) != 0;
+                let keep_on_stop = flags & (1 << 1) != 0;
+                let random_id = r.read_i64()?;
+                let rich_message = RichMessage::read_from(r)?;
+                Ok(SendMessageAction::SendMessageRichMessageDraftAction {
+                    flags,
+                    can_stop,
+                    keep_on_stop,
+                    random_id,
+                    rich_message,
+                })
             }
             INPUT_SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID => {
-    let flags = r.read_i32()?;
-    let can_stop = flags & (1 << 0) != 0;
-    let keep_on_stop = flags & (1 << 1) != 0;
-    let random_id = r.read_i64()?;
-    let rich_message = InputRichMessage::read_from(r)?;
-                Ok(SendMessageAction::InputSendMessageRichMessageDraftAction { flags, can_stop, keep_on_stop, random_id, rich_message })
+                let flags = r.read_i32()?;
+                let can_stop = flags & (1 << 0) != 0;
+                let keep_on_stop = flags & (1 << 1) != 0;
+                let random_id = r.read_i64()?;
+                let rich_message = InputRichMessage::read_from(r)?;
+                Ok(SendMessageAction::InputSendMessageRichMessageDraftAction {
+                    flags,
+                    can_stop,
+                    keep_on_stop,
+                    random_id,
+                    rich_message,
+                })
             }
             SEND_MESSAGE_TEXT_DRAFT_ACTION_ID => {
-    let flags = r.read_i32()?;
-    let can_stop = flags & (1 << 0) != 0;
-    let keep_on_stop = flags & (1 << 1) != 0;
-    let random_id = r.read_i64()?;
-    let text = TextWithEntities::read_from(r)?;
-                Ok(SendMessageAction::SendMessageTextDraftAction { flags, can_stop, keep_on_stop, random_id, text })
+                let flags = r.read_i32()?;
+                let can_stop = flags & (1 << 0) != 0;
+                let keep_on_stop = flags & (1 << 1) != 0;
+                let random_id = r.read_i64()?;
+                let text = TextWithEntities::read_from(r)?;
+                Ok(SendMessageAction::SendMessageTextDraftAction {
+                    flags,
+                    can_stop,
+                    keep_on_stop,
+                    random_id,
+                    text,
+                })
             }
             SEND_MESSAGE_EMOJI_INTERACTION_SEEN_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(SendMessageAction::SendMessageEmojiInteractionSeen { emoticon })
             }
             SEND_MESSAGE_EMOJI_INTERACTION_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
-    let msg_id = r.read_i32()?;
-    let interaction = DataJSON::read_from(r)?;
-                Ok(SendMessageAction::SendMessageEmojiInteraction { emoticon, msg_id, interaction })
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let msg_id = r.read_i32()?;
+                let interaction = DataJSON::read_from(r)?;
+                Ok(SendMessageAction::SendMessageEmojiInteraction {
+                    emoticon,
+                    msg_id,
+                    interaction,
+                })
             }
             SEND_MESSAGE_CHOOSE_STICKER_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageChooseStickerAction {  })
+                Ok(SendMessageAction::SendMessageChooseStickerAction {})
             }
             SEND_MESSAGE_HISTORY_IMPORT_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageHistoryImportAction { progress })
             }
-            SPEAKING_IN_GROUP_CALL_ACTION_ID => {
-                Ok(SendMessageAction::SpeakingInGroupCallAction {  })
-            }
+            SPEAKING_IN_GROUP_CALL_ACTION_ID => Ok(SendMessageAction::SpeakingInGroupCallAction {}),
             SEND_MESSAGE_UPLOAD_ROUND_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageUploadRoundAction { progress })
             }
             SEND_MESSAGE_RECORD_ROUND_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageRecordRoundAction {  })
+                Ok(SendMessageAction::SendMessageRecordRoundAction {})
             }
-            SEND_MESSAGE_GAME_PLAY_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageGamePlayAction {  })
-            }
+            SEND_MESSAGE_GAME_PLAY_ACTION_ID => Ok(SendMessageAction::SendMessageGamePlayAction {}),
             SEND_MESSAGE_CHOOSE_CONTACT_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageChooseContactAction {  })
+                Ok(SendMessageAction::SendMessageChooseContactAction {})
             }
             SEND_MESSAGE_GEO_LOCATION_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageGeoLocationAction {  })
+                Ok(SendMessageAction::SendMessageGeoLocationAction {})
             }
             SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageUploadDocumentAction { progress })
             }
             SEND_MESSAGE_UPLOAD_PHOTO_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageUploadPhotoAction { progress })
             }
             SEND_MESSAGE_UPLOAD_AUDIO_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageUploadAudioAction { progress })
             }
             SEND_MESSAGE_RECORD_AUDIO_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageRecordAudioAction {  })
+                Ok(SendMessageAction::SendMessageRecordAudioAction {})
             }
             SEND_MESSAGE_UPLOAD_VIDEO_ACTION_ID => {
-    let progress = r.read_i32()?;
+                let progress = r.read_i32()?;
                 Ok(SendMessageAction::SendMessageUploadVideoAction { progress })
             }
             SEND_MESSAGE_RECORD_VIDEO_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageRecordVideoAction {  })
+                Ok(SendMessageAction::SendMessageRecordVideoAction {})
             }
-            SEND_MESSAGE_CANCEL_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageCancelAction {  })
-            }
-            SEND_MESSAGE_TYPING_ACTION_ID => {
-                Ok(SendMessageAction::SendMessageTypingAction {  })
-            }
+            SEND_MESSAGE_CANCEL_ACTION_ID => Ok(SendMessageAction::SendMessageCancelAction {}),
+            SEND_MESSAGE_TYPING_ACTION_ID => Ok(SendMessageAction::SendMessageTypingAction {}),
             other => Err(Error::Serialization(format!(
                 "unknown SendMessageAction constructor {other:#x}"
             ))),
@@ -4051,13 +4599,13 @@ impl InputTheme {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_THEME_SLUG_ID => {
-    let slug = String::from_utf8(r.read_bytes()?)?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
                 Ok(InputTheme::InputThemeSlug { slug })
             }
             INPUT_THEME_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputTheme::InputTheme { id, access_hash })
             }
             other => Err(Error::Serialization(format!(
@@ -4088,38 +4636,38 @@ impl InputThemeSettings {
                 "expected inputThemeSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let message_colors_animated = flags & (1 << 2) != 0;
-    let base_theme = BaseTheme::read_from(r)?;
-    let accent_color = r.read_i32()?;
-    let outbox_accent_color = if flags & (1 << 3) != 0 {
-        let outbox_accent_color = r.read_i32()?;
-        Some(outbox_accent_color)
-    } else {
-        None
-    };
-    let message_colors = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut message_colors = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            message_colors.push(r.read_i32()?);
-        }
-        Some(message_colors)
-    } else {
-        None
-    };
-    let wallpaper = if flags & (1 << 1) != 0 {
-        let wallpaper = InputWallPaper::read_from(r)?;
-        Some(wallpaper)
-    } else {
-        None
-    };
-    let wallpaper_settings = if flags & (1 << 1) != 0 {
-        let wallpaper_settings = WallPaperSettings::read_from(r)?;
-        Some(wallpaper_settings)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let message_colors_animated = flags & (1 << 2) != 0;
+        let base_theme = BaseTheme::read_from(r)?;
+        let accent_color = r.read_i32()?;
+        let outbox_accent_color = if flags & (1 << 3) != 0 {
+            let outbox_accent_color = r.read_i32()?;
+            Some(outbox_accent_color)
+        } else {
+            None
+        };
+        let message_colors = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut message_colors = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                message_colors.push(r.read_i32()?);
+            }
+            Some(message_colors)
+        } else {
+            None
+        };
+        let wallpaper = if flags & (1 << 1) != 0 {
+            let wallpaper = InputWallPaper::read_from(r)?;
+            Some(wallpaper)
+        } else {
+            None
+        };
+        let wallpaper_settings = if flags & (1 << 1) != 0 {
+            let wallpaper_settings = WallPaperSettings::read_from(r)?;
+            Some(wallpaper_settings)
+        } else {
+            None
+        };
         Ok(InputThemeSettings {
             flags,
             message_colors_animated,
@@ -4131,7 +4679,6 @@ impl InputThemeSettings {
             wallpaper_settings,
         })
     }
-
 }
 
 /// `theme#a00e67d6 = Theme`
@@ -4159,43 +4706,43 @@ impl Theme {
                 "expected theme, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let creator = flags & (1 << 0) != 0;
-    let default = flags & (1 << 1) != 0;
-    let for_chat = flags & (1 << 5) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let document = if flags & (1 << 2) != 0 {
-        let document = Document::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let settings = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut settings = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            settings.push(ThemeSettings::read_from(r)?);
-        }
-        Some(settings)
-    } else {
-        None
-    };
-    let emoticon = if flags & (1 << 6) != 0 {
-        let emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(emoticon)
-    } else {
-        None
-    };
-    let installs_count = if flags & (1 << 4) != 0 {
-        let installs_count = r.read_i32()?;
-        Some(installs_count)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
+        let flags = r.read_i32()?;
+        let creator = flags & (1 << 0) != 0;
+        let default = flags & (1 << 1) != 0;
+        let for_chat = flags & (1 << 5) != 0;
+        let id = r.read_i64()?;
+        let access_hash = r.read_i64()?;
+        let slug = String::from_utf8(r.read_bytes()?)?;
+        let title = String::from_utf8(r.read_bytes()?)?;
+        let document = if flags & (1 << 2) != 0 {
+            let document = Document::read_from(r)?;
+            Some(document)
+        } else {
+            None
+        };
+        let settings = if flags & (1 << 3) != 0 {
+            let n = r.read_vector_header()?;
+            let mut settings = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                settings.push(ThemeSettings::read_from(r)?);
+            }
+            Some(settings)
+        } else {
+            None
+        };
+        let emoticon = if flags & (1 << 6) != 0 {
+            let emoticon = String::from_utf8(r.read_bytes()?)?;
+            Some(emoticon)
+        } else {
+            None
+        };
+        let installs_count = if flags & (1 << 4) != 0 {
+            let installs_count = r.read_i32()?;
+            Some(installs_count)
+        } else {
+            None
+        };
+        let access_hash = AccessHash(access_hash);
         Ok(Theme {
             flags,
             creator,
@@ -4211,7 +4758,6 @@ impl Theme {
             installs_count,
         })
     }
-
 }
 
 /// Union `PeerLocated` (2 constructors).
@@ -4220,7 +4766,11 @@ pub enum PeerLocated {
     /// `peerSelfLocated#f8ec284b`
     PeerSelfLocated { expires: i32 },
     /// `peerLocated#ca461b5d`
-    PeerLocated { peer: Peer, expires: i32, distance: i32 },
+    PeerLocated {
+        peer: Peer,
+        expires: i32,
+        distance: i32,
+    },
 }
 
 impl PeerLocated {
@@ -4228,14 +4778,18 @@ impl PeerLocated {
         let ctor = r.read_u32()?;
         match ctor {
             PEER_SELF_LOCATED_ID => {
-    let expires = r.read_i32()?;
+                let expires = r.read_i32()?;
                 Ok(PeerLocated::PeerSelfLocated { expires })
             }
             PEER_LOCATED_ID => {
-    let peer = Peer::read_from(r)?;
-    let expires = r.read_i32()?;
-    let distance = r.read_i32()?;
-                Ok(PeerLocated::PeerLocated { peer, expires, distance })
+                let peer = Peer::read_from(r)?;
+                let expires = r.read_i32()?;
+                let distance = r.read_i32()?;
+                Ok(PeerLocated::PeerLocated {
+                    peer,
+                    expires,
+                    distance,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PeerLocated constructor {other:#x}"
@@ -4279,78 +4833,78 @@ impl PeerSettings {
                 "expected peerSettings, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let report_spam = flags & (1 << 0) != 0;
-    let add_contact = flags & (1 << 1) != 0;
-    let block_contact = flags & (1 << 2) != 0;
-    let share_contact = flags & (1 << 3) != 0;
-    let need_contacts_exception = flags & (1 << 4) != 0;
-    let report_geo = flags & (1 << 5) != 0;
-    let autoarchived = flags & (1 << 7) != 0;
-    let invite_members = flags & (1 << 8) != 0;
-    let request_chat_broadcast = flags & (1 << 10) != 0;
-    let business_bot_paused = flags & (1 << 11) != 0;
-    let business_bot_can_reply = flags & (1 << 12) != 0;
-    let geo_distance = if flags & (1 << 6) != 0 {
-        let geo_distance = r.read_i32()?;
-        Some(geo_distance)
-    } else {
-        None
-    };
-    let request_chat_title = if flags & (1 << 9) != 0 {
-        let request_chat_title = String::from_utf8(r.read_bytes()?)?;
-        Some(request_chat_title)
-    } else {
-        None
-    };
-    let request_chat_date = if flags & (1 << 9) != 0 {
-        let request_chat_date = r.read_i32()?;
-        Some(request_chat_date)
-    } else {
-        None
-    };
-    let business_bot_id = if flags & (1 << 13) != 0 {
-        let business_bot_id = r.read_i64()?;
-        Some(business_bot_id)
-    } else {
-        None
-    };
-    let business_bot_manage_url = if flags & (1 << 13) != 0 {
-        let business_bot_manage_url = String::from_utf8(r.read_bytes()?)?;
-        Some(business_bot_manage_url)
-    } else {
-        None
-    };
-    let charge_paid_message_stars = if flags & (1 << 14) != 0 {
-        let charge_paid_message_stars = r.read_i64()?;
-        Some(charge_paid_message_stars)
-    } else {
-        None
-    };
-    let registration_month = if flags & (1 << 15) != 0 {
-        let registration_month = String::from_utf8(r.read_bytes()?)?;
-        Some(registration_month)
-    } else {
-        None
-    };
-    let phone_country = if flags & (1 << 16) != 0 {
-        let phone_country = String::from_utf8(r.read_bytes()?)?;
-        Some(phone_country)
-    } else {
-        None
-    };
-    let name_change_date = if flags & (1 << 17) != 0 {
-        let name_change_date = r.read_i32()?;
-        Some(name_change_date)
-    } else {
-        None
-    };
-    let photo_change_date = if flags & (1 << 18) != 0 {
-        let photo_change_date = r.read_i32()?;
-        Some(photo_change_date)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let report_spam = flags & (1 << 0) != 0;
+        let add_contact = flags & (1 << 1) != 0;
+        let block_contact = flags & (1 << 2) != 0;
+        let share_contact = flags & (1 << 3) != 0;
+        let need_contacts_exception = flags & (1 << 4) != 0;
+        let report_geo = flags & (1 << 5) != 0;
+        let autoarchived = flags & (1 << 7) != 0;
+        let invite_members = flags & (1 << 8) != 0;
+        let request_chat_broadcast = flags & (1 << 10) != 0;
+        let business_bot_paused = flags & (1 << 11) != 0;
+        let business_bot_can_reply = flags & (1 << 12) != 0;
+        let geo_distance = if flags & (1 << 6) != 0 {
+            let geo_distance = r.read_i32()?;
+            Some(geo_distance)
+        } else {
+            None
+        };
+        let request_chat_title = if flags & (1 << 9) != 0 {
+            let request_chat_title = String::from_utf8(r.read_bytes()?)?;
+            Some(request_chat_title)
+        } else {
+            None
+        };
+        let request_chat_date = if flags & (1 << 9) != 0 {
+            let request_chat_date = r.read_i32()?;
+            Some(request_chat_date)
+        } else {
+            None
+        };
+        let business_bot_id = if flags & (1 << 13) != 0 {
+            let business_bot_id = r.read_i64()?;
+            Some(business_bot_id)
+        } else {
+            None
+        };
+        let business_bot_manage_url = if flags & (1 << 13) != 0 {
+            let business_bot_manage_url = String::from_utf8(r.read_bytes()?)?;
+            Some(business_bot_manage_url)
+        } else {
+            None
+        };
+        let charge_paid_message_stars = if flags & (1 << 14) != 0 {
+            let charge_paid_message_stars = r.read_i64()?;
+            Some(charge_paid_message_stars)
+        } else {
+            None
+        };
+        let registration_month = if flags & (1 << 15) != 0 {
+            let registration_month = String::from_utf8(r.read_bytes()?)?;
+            Some(registration_month)
+        } else {
+            None
+        };
+        let phone_country = if flags & (1 << 16) != 0 {
+            let phone_country = String::from_utf8(r.read_bytes()?)?;
+            Some(phone_country)
+        } else {
+            None
+        };
+        let name_change_date = if flags & (1 << 17) != 0 {
+            let name_change_date = r.read_i32()?;
+            Some(name_change_date)
+        } else {
+            None
+        };
+        let photo_change_date = if flags & (1 << 18) != 0 {
+            let photo_change_date = r.read_i32()?;
+            Some(photo_change_date)
+        } else {
+            None
+        };
         Ok(PeerSettings {
             flags,
             report_spam,
@@ -4379,39 +4933,111 @@ impl PeerSettings {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(PEER_SETTINGS_ID);
-    let flags: i32 = if self.report_spam { 1 << 0 } else { 0 } | if self.add_contact { 1 << 1 } else { 0 } | if self.block_contact { 1 << 2 } else { 0 } | if self.share_contact { 1 << 3 } else { 0 } | if self.need_contacts_exception { 1 << 4 } else { 0 } | if self.report_geo { 1 << 5 } else { 0 } | if self.autoarchived { 1 << 7 } else { 0 } | if self.invite_members { 1 << 8 } else { 0 } | if self.request_chat_broadcast { 1 << 10 } else { 0 } | if self.business_bot_paused { 1 << 11 } else { 0 } | if self.business_bot_can_reply { 1 << 12 } else { 0 } | if self.geo_distance.is_some() { 1 << 6 } else { 0 } | if self.request_chat_title.is_some() { 1 << 9 } else { 0 } | if self.request_chat_date.is_some() { 1 << 9 } else { 0 } | if self.business_bot_id.is_some() { 1 << 13 } else { 0 } | if self.business_bot_manage_url.is_some() { 1 << 13 } else { 0 } | if self.charge_paid_message_stars.is_some() { 1 << 14 } else { 0 } | if self.registration_month.is_some() { 1 << 15 } else { 0 } | if self.phone_country.is_some() { 1 << 16 } else { 0 } | if self.name_change_date.is_some() { 1 << 17 } else { 0 } | if self.photo_change_date.is_some() { 1 << 18 } else { 0 };
-    w.write_i32(flags);
-    if let Some(geo_distance) = self.geo_distance {
-        w.write_i32(geo_distance);
-    }
-    if let Some(request_chat_title) = self.request_chat_title.clone() {
-        w.write_bytes(request_chat_title.as_bytes());
-    }
-    if let Some(request_chat_date) = self.request_chat_date {
-        w.write_i32(request_chat_date);
-    }
-    if let Some(business_bot_id) = self.business_bot_id {
-        w.write_i64(business_bot_id);
-    }
-    if let Some(business_bot_manage_url) = self.business_bot_manage_url.clone() {
-        w.write_bytes(business_bot_manage_url.as_bytes());
-    }
-    if let Some(charge_paid_message_stars) = self.charge_paid_message_stars {
-        w.write_i64(charge_paid_message_stars);
-    }
-    if let Some(registration_month) = self.registration_month.clone() {
-        w.write_bytes(registration_month.as_bytes());
-    }
-    if let Some(phone_country) = self.phone_country.clone() {
-        w.write_bytes(phone_country.as_bytes());
-    }
-    if let Some(name_change_date) = self.name_change_date {
-        w.write_i32(name_change_date);
-    }
-    if let Some(photo_change_date) = self.photo_change_date {
-        w.write_i32(photo_change_date);
-    }
+        w.write_u32(PEER_SETTINGS_ID);
+        let flags: i32 = if self.report_spam { 1 << 0 } else { 0 }
+            | if self.add_contact { 1 << 1 } else { 0 }
+            | if self.block_contact { 1 << 2 } else { 0 }
+            | if self.share_contact { 1 << 3 } else { 0 }
+            | if self.need_contacts_exception {
+                1 << 4
+            } else {
+                0
+            }
+            | if self.report_geo { 1 << 5 } else { 0 }
+            | if self.autoarchived { 1 << 7 } else { 0 }
+            | if self.invite_members { 1 << 8 } else { 0 }
+            | if self.request_chat_broadcast {
+                1 << 10
+            } else {
+                0
+            }
+            | if self.business_bot_paused { 1 << 11 } else { 0 }
+            | if self.business_bot_can_reply {
+                1 << 12
+            } else {
+                0
+            }
+            | if self.geo_distance.is_some() {
+                1 << 6
+            } else {
+                0
+            }
+            | if self.request_chat_title.is_some() {
+                1 << 9
+            } else {
+                0
+            }
+            | if self.request_chat_date.is_some() {
+                1 << 9
+            } else {
+                0
+            }
+            | if self.business_bot_id.is_some() {
+                1 << 13
+            } else {
+                0
+            }
+            | if self.business_bot_manage_url.is_some() {
+                1 << 13
+            } else {
+                0
+            }
+            | if self.charge_paid_message_stars.is_some() {
+                1 << 14
+            } else {
+                0
+            }
+            | if self.registration_month.is_some() {
+                1 << 15
+            } else {
+                0
+            }
+            | if self.phone_country.is_some() {
+                1 << 16
+            } else {
+                0
+            }
+            | if self.name_change_date.is_some() {
+                1 << 17
+            } else {
+                0
+            }
+            | if self.photo_change_date.is_some() {
+                1 << 18
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        if let Some(geo_distance) = self.geo_distance {
+            w.write_i32(geo_distance);
+        }
+        if let Some(request_chat_title) = self.request_chat_title.clone() {
+            w.write_bytes(request_chat_title.as_bytes());
+        }
+        if let Some(request_chat_date) = self.request_chat_date {
+            w.write_i32(request_chat_date);
+        }
+        if let Some(business_bot_id) = self.business_bot_id {
+            w.write_i64(business_bot_id);
+        }
+        if let Some(business_bot_manage_url) = self.business_bot_manage_url.clone() {
+            w.write_bytes(business_bot_manage_url.as_bytes());
+        }
+        if let Some(charge_paid_message_stars) = self.charge_paid_message_stars {
+            w.write_i64(charge_paid_message_stars);
+        }
+        if let Some(registration_month) = self.registration_month.clone() {
+            w.write_bytes(registration_month.as_bytes());
+        }
+        if let Some(phone_country) = self.phone_country.clone() {
+            w.write_bytes(phone_country.as_bytes());
+        }
+        if let Some(name_change_date) = self.name_change_date {
+            w.write_i32(name_change_date);
+        }
+        if let Some(photo_change_date) = self.photo_change_date {
+            w.write_i32(photo_change_date);
+        }
     }
 }
 
@@ -4430,14 +5056,10 @@ impl FolderPeer {
                 "expected folderPeer, got {ctor:#x}"
             )));
         }
-    let peer = Peer::read_from(r)?;
-    let folder_id = r.read_i32()?;
-        Ok(FolderPeer {
-            peer,
-            folder_id,
-        })
+        let peer = Peer::read_from(r)?;
+        let folder_id = r.read_i32()?;
+        Ok(FolderPeer { peer, folder_id })
     }
-
 }
 
 /// `langPackDifference#f385c1f6 = LangPackDifference`
@@ -4457,14 +5079,14 @@ impl LangPackDifference {
                 "expected langPackDifference, got {ctor:#x}"
             )));
         }
-    let lang_code = String::from_utf8(r.read_bytes()?)?;
-    let from_version = r.read_i32()?;
-    let version = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut strings = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        strings.push(LangPackString::read_from(r)?);
-    }
+        let lang_code = String::from_utf8(r.read_bytes()?)?;
+        let from_version = r.read_i32()?;
+        let version = r.read_i32()?;
+        let n = r.read_vector_header()?;
+        let mut strings = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            strings.push(LangPackString::read_from(r)?);
+        }
         Ok(LangPackDifference {
             lang_code,
             from_version,
@@ -4472,7 +5094,6 @@ impl LangPackDifference {
             strings,
         })
     }
-
 }
 
 /// Union `LangPackString` (3 constructors).
@@ -4481,7 +5102,16 @@ pub enum LangPackString {
     /// `langPackStringDeleted#2979eeb2`
     LangPackStringDeleted { key: String },
     /// `langPackStringPluralized#6c47ac9f`
-    LangPackStringPluralized { flags: i32, key: String, zero_value: Option<String>, one_value: Option<String>, two_value: Option<String>, few_value: Option<String>, many_value: Option<String>, other_value: String },
+    LangPackStringPluralized {
+        flags: i32,
+        key: String,
+        zero_value: Option<String>,
+        one_value: Option<String>,
+        two_value: Option<String>,
+        few_value: Option<String>,
+        many_value: Option<String>,
+        other_value: String,
+    },
     /// `langPackString#cad181f6`
     LangPackString { key: String, value: String },
 }
@@ -4491,48 +5121,57 @@ impl LangPackString {
         let ctor = r.read_u32()?;
         match ctor {
             LANG_PACK_STRING_DELETED_ID => {
-    let key = String::from_utf8(r.read_bytes()?)?;
+                let key = String::from_utf8(r.read_bytes()?)?;
                 Ok(LangPackString::LangPackStringDeleted { key })
             }
             LANG_PACK_STRING_PLURALIZED_ID => {
-    let flags = r.read_i32()?;
-    let key = String::from_utf8(r.read_bytes()?)?;
-    let zero_value = if flags & (1 << 0) != 0 {
-        let zero_value = String::from_utf8(r.read_bytes()?)?;
-        Some(zero_value)
-    } else {
-        None
-    };
-    let one_value = if flags & (1 << 1) != 0 {
-        let one_value = String::from_utf8(r.read_bytes()?)?;
-        Some(one_value)
-    } else {
-        None
-    };
-    let two_value = if flags & (1 << 2) != 0 {
-        let two_value = String::from_utf8(r.read_bytes()?)?;
-        Some(two_value)
-    } else {
-        None
-    };
-    let few_value = if flags & (1 << 3) != 0 {
-        let few_value = String::from_utf8(r.read_bytes()?)?;
-        Some(few_value)
-    } else {
-        None
-    };
-    let many_value = if flags & (1 << 4) != 0 {
-        let many_value = String::from_utf8(r.read_bytes()?)?;
-        Some(many_value)
-    } else {
-        None
-    };
-    let other_value = String::from_utf8(r.read_bytes()?)?;
-                Ok(LangPackString::LangPackStringPluralized { flags, key, zero_value, one_value, two_value, few_value, many_value, other_value })
+                let flags = r.read_i32()?;
+                let key = String::from_utf8(r.read_bytes()?)?;
+                let zero_value = if flags & (1 << 0) != 0 {
+                    let zero_value = String::from_utf8(r.read_bytes()?)?;
+                    Some(zero_value)
+                } else {
+                    None
+                };
+                let one_value = if flags & (1 << 1) != 0 {
+                    let one_value = String::from_utf8(r.read_bytes()?)?;
+                    Some(one_value)
+                } else {
+                    None
+                };
+                let two_value = if flags & (1 << 2) != 0 {
+                    let two_value = String::from_utf8(r.read_bytes()?)?;
+                    Some(two_value)
+                } else {
+                    None
+                };
+                let few_value = if flags & (1 << 3) != 0 {
+                    let few_value = String::from_utf8(r.read_bytes()?)?;
+                    Some(few_value)
+                } else {
+                    None
+                };
+                let many_value = if flags & (1 << 4) != 0 {
+                    let many_value = String::from_utf8(r.read_bytes()?)?;
+                    Some(many_value)
+                } else {
+                    None
+                };
+                let other_value = String::from_utf8(r.read_bytes()?)?;
+                Ok(LangPackString::LangPackStringPluralized {
+                    flags,
+                    key,
+                    zero_value,
+                    one_value,
+                    two_value,
+                    few_value,
+                    many_value,
+                    other_value,
+                })
             }
             LANG_PACK_STRING_ID => {
-    let key = String::from_utf8(r.read_bytes()?)?;
-    let value = String::from_utf8(r.read_bytes()?)?;
+                let key = String::from_utf8(r.read_bytes()?)?;
+                let value = String::from_utf8(r.read_bytes()?)?;
                 Ok(LangPackString::LangPackString { key, value })
             }
             other => Err(Error::Serialization(format!(
@@ -4546,15 +5185,69 @@ impl LangPackString {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PhoneCall {
     /// `phoneCallDiscarded#50ca4de1`
-    PhoneCallDiscarded { flags: i32, need_rating: bool, need_debug: bool, video: bool, id: i64, reason: Option<PhoneCallDiscardReason>, duration: Option<i32> },
+    PhoneCallDiscarded {
+        flags: i32,
+        need_rating: bool,
+        need_debug: bool,
+        video: bool,
+        id: i64,
+        reason: Option<PhoneCallDiscardReason>,
+        duration: Option<i32>,
+    },
     /// `phoneCall#30535af5`
-    PhoneCall { flags: i32, p2p_allowed: bool, video: bool, conference_supported: bool, id: i64, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, g_a_or_b: Vec<u8>, key_fingerprint: i64, protocol: PhoneCallProtocol, connections: Vec<PhoneConnection>, start_date: i32, custom_parameters: Option<DataJSON> },
+    PhoneCall {
+        flags: i32,
+        p2p_allowed: bool,
+        video: bool,
+        conference_supported: bool,
+        id: i64,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        g_a_or_b: Vec<u8>,
+        key_fingerprint: i64,
+        protocol: PhoneCallProtocol,
+        connections: Vec<PhoneConnection>,
+        start_date: i32,
+        custom_parameters: Option<DataJSON>,
+    },
     /// `phoneCallAccepted#3660c311`
-    PhoneCallAccepted { flags: i32, video: bool, id: i64, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, g_b: Vec<u8>, protocol: PhoneCallProtocol },
+    PhoneCallAccepted {
+        flags: i32,
+        video: bool,
+        id: i64,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        g_b: Vec<u8>,
+        protocol: PhoneCallProtocol,
+    },
     /// `phoneCallRequested#14b0ed0c`
-    PhoneCallRequested { flags: i32, video: bool, id: i64, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, g_a_hash: Vec<u8>, protocol: PhoneCallProtocol },
+    PhoneCallRequested {
+        flags: i32,
+        video: bool,
+        id: i64,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        g_a_hash: Vec<u8>,
+        protocol: PhoneCallProtocol,
+    },
     /// `phoneCallWaiting#c5226f17`
-    PhoneCallWaiting { flags: i32, video: bool, id: i64, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, protocol: PhoneCallProtocol, receive_date: Option<i32> },
+    PhoneCallWaiting {
+        flags: i32,
+        video: bool,
+        id: i64,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        protocol: PhoneCallProtocol,
+        receive_date: Option<i32>,
+    },
     /// `phoneCallEmpty#5366c915`
     PhoneCallEmpty { id: i64 },
 }
@@ -4564,99 +5257,153 @@ impl PhoneCall {
         let ctor = r.read_u32()?;
         match ctor {
             PHONE_CALL_DISCARDED_ID => {
-    let flags = r.read_i32()?;
-    let need_rating = flags & (1 << 2) != 0;
-    let need_debug = flags & (1 << 3) != 0;
-    let video = flags & (1 << 6) != 0;
-    let id = r.read_i64()?;
-    let reason = if flags & (1 << 0) != 0 {
-        let reason = PhoneCallDiscardReason::read_from(r)?;
-        Some(reason)
-    } else {
-        None
-    };
-    let duration = if flags & (1 << 1) != 0 {
-        let duration = r.read_i32()?;
-        Some(duration)
-    } else {
-        None
-    };
-                Ok(PhoneCall::PhoneCallDiscarded { flags, need_rating, need_debug, video, id, reason, duration })
+                let flags = r.read_i32()?;
+                let need_rating = flags & (1 << 2) != 0;
+                let need_debug = flags & (1 << 3) != 0;
+                let video = flags & (1 << 6) != 0;
+                let id = r.read_i64()?;
+                let reason = if flags & (1 << 0) != 0 {
+                    let reason = PhoneCallDiscardReason::read_from(r)?;
+                    Some(reason)
+                } else {
+                    None
+                };
+                let duration = if flags & (1 << 1) != 0 {
+                    let duration = r.read_i32()?;
+                    Some(duration)
+                } else {
+                    None
+                };
+                Ok(PhoneCall::PhoneCallDiscarded {
+                    flags,
+                    need_rating,
+                    need_debug,
+                    video,
+                    id,
+                    reason,
+                    duration,
+                })
             }
             PHONE_CALL_ID => {
-    let flags = r.read_i32()?;
-    let p2p_allowed = flags & (1 << 5) != 0;
-    let video = flags & (1 << 6) != 0;
-    let conference_supported = flags & (1 << 8) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let g_a_or_b = r.read_bytes()?;
-    let key_fingerprint = r.read_i64()?;
-    let protocol = PhoneCallProtocol::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut connections = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        connections.push(PhoneConnection::read_from(r)?);
-    }
-    let start_date = r.read_i32()?;
-    let custom_parameters = if flags & (1 << 7) != 0 {
-        let custom_parameters = DataJSON::read_from(r)?;
-        Some(custom_parameters)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
-                Ok(PhoneCall::PhoneCall { flags, p2p_allowed, video, conference_supported, id, access_hash, date, admin_id, participant_id, g_a_or_b, key_fingerprint, protocol, connections, start_date, custom_parameters })
+                let flags = r.read_i32()?;
+                let p2p_allowed = flags & (1 << 5) != 0;
+                let video = flags & (1 << 6) != 0;
+                let conference_supported = flags & (1 << 8) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let g_a_or_b = r.read_bytes()?;
+                let key_fingerprint = r.read_i64()?;
+                let protocol = PhoneCallProtocol::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut connections = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    connections.push(PhoneConnection::read_from(r)?);
+                }
+                let start_date = r.read_i32()?;
+                let custom_parameters = if flags & (1 << 7) != 0 {
+                    let custom_parameters = DataJSON::read_from(r)?;
+                    Some(custom_parameters)
+                } else {
+                    None
+                };
+                let access_hash = AccessHash(access_hash);
+                Ok(PhoneCall::PhoneCall {
+                    flags,
+                    p2p_allowed,
+                    video,
+                    conference_supported,
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    g_a_or_b,
+                    key_fingerprint,
+                    protocol,
+                    connections,
+                    start_date,
+                    custom_parameters,
+                })
             }
             PHONE_CALL_ACCEPTED_ID => {
-    let flags = r.read_i32()?;
-    let video = flags & (1 << 6) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let g_b = r.read_bytes()?;
-    let protocol = PhoneCallProtocol::read_from(r)?;
-    let access_hash = AccessHash(access_hash);
-                Ok(PhoneCall::PhoneCallAccepted { flags, video, id, access_hash, date, admin_id, participant_id, g_b, protocol })
+                let flags = r.read_i32()?;
+                let video = flags & (1 << 6) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let g_b = r.read_bytes()?;
+                let protocol = PhoneCallProtocol::read_from(r)?;
+                let access_hash = AccessHash(access_hash);
+                Ok(PhoneCall::PhoneCallAccepted {
+                    flags,
+                    video,
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    g_b,
+                    protocol,
+                })
             }
             PHONE_CALL_REQUESTED_ID => {
-    let flags = r.read_i32()?;
-    let video = flags & (1 << 6) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let g_a_hash = r.read_bytes()?;
-    let protocol = PhoneCallProtocol::read_from(r)?;
-    let access_hash = AccessHash(access_hash);
-                Ok(PhoneCall::PhoneCallRequested { flags, video, id, access_hash, date, admin_id, participant_id, g_a_hash, protocol })
+                let flags = r.read_i32()?;
+                let video = flags & (1 << 6) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let g_a_hash = r.read_bytes()?;
+                let protocol = PhoneCallProtocol::read_from(r)?;
+                let access_hash = AccessHash(access_hash);
+                Ok(PhoneCall::PhoneCallRequested {
+                    flags,
+                    video,
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    g_a_hash,
+                    protocol,
+                })
             }
             PHONE_CALL_WAITING_ID => {
-    let flags = r.read_i32()?;
-    let video = flags & (1 << 6) != 0;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let protocol = PhoneCallProtocol::read_from(r)?;
-    let receive_date = if flags & (1 << 0) != 0 {
-        let receive_date = r.read_i32()?;
-        Some(receive_date)
-    } else {
-        None
-    };
-    let access_hash = AccessHash(access_hash);
-                Ok(PhoneCall::PhoneCallWaiting { flags, video, id, access_hash, date, admin_id, participant_id, protocol, receive_date })
+                let flags = r.read_i32()?;
+                let video = flags & (1 << 6) != 0;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let protocol = PhoneCallProtocol::read_from(r)?;
+                let receive_date = if flags & (1 << 0) != 0 {
+                    let receive_date = r.read_i32()?;
+                    Some(receive_date)
+                } else {
+                    None
+                };
+                let access_hash = AccessHash(access_hash);
+                Ok(PhoneCall::PhoneCallWaiting {
+                    flags,
+                    video,
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    protocol,
+                    receive_date,
+                })
             }
             PHONE_CALL_EMPTY_ID => {
-    let id = r.read_i64()?;
+                let id = r.read_i64()?;
                 Ok(PhoneCall::PhoneCallEmpty { id })
             }
             other => Err(Error::Serialization(format!(
@@ -4670,9 +5417,27 @@ impl PhoneCall {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PhoneConnection {
     /// `phoneConnectionWebrtc#635fe375`
-    PhoneConnectionWebrtc { flags: i32, turn: bool, stun: bool, id: i64, ip: String, ipv6: String, port: i32, username: String, password: String },
+    PhoneConnectionWebrtc {
+        flags: i32,
+        turn: bool,
+        stun: bool,
+        id: i64,
+        ip: String,
+        ipv6: String,
+        port: i32,
+        username: String,
+        password: String,
+    },
     /// `phoneConnection#9cc123c7`
-    PhoneConnection { flags: i32, tcp: bool, id: i64, ip: String, ipv6: String, port: i32, peer_tag: Vec<u8> },
+    PhoneConnection {
+        flags: i32,
+        tcp: bool,
+        id: i64,
+        ip: String,
+        ipv6: String,
+        port: i32,
+        peer_tag: Vec<u8>,
+    },
 }
 
 impl PhoneConnection {
@@ -4680,26 +5445,44 @@ impl PhoneConnection {
         let ctor = r.read_u32()?;
         match ctor {
             PHONE_CONNECTION_WEBRTC_ID => {
-    let flags = r.read_i32()?;
-    let turn = flags & (1 << 0) != 0;
-    let stun = flags & (1 << 1) != 0;
-    let id = r.read_i64()?;
-    let ip = String::from_utf8(r.read_bytes()?)?;
-    let ipv6 = String::from_utf8(r.read_bytes()?)?;
-    let port = r.read_i32()?;
-    let username = String::from_utf8(r.read_bytes()?)?;
-    let password = String::from_utf8(r.read_bytes()?)?;
-                Ok(PhoneConnection::PhoneConnectionWebrtc { flags, turn, stun, id, ip, ipv6, port, username, password })
+                let flags = r.read_i32()?;
+                let turn = flags & (1 << 0) != 0;
+                let stun = flags & (1 << 1) != 0;
+                let id = r.read_i64()?;
+                let ip = String::from_utf8(r.read_bytes()?)?;
+                let ipv6 = String::from_utf8(r.read_bytes()?)?;
+                let port = r.read_i32()?;
+                let username = String::from_utf8(r.read_bytes()?)?;
+                let password = String::from_utf8(r.read_bytes()?)?;
+                Ok(PhoneConnection::PhoneConnectionWebrtc {
+                    flags,
+                    turn,
+                    stun,
+                    id,
+                    ip,
+                    ipv6,
+                    port,
+                    username,
+                    password,
+                })
             }
             PHONE_CONNECTION_ID => {
-    let flags = r.read_i32()?;
-    let tcp = flags & (1 << 0) != 0;
-    let id = r.read_i64()?;
-    let ip = String::from_utf8(r.read_bytes()?)?;
-    let ipv6 = String::from_utf8(r.read_bytes()?)?;
-    let port = r.read_i32()?;
-    let peer_tag = r.read_bytes()?;
-                Ok(PhoneConnection::PhoneConnection { flags, tcp, id, ip, ipv6, port, peer_tag })
+                let flags = r.read_i32()?;
+                let tcp = flags & (1 << 0) != 0;
+                let id = r.read_i64()?;
+                let ip = String::from_utf8(r.read_bytes()?)?;
+                let ipv6 = String::from_utf8(r.read_bytes()?)?;
+                let port = r.read_i32()?;
+                let peer_tag = r.read_bytes()?;
+                Ok(PhoneConnection::PhoneConnection {
+                    flags,
+                    tcp,
+                    id,
+                    ip,
+                    ipv6,
+                    port,
+                    peer_tag,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PhoneConnection constructor {other:#x}"
@@ -4727,16 +5510,16 @@ impl PhoneCallProtocol {
                 "expected phoneCallProtocol, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let udp_p2p = flags & (1 << 0) != 0;
-    let udp_reflector = flags & (1 << 1) != 0;
-    let min_layer = r.read_i32()?;
-    let max_layer = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut library_versions = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        library_versions.push(r.read_bytes()?);
-    }
+        let flags = r.read_i32()?;
+        let udp_p2p = flags & (1 << 0) != 0;
+        let udp_reflector = flags & (1 << 1) != 0;
+        let min_layer = r.read_i32()?;
+        let max_layer = r.read_i32()?;
+        let n = r.read_vector_header()?;
+        let mut library_versions = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            library_versions.push(r.read_bytes()?);
+        }
         Ok(PhoneCallProtocol {
             flags,
             udp_p2p,
@@ -4749,16 +5532,17 @@ impl PhoneCallProtocol {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(PHONE_CALL_PROTOCOL_ID);
-    let flags: i32 = if self.udp_p2p { 1 << 0 } else { 0 } | if self.udp_reflector { 1 << 1 } else { 0 };
-    w.write_i32(flags);
-    w.write_i32(self.min_layer);
-    w.write_i32(self.max_layer);
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.library_versions.len() as i32);
-    for item in self.library_versions.iter() {
-        w.write_bytes(item);
-    }
+        w.write_u32(PHONE_CALL_PROTOCOL_ID);
+        let flags: i32 =
+            if self.udp_p2p { 1 << 0 } else { 0 } | if self.udp_reflector { 1 << 1 } else { 0 };
+        w.write_i32(flags);
+        w.write_i32(self.min_layer);
+        w.write_i32(self.max_layer);
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(self.library_versions.len() as i32);
+        for item in self.library_versions.iter() {
+            w.write_bytes(item);
+        }
     }
 }
 
@@ -4780,31 +5564,31 @@ impl PaymentRequestedInfo {
                 "expected paymentRequestedInfo, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let name = if flags & (1 << 0) != 0 {
-        let name = String::from_utf8(r.read_bytes()?)?;
-        Some(name)
-    } else {
-        None
-    };
-    let phone = if flags & (1 << 1) != 0 {
-        let phone = String::from_utf8(r.read_bytes()?)?;
-        Some(phone)
-    } else {
-        None
-    };
-    let email = if flags & (1 << 2) != 0 {
-        let email = String::from_utf8(r.read_bytes()?)?;
-        Some(email)
-    } else {
-        None
-    };
-    let shipping_address = if flags & (1 << 3) != 0 {
-        let shipping_address = PostAddress::read_from(r)?;
-        Some(shipping_address)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let name = if flags & (1 << 0) != 0 {
+            let name = String::from_utf8(r.read_bytes()?)?;
+            Some(name)
+        } else {
+            None
+        };
+        let phone = if flags & (1 << 1) != 0 {
+            let phone = String::from_utf8(r.read_bytes()?)?;
+            Some(phone)
+        } else {
+            None
+        };
+        let email = if flags & (1 << 2) != 0 {
+            let email = String::from_utf8(r.read_bytes()?)?;
+            Some(email)
+        } else {
+            None
+        };
+        let shipping_address = if flags & (1 << 3) != 0 {
+            let shipping_address = PostAddress::read_from(r)?;
+            Some(shipping_address)
+        } else {
+            None
+        };
         Ok(PaymentRequestedInfo {
             flags,
             name,
@@ -4816,21 +5600,28 @@ impl PaymentRequestedInfo {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(PAYMENT_REQUESTED_INFO_ID);
-    let flags: i32 = if self.name.is_some() { 1 << 0 } else { 0 } | if self.phone.is_some() { 1 << 1 } else { 0 } | if self.email.is_some() { 1 << 2 } else { 0 } | if self.shipping_address.is_some() { 1 << 3 } else { 0 };
-    w.write_i32(flags);
-    if let Some(name) = self.name.clone() {
-        w.write_bytes(name.as_bytes());
-    }
-    if let Some(phone) = self.phone.clone() {
-        w.write_bytes(phone.as_bytes());
-    }
-    if let Some(email) = self.email.clone() {
-        w.write_bytes(email.as_bytes());
-    }
-    if let Some(shipping_address) = self.shipping_address.clone() {
-        shipping_address.write_to(w);
-    }
+        w.write_u32(PAYMENT_REQUESTED_INFO_ID);
+        let flags: i32 = if self.name.is_some() { 1 << 0 } else { 0 }
+            | if self.phone.is_some() { 1 << 1 } else { 0 }
+            | if self.email.is_some() { 1 << 2 } else { 0 }
+            | if self.shipping_address.is_some() {
+                1 << 3
+            } else {
+                0
+            };
+        w.write_i32(flags);
+        if let Some(name) = self.name.clone() {
+            w.write_bytes(name.as_bytes());
+        }
+        if let Some(phone) = self.phone.clone() {
+            w.write_bytes(phone.as_bytes());
+        }
+        if let Some(email) = self.email.clone() {
+            w.write_bytes(email.as_bytes());
+        }
+        if let Some(shipping_address) = self.shipping_address.clone() {
+            shipping_address.write_to(w);
+        }
     }
 }
 
@@ -4853,12 +5644,12 @@ impl PostAddress {
                 "expected postAddress, got {ctor:#x}"
             )));
         }
-    let street_line1 = String::from_utf8(r.read_bytes()?)?;
-    let street_line2 = String::from_utf8(r.read_bytes()?)?;
-    let city = String::from_utf8(r.read_bytes()?)?;
-    let state = String::from_utf8(r.read_bytes()?)?;
-    let country_iso2 = String::from_utf8(r.read_bytes()?)?;
-    let post_code = String::from_utf8(r.read_bytes()?)?;
+        let street_line1 = String::from_utf8(r.read_bytes()?)?;
+        let street_line2 = String::from_utf8(r.read_bytes()?)?;
+        let city = String::from_utf8(r.read_bytes()?)?;
+        let state = String::from_utf8(r.read_bytes()?)?;
+        let country_iso2 = String::from_utf8(r.read_bytes()?)?;
+        let post_code = String::from_utf8(r.read_bytes()?)?;
         Ok(PostAddress {
             street_line1,
             street_line2,
@@ -4871,13 +5662,13 @@ impl PostAddress {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(POST_ADDRESS_ID);
-    w.write_bytes(self.street_line1.as_bytes());
-    w.write_bytes(self.street_line2.as_bytes());
-    w.write_bytes(self.city.as_bytes());
-    w.write_bytes(self.state.as_bytes());
-    w.write_bytes(self.country_iso2.as_bytes());
-    w.write_bytes(self.post_code.as_bytes());
+        w.write_u32(POST_ADDRESS_ID);
+        w.write_bytes(self.street_line1.as_bytes());
+        w.write_bytes(self.street_line2.as_bytes());
+        w.write_bytes(self.city.as_bytes());
+        w.write_bytes(self.state.as_bytes());
+        w.write_bytes(self.country_iso2.as_bytes());
+        w.write_bytes(self.post_code.as_bytes());
     }
 }
 
@@ -4885,7 +5676,19 @@ impl PostAddress {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DraftMessage {
     /// `draftMessage#60fe3294`
-    DraftMessage { flags: i32, no_webpage: bool, invert_media: bool, reply_to: Option<InputReplyTo>, message: String, entities: Option<Vec<MessageEntity>>, media: Option<InputMedia>, date: i32, effect: Option<i64>, suggested_post: Option<SuggestedPost>, rich_message: Option<RichMessage> },
+    DraftMessage {
+        flags: i32,
+        no_webpage: bool,
+        invert_media: bool,
+        reply_to: Option<InputReplyTo>,
+        message: String,
+        entities: Option<Vec<MessageEntity>>,
+        media: Option<InputMedia>,
+        date: i32,
+        effect: Option<i64>,
+        suggested_post: Option<SuggestedPost>,
+        rich_message: Option<RichMessage>,
+    },
     /// `draftMessageEmpty#1b0c841a`
     DraftMessageEmpty { flags: i32, date: Option<i32> },
 }
@@ -4895,61 +5698,73 @@ impl DraftMessage {
         let ctor = r.read_u32()?;
         match ctor {
             DRAFT_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let no_webpage = flags & (1 << 1) != 0;
-    let invert_media = flags & (1 << 6) != 0;
-    let reply_to = if flags & (1 << 4) != 0 {
-        let reply_to = InputReplyTo::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let media = if flags & (1 << 5) != 0 {
-        let media = InputMedia::read_from(r)?;
-        Some(media)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let effect = if flags & (1 << 7) != 0 {
-        let effect = r.read_i64()?;
-        Some(effect)
-    } else {
-        None
-    };
-    let suggested_post = if flags & (1 << 8) != 0 {
-        let suggested_post = SuggestedPost::read_from(r)?;
-        Some(suggested_post)
-    } else {
-        None
-    };
-    let rich_message = if flags & (1 << 9) != 0 {
-        let rich_message = RichMessage::read_from(r)?;
-        Some(rich_message)
-    } else {
-        None
-    };
-                Ok(DraftMessage::DraftMessage { flags, no_webpage, invert_media, reply_to, message, entities, media, date, effect, suggested_post, rich_message })
+                let flags = r.read_i32()?;
+                let no_webpage = flags & (1 << 1) != 0;
+                let invert_media = flags & (1 << 6) != 0;
+                let reply_to = if flags & (1 << 4) != 0 {
+                    let reply_to = InputReplyTo::read_from(r)?;
+                    Some(reply_to)
+                } else {
+                    None
+                };
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let entities = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let media = if flags & (1 << 5) != 0 {
+                    let media = InputMedia::read_from(r)?;
+                    Some(media)
+                } else {
+                    None
+                };
+                let date = r.read_i32()?;
+                let effect = if flags & (1 << 7) != 0 {
+                    let effect = r.read_i64()?;
+                    Some(effect)
+                } else {
+                    None
+                };
+                let suggested_post = if flags & (1 << 8) != 0 {
+                    let suggested_post = SuggestedPost::read_from(r)?;
+                    Some(suggested_post)
+                } else {
+                    None
+                };
+                let rich_message = if flags & (1 << 9) != 0 {
+                    let rich_message = RichMessage::read_from(r)?;
+                    Some(rich_message)
+                } else {
+                    None
+                };
+                Ok(DraftMessage::DraftMessage {
+                    flags,
+                    no_webpage,
+                    invert_media,
+                    reply_to,
+                    message,
+                    entities,
+                    media,
+                    date,
+                    effect,
+                    suggested_post,
+                    rich_message,
+                })
             }
             DRAFT_MESSAGE_EMPTY_ID => {
-    let flags = r.read_i32()?;
-    let date = if flags & (1 << 0) != 0 {
-        let date = r.read_i32()?;
-        Some(date)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let date = if flags & (1 << 0) != 0 {
+                    let date = r.read_i32()?;
+                    Some(date)
+                } else {
+                    None
+                };
                 Ok(DraftMessage::DraftMessageEmpty { flags, date })
             }
             other => Err(Error::Serialization(format!(
@@ -4963,13 +5778,40 @@ impl DraftMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputBotInlineResult {
     /// `inputBotInlineResultGame#4fa417f2`
-    InputBotInlineResultGame { id: String, short_name: String, send_message: InputBotInlineMessage },
+    InputBotInlineResultGame {
+        id: String,
+        short_name: String,
+        send_message: InputBotInlineMessage,
+    },
     /// `inputBotInlineResultDocument#fff8fdc4`
-    InputBotInlineResultDocument { flags: i32, id: String, r#type: String, title: Option<String>, description: Option<String>, document: InputDocument, send_message: InputBotInlineMessage },
+    InputBotInlineResultDocument {
+        flags: i32,
+        id: String,
+        r#type: String,
+        title: Option<String>,
+        description: Option<String>,
+        document: InputDocument,
+        send_message: InputBotInlineMessage,
+    },
     /// `inputBotInlineResultPhoto#a8d864a7`
-    InputBotInlineResultPhoto { id: String, r#type: String, photo: InputPhoto, send_message: InputBotInlineMessage },
+    InputBotInlineResultPhoto {
+        id: String,
+        r#type: String,
+        photo: InputPhoto,
+        send_message: InputBotInlineMessage,
+    },
     /// `inputBotInlineResult#88bf9319`
-    InputBotInlineResult { flags: i32, id: String, r#type: String, title: Option<String>, description: Option<String>, url: Option<String>, thumb: Option<InputWebDocument>, content: Option<InputWebDocument>, send_message: InputBotInlineMessage },
+    InputBotInlineResult {
+        flags: i32,
+        id: String,
+        r#type: String,
+        title: Option<String>,
+        description: Option<String>,
+        url: Option<String>,
+        thumb: Option<InputWebDocument>,
+        content: Option<InputWebDocument>,
+        send_message: InputBotInlineMessage,
+    },
 }
 
 impl InputBotInlineResult {
@@ -4977,74 +5819,101 @@ impl InputBotInlineResult {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_BOT_INLINE_RESULT_GAME_ID => {
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
-    let send_message = InputBotInlineMessage::read_from(r)?;
-                Ok(InputBotInlineResult::InputBotInlineResultGame { id, short_name, send_message })
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
+                let send_message = InputBotInlineMessage::read_from(r)?;
+                Ok(InputBotInlineResult::InputBotInlineResultGame {
+                    id,
+                    short_name,
+                    send_message,
+                })
             }
             INPUT_BOT_INLINE_RESULT_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let title = if flags & (1 << 1) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let description = if flags & (1 << 2) != 0 {
-        let description = String::from_utf8(r.read_bytes()?)?;
-        Some(description)
-    } else {
-        None
-    };
-    let document = InputDocument::read_from(r)?;
-    let send_message = InputBotInlineMessage::read_from(r)?;
-                Ok(InputBotInlineResult::InputBotInlineResultDocument { flags, id, r#type, title, description, document, send_message })
+                let flags = r.read_i32()?;
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let title = if flags & (1 << 1) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let description = if flags & (1 << 2) != 0 {
+                    let description = String::from_utf8(r.read_bytes()?)?;
+                    Some(description)
+                } else {
+                    None
+                };
+                let document = InputDocument::read_from(r)?;
+                let send_message = InputBotInlineMessage::read_from(r)?;
+                Ok(InputBotInlineResult::InputBotInlineResultDocument {
+                    flags,
+                    id,
+                    r#type,
+                    title,
+                    description,
+                    document,
+                    send_message,
+                })
             }
             INPUT_BOT_INLINE_RESULT_PHOTO_ID => {
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let photo = InputPhoto::read_from(r)?;
-    let send_message = InputBotInlineMessage::read_from(r)?;
-                Ok(InputBotInlineResult::InputBotInlineResultPhoto { id, r#type, photo, send_message })
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let photo = InputPhoto::read_from(r)?;
+                let send_message = InputBotInlineMessage::read_from(r)?;
+                Ok(InputBotInlineResult::InputBotInlineResultPhoto {
+                    id,
+                    r#type,
+                    photo,
+                    send_message,
+                })
             }
             INPUT_BOT_INLINE_RESULT_ID => {
-    let flags = r.read_i32()?;
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let r#type = String::from_utf8(r.read_bytes()?)?;
-    let title = if flags & (1 << 1) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let description = if flags & (1 << 2) != 0 {
-        let description = String::from_utf8(r.read_bytes()?)?;
-        Some(description)
-    } else {
-        None
-    };
-    let url = if flags & (1 << 3) != 0 {
-        let url = String::from_utf8(r.read_bytes()?)?;
-        Some(url)
-    } else {
-        None
-    };
-    let thumb = if flags & (1 << 4) != 0 {
-        let thumb = InputWebDocument::read_from(r)?;
-        Some(thumb)
-    } else {
-        None
-    };
-    let content = if flags & (1 << 5) != 0 {
-        let content = InputWebDocument::read_from(r)?;
-        Some(content)
-    } else {
-        None
-    };
-    let send_message = InputBotInlineMessage::read_from(r)?;
-                Ok(InputBotInlineResult::InputBotInlineResult { flags, id, r#type, title, description, url, thumb, content, send_message })
+                let flags = r.read_i32()?;
+                let id = String::from_utf8(r.read_bytes()?)?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let title = if flags & (1 << 1) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let description = if flags & (1 << 2) != 0 {
+                    let description = String::from_utf8(r.read_bytes()?)?;
+                    Some(description)
+                } else {
+                    None
+                };
+                let url = if flags & (1 << 3) != 0 {
+                    let url = String::from_utf8(r.read_bytes()?)?;
+                    Some(url)
+                } else {
+                    None
+                };
+                let thumb = if flags & (1 << 4) != 0 {
+                    let thumb = InputWebDocument::read_from(r)?;
+                    Some(thumb)
+                } else {
+                    None
+                };
+                let content = if flags & (1 << 5) != 0 {
+                    let content = InputWebDocument::read_from(r)?;
+                    Some(content)
+                } else {
+                    None
+                };
+                let send_message = InputBotInlineMessage::read_from(r)?;
+                Ok(InputBotInlineResult::InputBotInlineResult {
+                    flags,
+                    id,
+                    r#type,
+                    title,
+                    description,
+                    url,
+                    thumb,
+                    content,
+                    send_message,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputBotInlineResult constructor {other:#x}"
@@ -5057,23 +5926,86 @@ impl InputBotInlineResult {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputBotInlineMessage {
     /// `inputBotInlineMessageRichMessage#b43df56c`
-    InputBotInlineMessageRichMessage { flags: i32, reply_markup: Option<ReplyMarkup>, rich_message: InputRichMessage },
+    InputBotInlineMessageRichMessage {
+        flags: i32,
+        reply_markup: Option<ReplyMarkup>,
+        rich_message: InputRichMessage,
+    },
     /// `inputBotInlineMessageMediaWebPage#bddcc510`
-    InputBotInlineMessageMediaWebPage { flags: i32, invert_media: bool, force_large_media: bool, force_small_media: bool, optional: bool, message: String, entities: Option<Vec<MessageEntity>>, url: String, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaWebPage {
+        flags: i32,
+        invert_media: bool,
+        force_large_media: bool,
+        force_small_media: bool,
+        optional: bool,
+        message: String,
+        entities: Option<Vec<MessageEntity>>,
+        url: String,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageMediaInvoice#d7e78225`
-    InputBotInlineMessageMediaInvoice { flags: i32, title: String, description: String, photo: Option<InputWebDocument>, invoice: Invoice, payload: Vec<u8>, provider: String, provider_data: DataJSON, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaInvoice {
+        flags: i32,
+        title: String,
+        description: String,
+        photo: Option<InputWebDocument>,
+        invoice: Invoice,
+        payload: Vec<u8>,
+        provider: String,
+        provider_data: DataJSON,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageGame#4b425864`
-    InputBotInlineMessageGame { flags: i32, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageGame {
+        flags: i32,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageMediaContact#a6edbffd`
-    InputBotInlineMessageMediaContact { flags: i32, phone_number: String, first_name: String, last_name: String, vcard: String, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaContact {
+        flags: i32,
+        phone_number: String,
+        first_name: String,
+        last_name: String,
+        vcard: String,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageMediaVenue#417bbf11`
-    InputBotInlineMessageMediaVenue { flags: i32, geo_point: InputGeoPoint, title: String, address: String, provider: String, venue_id: String, venue_type: String, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaVenue {
+        flags: i32,
+        geo_point: InputGeoPoint,
+        title: String,
+        address: String,
+        provider: String,
+        venue_id: String,
+        venue_type: String,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageMediaGeo#96929a85`
-    InputBotInlineMessageMediaGeo { flags: i32, geo_point: InputGeoPoint, heading: Option<i32>, period: Option<i32>, proximity_notification_radius: Option<i32>, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaGeo {
+        flags: i32,
+        geo_point: InputGeoPoint,
+        heading: Option<i32>,
+        period: Option<i32>,
+        proximity_notification_radius: Option<i32>,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageText#3dcd7a87`
-    InputBotInlineMessageText { flags: i32, no_webpage: bool, invert_media: bool, message: String, entities: Option<Vec<MessageEntity>>, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageText {
+        flags: i32,
+        no_webpage: bool,
+        invert_media: bool,
+        message: String,
+        entities: Option<Vec<MessageEntity>>,
+        reply_markup: Option<ReplyMarkup>,
+    },
     /// `inputBotInlineMessageMediaAuto#3380c786`
-    InputBotInlineMessageMediaAuto { flags: i32, invert_media: bool, message: String, entities: Option<Vec<MessageEntity>>, reply_markup: Option<ReplyMarkup> },
+    InputBotInlineMessageMediaAuto {
+        flags: i32,
+        invert_media: bool,
+        message: String,
+        entities: Option<Vec<MessageEntity>>,
+        reply_markup: Option<ReplyMarkup>,
+    },
 }
 
 impl InputBotInlineMessage {
@@ -5081,177 +6013,240 @@ impl InputBotInlineMessage {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_BOT_INLINE_MESSAGE_RICH_MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-    let rich_message = InputRichMessage::read_from(r)?;
-                Ok(InputBotInlineMessage::InputBotInlineMessageRichMessage { flags, reply_markup, rich_message })
+                let flags = r.read_i32()?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                let rich_message = InputRichMessage::read_from(r)?;
+                Ok(InputBotInlineMessage::InputBotInlineMessageRichMessage {
+                    flags,
+                    reply_markup,
+                    rich_message,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_WEB_PAGE_ID => {
-    let flags = r.read_i32()?;
-    let invert_media = flags & (1 << 3) != 0;
-    let force_large_media = flags & (1 << 4) != 0;
-    let force_small_media = flags & (1 << 5) != 0;
-    let optional = flags & (1 << 6) != 0;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let url = String::from_utf8(r.read_bytes()?)?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaWebPage { flags, invert_media, force_large_media, force_small_media, optional, message, entities, url, reply_markup })
+                let flags = r.read_i32()?;
+                let invert_media = flags & (1 << 3) != 0;
+                let force_large_media = flags & (1 << 4) != 0;
+                let force_small_media = flags & (1 << 5) != 0;
+                let optional = flags & (1 << 6) != 0;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaWebPage {
+                    flags,
+                    invert_media,
+                    force_large_media,
+                    force_small_media,
+                    optional,
+                    message,
+                    entities,
+                    url,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_INVOICE_ID => {
-    let flags = r.read_i32()?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = if flags & (1 << 0) != 0 {
-        let photo = InputWebDocument::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let invoice = Invoice::read_from(r)?;
-    let payload = r.read_bytes()?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let provider_data = DataJSON::read_from(r)?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaInvoice { flags, title, description, photo, invoice, payload, provider, provider_data, reply_markup })
+                let flags = r.read_i32()?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let description = String::from_utf8(r.read_bytes()?)?;
+                let photo = if flags & (1 << 0) != 0 {
+                    let photo = InputWebDocument::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let invoice = Invoice::read_from(r)?;
+                let payload = r.read_bytes()?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let provider_data = DataJSON::read_from(r)?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaInvoice {
+                    flags,
+                    title,
+                    description,
+                    photo,
+                    invoice,
+                    payload,
+                    provider,
+                    provider_data,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_GAME_ID => {
-    let flags = r.read_i32()?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageGame { flags, reply_markup })
+                let flags = r.read_i32()?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageGame {
+                    flags,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_CONTACT_ID => {
-    let flags = r.read_i32()?;
-    let phone_number = String::from_utf8(r.read_bytes()?)?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let vcard = String::from_utf8(r.read_bytes()?)?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaContact { flags, phone_number, first_name, last_name, vcard, reply_markup })
+                let flags = r.read_i32()?;
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let vcard = String::from_utf8(r.read_bytes()?)?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaContact {
+                    flags,
+                    phone_number,
+                    first_name,
+                    last_name,
+                    vcard,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_VENUE_ID => {
-    let flags = r.read_i32()?;
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let venue_id = String::from_utf8(r.read_bytes()?)?;
-    let venue_type = String::from_utf8(r.read_bytes()?)?;
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaVenue { flags, geo_point, title, address, provider, venue_id, venue_type, reply_markup })
+                let flags = r.read_i32()?;
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let venue_id = String::from_utf8(r.read_bytes()?)?;
+                let venue_type = String::from_utf8(r.read_bytes()?)?;
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaVenue {
+                    flags,
+                    geo_point,
+                    title,
+                    address,
+                    provider,
+                    venue_id,
+                    venue_type,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_GEO_ID => {
-    let flags = r.read_i32()?;
-    let geo_point = InputGeoPoint::read_from(r)?;
-    let heading = if flags & (1 << 0) != 0 {
-        let heading = r.read_i32()?;
-        Some(heading)
-    } else {
-        None
-    };
-    let period = if flags & (1 << 1) != 0 {
-        let period = r.read_i32()?;
-        Some(period)
-    } else {
-        None
-    };
-    let proximity_notification_radius = if flags & (1 << 3) != 0 {
-        let proximity_notification_radius = r.read_i32()?;
-        Some(proximity_notification_radius)
-    } else {
-        None
-    };
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaGeo { flags, geo_point, heading, period, proximity_notification_radius, reply_markup })
+                let flags = r.read_i32()?;
+                let geo_point = InputGeoPoint::read_from(r)?;
+                let heading = if flags & (1 << 0) != 0 {
+                    let heading = r.read_i32()?;
+                    Some(heading)
+                } else {
+                    None
+                };
+                let period = if flags & (1 << 1) != 0 {
+                    let period = r.read_i32()?;
+                    Some(period)
+                } else {
+                    None
+                };
+                let proximity_notification_radius = if flags & (1 << 3) != 0 {
+                    let proximity_notification_radius = r.read_i32()?;
+                    Some(proximity_notification_radius)
+                } else {
+                    None
+                };
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaGeo {
+                    flags,
+                    geo_point,
+                    heading,
+                    period,
+                    proximity_notification_radius,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_TEXT_ID => {
-    let flags = r.read_i32()?;
-    let no_webpage = flags & (1 << 0) != 0;
-    let invert_media = flags & (1 << 3) != 0;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageText { flags, no_webpage, invert_media, message, entities, reply_markup })
+                let flags = r.read_i32()?;
+                let no_webpage = flags & (1 << 0) != 0;
+                let invert_media = flags & (1 << 3) != 0;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageText {
+                    flags,
+                    no_webpage,
+                    invert_media,
+                    message,
+                    entities,
+                    reply_markup,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_AUTO_ID => {
-    let flags = r.read_i32()?;
-    let invert_media = flags & (1 << 3) != 0;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let entities = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let reply_markup = if flags & (1 << 2) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-                Ok(InputBotInlineMessage::InputBotInlineMessageMediaAuto { flags, invert_media, message, entities, reply_markup })
+                let flags = r.read_i32()?;
+                let invert_media = flags & (1 << 3) != 0;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let entities = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let reply_markup = if flags & (1 << 2) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                Ok(InputBotInlineMessage::InputBotInlineMessageMediaAuto {
+                    flags,
+                    invert_media,
+                    message,
+                    entities,
+                    reply_markup,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputBotInlineMessage constructor {other:#x}"
@@ -5264,9 +6259,18 @@ impl InputBotInlineMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputBotInlineMessageID {
     /// `inputBotInlineMessageID64#b6d915d7`
-    InputBotInlineMessageID64 { dc_id: i32, owner_id: i64, id: i32, access_hash: AccessHash },
+    InputBotInlineMessageID64 {
+        dc_id: i32,
+        owner_id: i64,
+        id: i32,
+        access_hash: AccessHash,
+    },
     /// `inputBotInlineMessageID#890c3d89`
-    InputBotInlineMessageID { dc_id: i32, id: i64, access_hash: AccessHash },
+    InputBotInlineMessageID {
+        dc_id: i32,
+        id: i64,
+        access_hash: AccessHash,
+    },
 }
 
 impl InputBotInlineMessageID {
@@ -5274,19 +6278,28 @@ impl InputBotInlineMessageID {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_BOT_INLINE_MESSAGE_ID64_ID => {
-    let dc_id = r.read_i32()?;
-    let owner_id = r.read_i64()?;
-    let id = r.read_i32()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputBotInlineMessageID::InputBotInlineMessageID64 { dc_id, owner_id, id, access_hash })
+                let dc_id = r.read_i32()?;
+                let owner_id = r.read_i64()?;
+                let id = r.read_i32()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputBotInlineMessageID::InputBotInlineMessageID64 {
+                    dc_id,
+                    owner_id,
+                    id,
+                    access_hash,
+                })
             }
             INPUT_BOT_INLINE_MESSAGE_ID_ID => {
-    let dc_id = r.read_i32()?;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(InputBotInlineMessageID::InputBotInlineMessageID { dc_id, id, access_hash })
+                let dc_id = r.read_i32()?;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(InputBotInlineMessageID::InputBotInlineMessageID {
+                    dc_id,
+                    id,
+                    access_hash,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputBotInlineMessageID constructor {other:#x}"
@@ -5301,7 +6314,12 @@ pub enum MessagesStickerSet {
     /// `messages.stickerSetNotModified#d3f924eb`
     MessagesStickerSetNotModified,
     /// `messages.stickerSet#6e153f16`
-    MessagesStickerSet { set: StickerSet, packs: Vec<StickerPack>, keywords: Vec<StickerKeyword>, documents: Vec<Document> },
+    MessagesStickerSet {
+        set: StickerSet,
+        packs: Vec<StickerPack>,
+        keywords: Vec<StickerKeyword>,
+        documents: Vec<Document>,
+    },
 }
 
 impl MessagesStickerSet {
@@ -5309,26 +6327,31 @@ impl MessagesStickerSet {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGES_STICKER_SET_NOT_MODIFIED_ID => {
-                Ok(MessagesStickerSet::MessagesStickerSetNotModified {  })
+                Ok(MessagesStickerSet::MessagesStickerSetNotModified {})
             }
             MESSAGES_STICKER_SET_ID => {
-    let set = StickerSet::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut packs = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        packs.push(StickerPack::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut keywords = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        keywords.push(StickerKeyword::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut documents = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        documents.push(Document::read_from(r)?);
-    }
-                Ok(MessagesStickerSet::MessagesStickerSet { set, packs, keywords, documents })
+                let set = StickerSet::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut packs = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    packs.push(StickerPack::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut keywords = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    keywords.push(StickerKeyword::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut documents = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    documents.push(Document::read_from(r)?);
+                }
+                Ok(MessagesStickerSet::MessagesStickerSet {
+                    set,
+                    packs,
+                    keywords,
+                    documents,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown messages.StickerSet constructor {other:#x}"
@@ -5352,12 +6375,12 @@ impl StickerKeyword {
                 "expected stickerKeyword, got {ctor:#x}"
             )));
         }
-    let document_id = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut keyword = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        keyword.push(r.read_bytes()?);
-    }
+        let document_id = r.read_i64()?;
+        let n = r.read_vector_header()?;
+        let mut keyword = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            keyword.push(r.read_bytes()?);
+        }
         Ok(StickerKeyword {
             document_id,
             keyword,
@@ -5366,13 +6389,13 @@ impl StickerKeyword {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(STICKER_KEYWORD_ID);
-    w.write_i64(self.document_id);
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.keyword.len() as i32);
-    for item in self.keyword.iter() {
-        w.write_bytes(item);
-    }
+        w.write_u32(STICKER_KEYWORD_ID);
+        w.write_i64(self.document_id);
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(self.keyword.len() as i32);
+        for item in self.keyword.iter() {
+            w.write_bytes(item);
+        }
     }
 }
 
@@ -5391,12 +6414,12 @@ impl StickerPack {
                 "expected stickerPack, got {ctor:#x}"
             )));
         }
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut documents = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        documents.push(r.read_i64()?);
-    }
+        let emoticon = String::from_utf8(r.read_bytes()?)?;
+        let n = r.read_vector_header()?;
+        let mut documents = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            documents.push(r.read_i64()?);
+        }
         Ok(StickerPack {
             emoticon,
             documents,
@@ -5405,13 +6428,13 @@ impl StickerPack {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(STICKER_PACK_ID);
-    w.write_bytes(self.emoticon.as_bytes());
-    w.write_u32(crate::serialize::VECTOR);
-    w.write_i32(self.documents.len() as i32);
-    for item in self.documents.iter().copied() {
-        w.write_i64(item);
-    }
+        w.write_u32(STICKER_PACK_ID);
+        w.write_bytes(self.emoticon.as_bytes());
+        w.write_u32(crate::serialize::VECTOR);
+        w.write_i32(self.documents.len() as i32);
+        for item in self.documents.iter().copied() {
+            w.write_i64(item);
+        }
     }
 }
 
@@ -5452,48 +6475,20 @@ impl PrivacyKey {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            PRIVACY_KEY_SAVED_MUSIC_ID => {
-                Ok(PrivacyKey::PrivacyKeySavedMusic {  })
-            }
-            PRIVACY_KEY_NO_PAID_MESSAGES_ID => {
-                Ok(PrivacyKey::PrivacyKeyNoPaidMessages {  })
-            }
-            PRIVACY_KEY_STAR_GIFTS_AUTO_SAVE_ID => {
-                Ok(PrivacyKey::PrivacyKeyStarGiftsAutoSave {  })
-            }
-            PRIVACY_KEY_BIRTHDAY_ID => {
-                Ok(PrivacyKey::PrivacyKeyBirthday {  })
-            }
-            PRIVACY_KEY_ABOUT_ID => {
-                Ok(PrivacyKey::PrivacyKeyAbout {  })
-            }
-            PRIVACY_KEY_VOICE_MESSAGES_ID => {
-                Ok(PrivacyKey::PrivacyKeyVoiceMessages {  })
-            }
-            PRIVACY_KEY_ADDED_BY_PHONE_ID => {
-                Ok(PrivacyKey::PrivacyKeyAddedByPhone {  })
-            }
-            PRIVACY_KEY_PHONE_NUMBER_ID => {
-                Ok(PrivacyKey::PrivacyKeyPhoneNumber {  })
-            }
-            PRIVACY_KEY_PROFILE_PHOTO_ID => {
-                Ok(PrivacyKey::PrivacyKeyProfilePhoto {  })
-            }
-            PRIVACY_KEY_FORWARDS_ID => {
-                Ok(PrivacyKey::PrivacyKeyForwards {  })
-            }
-            PRIVACY_KEY_PHONE_P2_P_ID => {
-                Ok(PrivacyKey::PrivacyKeyPhoneP2P {  })
-            }
-            PRIVACY_KEY_PHONE_CALL_ID => {
-                Ok(PrivacyKey::PrivacyKeyPhoneCall {  })
-            }
-            PRIVACY_KEY_CHAT_INVITE_ID => {
-                Ok(PrivacyKey::PrivacyKeyChatInvite {  })
-            }
-            PRIVACY_KEY_STATUS_TIMESTAMP_ID => {
-                Ok(PrivacyKey::PrivacyKeyStatusTimestamp {  })
-            }
+            PRIVACY_KEY_SAVED_MUSIC_ID => Ok(PrivacyKey::PrivacyKeySavedMusic {}),
+            PRIVACY_KEY_NO_PAID_MESSAGES_ID => Ok(PrivacyKey::PrivacyKeyNoPaidMessages {}),
+            PRIVACY_KEY_STAR_GIFTS_AUTO_SAVE_ID => Ok(PrivacyKey::PrivacyKeyStarGiftsAutoSave {}),
+            PRIVACY_KEY_BIRTHDAY_ID => Ok(PrivacyKey::PrivacyKeyBirthday {}),
+            PRIVACY_KEY_ABOUT_ID => Ok(PrivacyKey::PrivacyKeyAbout {}),
+            PRIVACY_KEY_VOICE_MESSAGES_ID => Ok(PrivacyKey::PrivacyKeyVoiceMessages {}),
+            PRIVACY_KEY_ADDED_BY_PHONE_ID => Ok(PrivacyKey::PrivacyKeyAddedByPhone {}),
+            PRIVACY_KEY_PHONE_NUMBER_ID => Ok(PrivacyKey::PrivacyKeyPhoneNumber {}),
+            PRIVACY_KEY_PROFILE_PHOTO_ID => Ok(PrivacyKey::PrivacyKeyProfilePhoto {}),
+            PRIVACY_KEY_FORWARDS_ID => Ok(PrivacyKey::PrivacyKeyForwards {}),
+            PRIVACY_KEY_PHONE_P2_P_ID => Ok(PrivacyKey::PrivacyKeyPhoneP2P {}),
+            PRIVACY_KEY_PHONE_CALL_ID => Ok(PrivacyKey::PrivacyKeyPhoneCall {}),
+            PRIVACY_KEY_CHAT_INVITE_ID => Ok(PrivacyKey::PrivacyKeyChatInvite {}),
+            PRIVACY_KEY_STATUS_TIMESTAMP_ID => Ok(PrivacyKey::PrivacyKeyStatusTimestamp {}),
             other => Err(Error::Serialization(format!(
                 "unknown PrivacyKey constructor {other:#x}"
             ))),
@@ -5523,25 +6518,19 @@ impl NotifyPeer {
         let ctor = r.read_u32()?;
         match ctor {
             NOTIFY_COMMUNITY_ID => {
-    let community_id = r.read_i64()?;
+                let community_id = r.read_i64()?;
                 Ok(NotifyPeer::NotifyCommunity { community_id })
             }
             NOTIFY_FORUM_TOPIC_ID => {
-    let peer = Peer::read_from(r)?;
-    let top_msg_id = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let top_msg_id = r.read_i32()?;
                 Ok(NotifyPeer::NotifyForumTopic { peer, top_msg_id })
             }
-            NOTIFY_BROADCASTS_ID => {
-                Ok(NotifyPeer::NotifyBroadcasts {  })
-            }
-            NOTIFY_CHATS_ID => {
-                Ok(NotifyPeer::NotifyChats {  })
-            }
-            NOTIFY_USERS_ID => {
-                Ok(NotifyPeer::NotifyUsers {  })
-            }
+            NOTIFY_BROADCASTS_ID => Ok(NotifyPeer::NotifyBroadcasts {}),
+            NOTIFY_CHATS_ID => Ok(NotifyPeer::NotifyChats {}),
+            NOTIFY_USERS_ID => Ok(NotifyPeer::NotifyUsers {}),
             NOTIFY_PEER_ID => {
-    let peer = Peer::read_from(r)?;
+                let peer = Peer::read_from(r)?;
                 Ok(NotifyPeer::NotifyPeer { peer })
             }
             other => Err(Error::Serialization(format!(
@@ -5575,22 +6564,22 @@ impl DcOption {
                 "expected dcOption, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let ipv6 = flags & (1 << 0) != 0;
-    let media_only = flags & (1 << 1) != 0;
-    let tcpo_only = flags & (1 << 2) != 0;
-    let cdn = flags & (1 << 3) != 0;
-    let r#static = flags & (1 << 4) != 0;
-    let this_port_only = flags & (1 << 5) != 0;
-    let id = r.read_i32()?;
-    let ip_address = String::from_utf8(r.read_bytes()?)?;
-    let port = r.read_i32()?;
-    let secret = if flags & (1 << 10) != 0 {
-        let secret = r.read_bytes()?;
-        Some(secret)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let ipv6 = flags & (1 << 0) != 0;
+        let media_only = flags & (1 << 1) != 0;
+        let tcpo_only = flags & (1 << 2) != 0;
+        let cdn = flags & (1 << 3) != 0;
+        let r#static = flags & (1 << 4) != 0;
+        let this_port_only = flags & (1 << 5) != 0;
+        let id = r.read_i32()?;
+        let ip_address = String::from_utf8(r.read_bytes()?)?;
+        let port = r.read_i32()?;
+        let secret = if flags & (1 << 10) != 0 {
+            let secret = r.read_bytes()?;
+            Some(secret)
+        } else {
+            None
+        };
         Ok(DcOption {
             flags,
             ipv6,
@@ -5608,15 +6597,21 @@ impl DcOption {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(DC_OPTION_ID);
-    let flags: i32 = if self.ipv6 { 1 << 0 } else { 0 } | if self.media_only { 1 << 1 } else { 0 } | if self.tcpo_only { 1 << 2 } else { 0 } | if self.cdn { 1 << 3 } else { 0 } | if self.r#static { 1 << 4 } else { 0 } | if self.this_port_only { 1 << 5 } else { 0 } | if self.secret.is_some() { 1 << 10 } else { 0 };
-    w.write_i32(flags);
-    w.write_i32(self.id);
-    w.write_bytes(self.ip_address.as_bytes());
-    w.write_i32(self.port);
-    if let Some(secret) = self.secret.clone() {
-        w.write_bytes(&secret);
-    }
+        w.write_u32(DC_OPTION_ID);
+        let flags: i32 = if self.ipv6 { 1 << 0 } else { 0 }
+            | if self.media_only { 1 << 1 } else { 0 }
+            | if self.tcpo_only { 1 << 2 } else { 0 }
+            | if self.cdn { 1 << 3 } else { 0 }
+            | if self.r#static { 1 << 4 } else { 0 }
+            | if self.this_port_only { 1 << 5 } else { 0 }
+            | if self.secret.is_some() { 1 << 10 } else { 0 };
+        w.write_i32(flags);
+        w.write_i32(self.id);
+        w.write_bytes(self.ip_address.as_bytes());
+        w.write_i32(self.port);
+        if let Some(secret) = self.secret.clone() {
+            w.write_bytes(&secret);
+        }
     }
 }
 
@@ -5635,9 +6630,9 @@ impl InputEncryptedChat {
                 "expected inputEncryptedChat, got {ctor:#x}"
             )));
         }
-    let chat_id = r.read_i32()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+        let chat_id = r.read_i32()?;
+        let access_hash = r.read_i64()?;
+        let access_hash = AccessHash(access_hash);
         Ok(InputEncryptedChat {
             chat_id,
             access_hash,
@@ -5646,9 +6641,9 @@ impl InputEncryptedChat {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(INPUT_ENCRYPTED_CHAT_ID);
-    w.write_i32(self.chat_id);
-    w.write_i64(self.access_hash.0);
+        w.write_u32(INPUT_ENCRYPTED_CHAT_ID);
+        w.write_i32(self.chat_id);
+        w.write_i64(self.access_hash.0);
     }
 }
 
@@ -5656,13 +6651,40 @@ impl InputEncryptedChat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EncryptedChat {
     /// `encryptedChatDiscarded#1e1c7c45`
-    EncryptedChatDiscarded { flags: i32, history_deleted: bool, id: i32 },
+    EncryptedChatDiscarded {
+        flags: i32,
+        history_deleted: bool,
+        id: i32,
+    },
     /// `encryptedChat#61f0d4c7`
-    EncryptedChat { id: i32, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, g_a_or_b: Vec<u8>, key_fingerprint: i64 },
+    EncryptedChat {
+        id: i32,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        g_a_or_b: Vec<u8>,
+        key_fingerprint: i64,
+    },
     /// `encryptedChatRequested#48f1d94c`
-    EncryptedChatRequested { flags: i32, folder_id: Option<i32>, id: i32, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64, g_a: Vec<u8> },
+    EncryptedChatRequested {
+        flags: i32,
+        folder_id: Option<i32>,
+        id: i32,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+        g_a: Vec<u8>,
+    },
     /// `encryptedChatWaiting#66b25953`
-    EncryptedChatWaiting { id: i32, access_hash: AccessHash, date: i32, admin_id: i64, participant_id: i64 },
+    EncryptedChatWaiting {
+        id: i32,
+        access_hash: AccessHash,
+        date: i32,
+        admin_id: i64,
+        participant_id: i64,
+    },
     /// `encryptedChatEmpty#ab7ec0a0`
     EncryptedChatEmpty { id: i32 },
 }
@@ -5672,50 +6694,77 @@ impl EncryptedChat {
         let ctor = r.read_u32()?;
         match ctor {
             ENCRYPTED_CHAT_DISCARDED_ID => {
-    let flags = r.read_i32()?;
-    let history_deleted = flags & (1 << 0) != 0;
-    let id = r.read_i32()?;
-                Ok(EncryptedChat::EncryptedChatDiscarded { flags, history_deleted, id })
+                let flags = r.read_i32()?;
+                let history_deleted = flags & (1 << 0) != 0;
+                let id = r.read_i32()?;
+                Ok(EncryptedChat::EncryptedChatDiscarded {
+                    flags,
+                    history_deleted,
+                    id,
+                })
             }
             ENCRYPTED_CHAT_ID => {
-    let id = r.read_i32()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let g_a_or_b = r.read_bytes()?;
-    let key_fingerprint = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(EncryptedChat::EncryptedChat { id, access_hash, date, admin_id, participant_id, g_a_or_b, key_fingerprint })
+                let id = r.read_i32()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let g_a_or_b = r.read_bytes()?;
+                let key_fingerprint = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(EncryptedChat::EncryptedChat {
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    g_a_or_b,
+                    key_fingerprint,
+                })
             }
             ENCRYPTED_CHAT_REQUESTED_ID => {
-    let flags = r.read_i32()?;
-    let folder_id = if flags & (1 << 0) != 0 {
-        let folder_id = r.read_i32()?;
-        Some(folder_id)
-    } else {
-        None
-    };
-    let id = r.read_i32()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let g_a = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(EncryptedChat::EncryptedChatRequested { flags, folder_id, id, access_hash, date, admin_id, participant_id, g_a })
+                let flags = r.read_i32()?;
+                let folder_id = if flags & (1 << 0) != 0 {
+                    let folder_id = r.read_i32()?;
+                    Some(folder_id)
+                } else {
+                    None
+                };
+                let id = r.read_i32()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let g_a = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(EncryptedChat::EncryptedChatRequested {
+                    flags,
+                    folder_id,
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                    g_a,
+                })
             }
             ENCRYPTED_CHAT_WAITING_ID => {
-    let id = r.read_i32()?;
-    let access_hash = r.read_i64()?;
-    let date = r.read_i32()?;
-    let admin_id = r.read_i64()?;
-    let participant_id = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(EncryptedChat::EncryptedChatWaiting { id, access_hash, date, admin_id, participant_id })
+                let id = r.read_i32()?;
+                let access_hash = r.read_i64()?;
+                let date = r.read_i32()?;
+                let admin_id = r.read_i64()?;
+                let participant_id = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(EncryptedChat::EncryptedChatWaiting {
+                    id,
+                    access_hash,
+                    date,
+                    admin_id,
+                    participant_id,
+                })
             }
             ENCRYPTED_CHAT_EMPTY_ID => {
-    let id = r.read_i32()?;
+                let id = r.read_i32()?;
                 Ok(EncryptedChat::EncryptedChatEmpty { id })
             }
             other => Err(Error::Serialization(format!(
@@ -5729,9 +6778,20 @@ impl EncryptedChat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EncryptedMessage {
     /// `encryptedMessageService#23734b06`
-    EncryptedMessageService { random_id: i64, chat_id: i32, date: i32, bytes: Vec<u8> },
+    EncryptedMessageService {
+        random_id: i64,
+        chat_id: i32,
+        date: i32,
+        bytes: Vec<u8>,
+    },
     /// `encryptedMessage#ed18c118`
-    EncryptedMessage { random_id: i64, chat_id: i32, date: i32, bytes: Vec<u8>, file: EncryptedFile },
+    EncryptedMessage {
+        random_id: i64,
+        chat_id: i32,
+        date: i32,
+        bytes: Vec<u8>,
+        file: EncryptedFile,
+    },
 }
 
 impl EncryptedMessage {
@@ -5739,19 +6799,30 @@ impl EncryptedMessage {
         let ctor = r.read_u32()?;
         match ctor {
             ENCRYPTED_MESSAGE_SERVICE_ID => {
-    let random_id = r.read_i64()?;
-    let chat_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let bytes = r.read_bytes()?;
-                Ok(EncryptedMessage::EncryptedMessageService { random_id, chat_id, date, bytes })
+                let random_id = r.read_i64()?;
+                let chat_id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let bytes = r.read_bytes()?;
+                Ok(EncryptedMessage::EncryptedMessageService {
+                    random_id,
+                    chat_id,
+                    date,
+                    bytes,
+                })
             }
             ENCRYPTED_MESSAGE_ID => {
-    let random_id = r.read_i64()?;
-    let chat_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let bytes = r.read_bytes()?;
-    let file = EncryptedFile::read_from(r)?;
-                Ok(EncryptedMessage::EncryptedMessage { random_id, chat_id, date, bytes, file })
+                let random_id = r.read_i64()?;
+                let chat_id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let bytes = r.read_bytes()?;
+                let file = EncryptedFile::read_from(r)?;
+                Ok(EncryptedMessage::EncryptedMessage {
+                    random_id,
+                    chat_id,
+                    date,
+                    bytes,
+                    file,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown EncryptedMessage constructor {other:#x}"
@@ -5764,11 +6835,20 @@ impl EncryptedMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputEncryptedFile {
     /// `inputEncryptedFileBigUploaded#2dc173c8`
-    InputEncryptedFileBigUploaded { id: i64, parts: i32, key_fingerprint: i32 },
+    InputEncryptedFileBigUploaded {
+        id: i64,
+        parts: i32,
+        key_fingerprint: i32,
+    },
     /// `inputEncryptedFile#5a17b5e5`
     InputEncryptedFile { id: i64, access_hash: AccessHash },
     /// `inputEncryptedFileUploaded#64bd0306`
-    InputEncryptedFileUploaded { id: i64, parts: i32, md5_checksum: String, key_fingerprint: i32 },
+    InputEncryptedFileUploaded {
+        id: i64,
+        parts: i32,
+        md5_checksum: String,
+        key_fingerprint: i32,
+    },
     /// `inputEncryptedFileEmpty#1837c364`
     InputEncryptedFileEmpty,
 }
@@ -5778,27 +6858,34 @@ impl InputEncryptedFile {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_ENCRYPTED_FILE_BIG_UPLOADED_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let key_fingerprint = r.read_i32()?;
-                Ok(InputEncryptedFile::InputEncryptedFileBigUploaded { id, parts, key_fingerprint })
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let key_fingerprint = r.read_i32()?;
+                Ok(InputEncryptedFile::InputEncryptedFileBigUploaded {
+                    id,
+                    parts,
+                    key_fingerprint,
+                })
             }
             INPUT_ENCRYPTED_FILE_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputEncryptedFile::InputEncryptedFile { id, access_hash })
             }
             INPUT_ENCRYPTED_FILE_UPLOADED_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let md5_checksum = String::from_utf8(r.read_bytes()?)?;
-    let key_fingerprint = r.read_i32()?;
-                Ok(InputEncryptedFile::InputEncryptedFileUploaded { id, parts, md5_checksum, key_fingerprint })
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let md5_checksum = String::from_utf8(r.read_bytes()?)?;
+                let key_fingerprint = r.read_i32()?;
+                Ok(InputEncryptedFile::InputEncryptedFileUploaded {
+                    id,
+                    parts,
+                    md5_checksum,
+                    key_fingerprint,
+                })
             }
-            INPUT_ENCRYPTED_FILE_EMPTY_ID => {
-                Ok(InputEncryptedFile::InputEncryptedFileEmpty {  })
-            }
+            INPUT_ENCRYPTED_FILE_EMPTY_ID => Ok(InputEncryptedFile::InputEncryptedFileEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown InputEncryptedFile constructor {other:#x}"
             ))),
@@ -5810,7 +6897,13 @@ impl InputEncryptedFile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EncryptedFile {
     /// `encryptedFile#a8008cd8`
-    EncryptedFile { id: i64, access_hash: AccessHash, size: i64, dc_id: i32, key_fingerprint: i32 },
+    EncryptedFile {
+        id: i64,
+        access_hash: AccessHash,
+        size: i64,
+        dc_id: i32,
+        key_fingerprint: i32,
+    },
     /// `encryptedFileEmpty#c21f497e`
     EncryptedFileEmpty,
 }
@@ -5820,17 +6913,21 @@ impl EncryptedFile {
         let ctor = r.read_u32()?;
         match ctor {
             ENCRYPTED_FILE_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let size = r.read_i64()?;
-    let dc_id = r.read_i32()?;
-    let key_fingerprint = r.read_i32()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(EncryptedFile::EncryptedFile { id, access_hash, size, dc_id, key_fingerprint })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let size = r.read_i64()?;
+                let dc_id = r.read_i32()?;
+                let key_fingerprint = r.read_i32()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(EncryptedFile::EncryptedFile {
+                    id,
+                    access_hash,
+                    size,
+                    dc_id,
+                    key_fingerprint,
+                })
             }
-            ENCRYPTED_FILE_EMPTY_ID => {
-                Ok(EncryptedFile::EncryptedFileEmpty {  })
-            }
+            ENCRYPTED_FILE_EMPTY_ID => Ok(EncryptedFile::EncryptedFileEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown EncryptedFile constructor {other:#x}"
             ))),
@@ -5842,11 +6939,39 @@ impl EncryptedFile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DialogFilter {
     /// `dialogFilterChatlist#96537bd7`
-    DialogFilterChatlist { flags: i32, has_my_invites: bool, title_noanimate: bool, id: i32, title: TextWithEntities, emoticon: Option<String>, color: Option<i32>, pinned_peers: Vec<InputPeer>, include_peers: Vec<InputPeer> },
+    DialogFilterChatlist {
+        flags: i32,
+        has_my_invites: bool,
+        title_noanimate: bool,
+        id: i32,
+        title: TextWithEntities,
+        emoticon: Option<String>,
+        color: Option<i32>,
+        pinned_peers: Vec<InputPeer>,
+        include_peers: Vec<InputPeer>,
+    },
     /// `dialogFilterDefault#363293ae`
     DialogFilterDefault,
     /// `dialogFilter#aa472651`
-    DialogFilter { flags: i32, contacts: bool, non_contacts: bool, groups: bool, broadcasts: bool, bots: bool, exclude_muted: bool, exclude_read: bool, exclude_archived: bool, title_noanimate: bool, id: i32, title: TextWithEntities, emoticon: Option<String>, color: Option<i32>, pinned_peers: Vec<InputPeer>, include_peers: Vec<InputPeer>, exclude_peers: Vec<InputPeer> },
+    DialogFilter {
+        flags: i32,
+        contacts: bool,
+        non_contacts: bool,
+        groups: bool,
+        broadcasts: bool,
+        bots: bool,
+        exclude_muted: bool,
+        exclude_read: bool,
+        exclude_archived: bool,
+        title_noanimate: bool,
+        id: i32,
+        title: TextWithEntities,
+        emoticon: Option<String>,
+        color: Option<i32>,
+        pinned_peers: Vec<InputPeer>,
+        include_peers: Vec<InputPeer>,
+        exclude_peers: Vec<InputPeer>,
+    },
 }
 
 impl DialogFilter {
@@ -5854,79 +6979,105 @@ impl DialogFilter {
         let ctor = r.read_u32()?;
         match ctor {
             DIALOG_FILTER_CHATLIST_ID => {
-    let flags = r.read_i32()?;
-    let has_my_invites = flags & (1 << 26) != 0;
-    let title_noanimate = flags & (1 << 28) != 0;
-    let id = r.read_i32()?;
-    let title = TextWithEntities::read_from(r)?;
-    let emoticon = if flags & (1 << 25) != 0 {
-        let emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(emoticon)
-    } else {
-        None
-    };
-    let color = if flags & (1 << 27) != 0 {
-        let color = r.read_i32()?;
-        Some(color)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut pinned_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        pinned_peers.push(InputPeer::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut include_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        include_peers.push(InputPeer::read_from(r)?);
-    }
-                Ok(DialogFilter::DialogFilterChatlist { flags, has_my_invites, title_noanimate, id, title, emoticon, color, pinned_peers, include_peers })
+                let flags = r.read_i32()?;
+                let has_my_invites = flags & (1 << 26) != 0;
+                let title_noanimate = flags & (1 << 28) != 0;
+                let id = r.read_i32()?;
+                let title = TextWithEntities::read_from(r)?;
+                let emoticon = if flags & (1 << 25) != 0 {
+                    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                    Some(emoticon)
+                } else {
+                    None
+                };
+                let color = if flags & (1 << 27) != 0 {
+                    let color = r.read_i32()?;
+                    Some(color)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut pinned_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    pinned_peers.push(InputPeer::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut include_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    include_peers.push(InputPeer::read_from(r)?);
+                }
+                Ok(DialogFilter::DialogFilterChatlist {
+                    flags,
+                    has_my_invites,
+                    title_noanimate,
+                    id,
+                    title,
+                    emoticon,
+                    color,
+                    pinned_peers,
+                    include_peers,
+                })
             }
-            DIALOG_FILTER_DEFAULT_ID => {
-                Ok(DialogFilter::DialogFilterDefault {  })
-            }
+            DIALOG_FILTER_DEFAULT_ID => Ok(DialogFilter::DialogFilterDefault {}),
             DIALOG_FILTER_ID => {
-    let flags = r.read_i32()?;
-    let contacts = flags & (1 << 0) != 0;
-    let non_contacts = flags & (1 << 1) != 0;
-    let groups = flags & (1 << 2) != 0;
-    let broadcasts = flags & (1 << 3) != 0;
-    let bots = flags & (1 << 4) != 0;
-    let exclude_muted = flags & (1 << 11) != 0;
-    let exclude_read = flags & (1 << 12) != 0;
-    let exclude_archived = flags & (1 << 13) != 0;
-    let title_noanimate = flags & (1 << 28) != 0;
-    let id = r.read_i32()?;
-    let title = TextWithEntities::read_from(r)?;
-    let emoticon = if flags & (1 << 25) != 0 {
-        let emoticon = String::from_utf8(r.read_bytes()?)?;
-        Some(emoticon)
-    } else {
-        None
-    };
-    let color = if flags & (1 << 27) != 0 {
-        let color = r.read_i32()?;
-        Some(color)
-    } else {
-        None
-    };
-    let n = r.read_vector_header()?;
-    let mut pinned_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        pinned_peers.push(InputPeer::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut include_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        include_peers.push(InputPeer::read_from(r)?);
-    }
-    let n = r.read_vector_header()?;
-    let mut exclude_peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        exclude_peers.push(InputPeer::read_from(r)?);
-    }
-                Ok(DialogFilter::DialogFilter { flags, contacts, non_contacts, groups, broadcasts, bots, exclude_muted, exclude_read, exclude_archived, title_noanimate, id, title, emoticon, color, pinned_peers, include_peers, exclude_peers })
+                let flags = r.read_i32()?;
+                let contacts = flags & (1 << 0) != 0;
+                let non_contacts = flags & (1 << 1) != 0;
+                let groups = flags & (1 << 2) != 0;
+                let broadcasts = flags & (1 << 3) != 0;
+                let bots = flags & (1 << 4) != 0;
+                let exclude_muted = flags & (1 << 11) != 0;
+                let exclude_read = flags & (1 << 12) != 0;
+                let exclude_archived = flags & (1 << 13) != 0;
+                let title_noanimate = flags & (1 << 28) != 0;
+                let id = r.read_i32()?;
+                let title = TextWithEntities::read_from(r)?;
+                let emoticon = if flags & (1 << 25) != 0 {
+                    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                    Some(emoticon)
+                } else {
+                    None
+                };
+                let color = if flags & (1 << 27) != 0 {
+                    let color = r.read_i32()?;
+                    Some(color)
+                } else {
+                    None
+                };
+                let n = r.read_vector_header()?;
+                let mut pinned_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    pinned_peers.push(InputPeer::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut include_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    include_peers.push(InputPeer::read_from(r)?);
+                }
+                let n = r.read_vector_header()?;
+                let mut exclude_peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    exclude_peers.push(InputPeer::read_from(r)?);
+                }
+                Ok(DialogFilter::DialogFilter {
+                    flags,
+                    contacts,
+                    non_contacts,
+                    groups,
+                    broadcasts,
+                    bots,
+                    exclude_muted,
+                    exclude_read,
+                    exclude_archived,
+                    title_noanimate,
+                    id,
+                    title,
+                    emoticon,
+                    color,
+                    pinned_peers,
+                    include_peers,
+                    exclude_peers,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown DialogFilter constructor {other:#x}"
@@ -5950,19 +7101,16 @@ impl MessageRange {
                 "expected messageRange, got {ctor:#x}"
             )));
         }
-    let min_id = r.read_i32()?;
-    let max_id = r.read_i32()?;
-        Ok(MessageRange {
-            min_id,
-            max_id,
-        })
+        let min_id = r.read_i32()?;
+        let max_id = r.read_i32()?;
+        Ok(MessageRange { min_id, max_id })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(MESSAGE_RANGE_ID);
-    w.write_i32(self.min_id);
-    w.write_i32(self.max_id);
+        w.write_u32(MESSAGE_RANGE_ID);
+        w.write_i32(self.min_id);
+        w.write_i32(self.max_id);
     }
 }
 
@@ -5993,70 +7141,70 @@ impl MessageFwdHeader {
                 "expected messageFwdHeader, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let imported = flags & (1 << 7) != 0;
-    let saved_out = flags & (1 << 11) != 0;
-    let from_id = if flags & (1 << 0) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let from_name = if flags & (1 << 5) != 0 {
-        let from_name = String::from_utf8(r.read_bytes()?)?;
-        Some(from_name)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let channel_post = if flags & (1 << 2) != 0 {
-        let channel_post = r.read_i32()?;
-        Some(channel_post)
-    } else {
-        None
-    };
-    let post_author = if flags & (1 << 3) != 0 {
-        let post_author = String::from_utf8(r.read_bytes()?)?;
-        Some(post_author)
-    } else {
-        None
-    };
-    let saved_from_peer = if flags & (1 << 4) != 0 {
-        let saved_from_peer = Peer::read_from(r)?;
-        Some(saved_from_peer)
-    } else {
-        None
-    };
-    let saved_from_msg_id = if flags & (1 << 4) != 0 {
-        let saved_from_msg_id = r.read_i32()?;
-        Some(saved_from_msg_id)
-    } else {
-        None
-    };
-    let saved_from_id = if flags & (1 << 8) != 0 {
-        let saved_from_id = Peer::read_from(r)?;
-        Some(saved_from_id)
-    } else {
-        None
-    };
-    let saved_from_name = if flags & (1 << 9) != 0 {
-        let saved_from_name = String::from_utf8(r.read_bytes()?)?;
-        Some(saved_from_name)
-    } else {
-        None
-    };
-    let saved_date = if flags & (1 << 10) != 0 {
-        let saved_date = r.read_i32()?;
-        Some(saved_date)
-    } else {
-        None
-    };
-    let psa_type = if flags & (1 << 6) != 0 {
-        let psa_type = String::from_utf8(r.read_bytes()?)?;
-        Some(psa_type)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let imported = flags & (1 << 7) != 0;
+        let saved_out = flags & (1 << 11) != 0;
+        let from_id = if flags & (1 << 0) != 0 {
+            let from_id = Peer::read_from(r)?;
+            Some(from_id)
+        } else {
+            None
+        };
+        let from_name = if flags & (1 << 5) != 0 {
+            let from_name = String::from_utf8(r.read_bytes()?)?;
+            Some(from_name)
+        } else {
+            None
+        };
+        let date = r.read_i32()?;
+        let channel_post = if flags & (1 << 2) != 0 {
+            let channel_post = r.read_i32()?;
+            Some(channel_post)
+        } else {
+            None
+        };
+        let post_author = if flags & (1 << 3) != 0 {
+            let post_author = String::from_utf8(r.read_bytes()?)?;
+            Some(post_author)
+        } else {
+            None
+        };
+        let saved_from_peer = if flags & (1 << 4) != 0 {
+            let saved_from_peer = Peer::read_from(r)?;
+            Some(saved_from_peer)
+        } else {
+            None
+        };
+        let saved_from_msg_id = if flags & (1 << 4) != 0 {
+            let saved_from_msg_id = r.read_i32()?;
+            Some(saved_from_msg_id)
+        } else {
+            None
+        };
+        let saved_from_id = if flags & (1 << 8) != 0 {
+            let saved_from_id = Peer::read_from(r)?;
+            Some(saved_from_id)
+        } else {
+            None
+        };
+        let saved_from_name = if flags & (1 << 9) != 0 {
+            let saved_from_name = String::from_utf8(r.read_bytes()?)?;
+            Some(saved_from_name)
+        } else {
+            None
+        };
+        let saved_date = if flags & (1 << 10) != 0 {
+            let saved_date = r.read_i32()?;
+            Some(saved_date)
+        } else {
+            None
+        };
+        let psa_type = if flags & (1 << 6) != 0 {
+            let psa_type = String::from_utf8(r.read_bytes()?)?;
+            Some(psa_type)
+        } else {
+            None
+        };
         Ok(MessageFwdHeader {
             flags,
             imported,
@@ -6074,7 +7222,6 @@ impl MessageFwdHeader {
             psa_type,
         })
     }
-
 }
 
 /// Union `MessageReplyHeader` (2 constructors).
@@ -6083,7 +7230,23 @@ pub enum MessageReplyHeader {
     /// `messageReplyStoryHeader#0e5af939`
     MessageReplyStoryHeader { peer: Peer, story_id: i32 },
     /// `messageReplyHeader#1b97dd66`
-    MessageReplyHeader { flags: i32, reply_to_scheduled: bool, forum_topic: bool, quote: bool, reply_to_ephemeral: bool, reply_to_msg_id: Option<i32>, reply_to_peer_id: Option<Peer>, reply_from: Option<MessageFwdHeader>, reply_media: Option<MessageMedia>, reply_to_top_id: Option<i32>, quote_text: Option<String>, quote_entities: Option<Vec<MessageEntity>>, quote_offset: Option<i32>, todo_item_id: Option<i32>, poll_option: Option<Vec<u8>> },
+    MessageReplyHeader {
+        flags: i32,
+        reply_to_scheduled: bool,
+        forum_topic: bool,
+        quote: bool,
+        reply_to_ephemeral: bool,
+        reply_to_msg_id: Option<i32>,
+        reply_to_peer_id: Option<Peer>,
+        reply_from: Option<MessageFwdHeader>,
+        reply_media: Option<MessageMedia>,
+        reply_to_top_id: Option<i32>,
+        quote_text: Option<String>,
+        quote_entities: Option<Vec<MessageEntity>>,
+        quote_offset: Option<i32>,
+        todo_item_id: Option<i32>,
+        poll_option: Option<Vec<u8>>,
+    },
 }
 
 impl MessageReplyHeader {
@@ -6091,81 +7254,97 @@ impl MessageReplyHeader {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_REPLY_STORY_HEADER_ID => {
-    let peer = Peer::read_from(r)?;
-    let story_id = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let story_id = r.read_i32()?;
                 Ok(MessageReplyHeader::MessageReplyStoryHeader { peer, story_id })
             }
             0x6917560b | MESSAGE_REPLY_HEADER_ID => {
-    let flags = r.read_i32()?;
-    let reply_to_scheduled = flags & (1 << 2) != 0;
-    let forum_topic = flags & (1 << 3) != 0;
-    let quote = flags & (1 << 9) != 0;
-    let reply_to_ephemeral = flags & (1 << 13) != 0;
-    let reply_to_msg_id = if flags & (1 << 4) != 0 {
-        let reply_to_msg_id = r.read_i32()?;
-        Some(reply_to_msg_id)
-    } else {
-        None
-    };
-    let reply_to_peer_id = if flags & (1 << 0) != 0 {
-        let reply_to_peer_id = Peer::read_from(r)?;
-        Some(reply_to_peer_id)
-    } else {
-        None
-    };
-    let reply_from = if flags & (1 << 5) != 0 {
-        let reply_from = MessageFwdHeader::read_from(r)?;
-        Some(reply_from)
-    } else {
-        None
-    };
-    let reply_media = if flags & (1 << 8) != 0 {
-        let reply_media = MessageMedia::read_from(r)?;
-        Some(reply_media)
-    } else {
-        None
-    };
-    let reply_to_top_id = if flags & (1 << 1) != 0 {
-        let reply_to_top_id = r.read_i32()?;
-        Some(reply_to_top_id)
-    } else {
-        None
-    };
-    let quote_text = if flags & (1 << 6) != 0 {
-        let quote_text = String::from_utf8(r.read_bytes()?)?;
-        Some(quote_text)
-    } else {
-        None
-    };
-    let quote_entities = if flags & (1 << 7) != 0 {
-        let n = r.read_vector_header()?;
-        let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            quote_entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(quote_entities)
-    } else {
-        None
-    };
-    let quote_offset = if flags & (1 << 10) != 0 {
-        let quote_offset = r.read_i32()?;
-        Some(quote_offset)
-    } else {
-        None
-    };
-    let todo_item_id = if flags & (1 << 11) != 0 {
-        let todo_item_id = r.read_i32()?;
-        Some(todo_item_id)
-    } else {
-        None
-    };
-    let poll_option = if flags & (1 << 12) != 0 {
-        let poll_option = r.read_bytes()?;
-        Some(poll_option)
-    } else {
-        None
-    };
-                Ok(MessageReplyHeader::MessageReplyHeader { flags, reply_to_scheduled, forum_topic, quote, reply_to_ephemeral, reply_to_msg_id, reply_to_peer_id, reply_from, reply_media, reply_to_top_id, quote_text, quote_entities, quote_offset, todo_item_id, poll_option })
+                let flags = r.read_i32()?;
+                let reply_to_scheduled = flags & (1 << 2) != 0;
+                let forum_topic = flags & (1 << 3) != 0;
+                let quote = flags & (1 << 9) != 0;
+                let reply_to_ephemeral = flags & (1 << 13) != 0;
+                let reply_to_msg_id = if flags & (1 << 4) != 0 {
+                    let reply_to_msg_id = r.read_i32()?;
+                    Some(reply_to_msg_id)
+                } else {
+                    None
+                };
+                let reply_to_peer_id = if flags & (1 << 0) != 0 {
+                    let reply_to_peer_id = Peer::read_from(r)?;
+                    Some(reply_to_peer_id)
+                } else {
+                    None
+                };
+                let reply_from = if flags & (1 << 5) != 0 {
+                    let reply_from = MessageFwdHeader::read_from(r)?;
+                    Some(reply_from)
+                } else {
+                    None
+                };
+                let reply_media = if flags & (1 << 8) != 0 {
+                    let reply_media = MessageMedia::read_from(r)?;
+                    Some(reply_media)
+                } else {
+                    None
+                };
+                let reply_to_top_id = if flags & (1 << 1) != 0 {
+                    let reply_to_top_id = r.read_i32()?;
+                    Some(reply_to_top_id)
+                } else {
+                    None
+                };
+                let quote_text = if flags & (1 << 6) != 0 {
+                    let quote_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(quote_text)
+                } else {
+                    None
+                };
+                let quote_entities = if flags & (1 << 7) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        quote_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(quote_entities)
+                } else {
+                    None
+                };
+                let quote_offset = if flags & (1 << 10) != 0 {
+                    let quote_offset = r.read_i32()?;
+                    Some(quote_offset)
+                } else {
+                    None
+                };
+                let todo_item_id = if flags & (1 << 11) != 0 {
+                    let todo_item_id = r.read_i32()?;
+                    Some(todo_item_id)
+                } else {
+                    None
+                };
+                let poll_option = if flags & (1 << 12) != 0 {
+                    let poll_option = r.read_bytes()?;
+                    Some(poll_option)
+                } else {
+                    None
+                };
+                Ok(MessageReplyHeader::MessageReplyHeader {
+                    flags,
+                    reply_to_scheduled,
+                    forum_topic,
+                    quote,
+                    reply_to_ephemeral,
+                    reply_to_msg_id,
+                    reply_to_peer_id,
+                    reply_from,
+                    reply_media,
+                    reply_to_top_id,
+                    quote_text,
+                    quote_entities,
+                    quote_offset,
+                    todo_item_id,
+                    poll_option,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown MessageReplyHeader constructor {other:#x}"
@@ -6180,15 +7359,39 @@ pub enum MessageEntity {
     /// `messageEntityDiffDelete#0652c1c5`
     DiffDelete { offset: i32, length: i32 },
     /// `messageEntityDiffReplace#c6c1e5a7`
-    DiffReplace { offset: i32, length: i32, old_text: String },
+    DiffReplace {
+        offset: i32,
+        length: i32,
+        old_text: String,
+    },
     /// `messageEntityDiffInsert#71777116`
     DiffInsert { offset: i32, length: i32 },
     /// `messageEntityFormattedDate#904ac7c7`
-    FormattedDate { flags: i32, relative: bool, short_time: bool, long_time: bool, short_date: bool, long_date: bool, day_of_week: bool, offset: i32, length: i32, date: i32 },
+    FormattedDate {
+        flags: i32,
+        relative: bool,
+        short_time: bool,
+        long_time: bool,
+        short_date: bool,
+        long_date: bool,
+        day_of_week: bool,
+        offset: i32,
+        length: i32,
+        date: i32,
+    },
     /// `messageEntityBlockquote#f1ccaaac`
-    Blockquote { flags: i32, collapsed: bool, offset: i32, length: i32 },
+    Blockquote {
+        flags: i32,
+        collapsed: bool,
+        offset: i32,
+        length: i32,
+    },
     /// `messageEntityCustomEmoji#c8cf05f8`
-    CustomEmoji { offset: i32, length: i32, document_id: i64 },
+    CustomEmoji {
+        offset: i32,
+        length: i32,
+        document_id: i64,
+    },
     /// `messageEntitySpoiler#32ca960f`
     Spoiler { offset: i32, length: i32 },
     /// `messageEntityBankCard#761e6af4`
@@ -6202,13 +7405,29 @@ pub enum MessageEntity {
     /// `messageEntityPhone#9b69e34b`
     Phone { offset: i32, length: i32 },
     /// `inputMessageEntityMentionName#208e68c9`
-    InputMessageEntityMentionName { offset: i32, length: i32, user_id: InputUser },
+    InputMessageEntityMentionName {
+        offset: i32,
+        length: i32,
+        user_id: InputUser,
+    },
     /// `messageEntityMentionName#dc7b1140`
-    MentionName { offset: i32, length: i32, user_id: UserId },
+    MentionName {
+        offset: i32,
+        length: i32,
+        user_id: UserId,
+    },
     /// `messageEntityTextUrl#76a6d327`
-    TextUrl { offset: i32, length: i32, url: String },
+    TextUrl {
+        offset: i32,
+        length: i32,
+        url: String,
+    },
     /// `messageEntityPre#73924be0`
-    Pre { offset: i32, length: i32, language: String },
+    Pre {
+        offset: i32,
+        length: i32,
+        language: String,
+    },
     /// `messageEntityCode#28a20571`
     Code { offset: i32, length: i32 },
     /// `messageEntityItalic#826f8b60`
@@ -6234,145 +7453,185 @@ impl MessageEntity {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_ENTITY_DIFF_DELETE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::DiffDelete { offset, length })
             }
             MESSAGE_ENTITY_DIFF_REPLACE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let old_text = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageEntity::DiffReplace { offset, length, old_text })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let old_text = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageEntity::DiffReplace {
+                    offset,
+                    length,
+                    old_text,
+                })
             }
             MESSAGE_ENTITY_DIFF_INSERT_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::DiffInsert { offset, length })
             }
             MESSAGE_ENTITY_FORMATTED_DATE_ID => {
-    let flags = r.read_i32()?;
-    let relative = flags & (1 << 0) != 0;
-    let short_time = flags & (1 << 1) != 0;
-    let long_time = flags & (1 << 2) != 0;
-    let short_date = flags & (1 << 3) != 0;
-    let long_date = flags & (1 << 4) != 0;
-    let day_of_week = flags & (1 << 5) != 0;
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let date = r.read_i32()?;
-                Ok(MessageEntity::FormattedDate { flags, relative, short_time, long_time, short_date, long_date, day_of_week, offset, length, date })
+                let flags = r.read_i32()?;
+                let relative = flags & (1 << 0) != 0;
+                let short_time = flags & (1 << 1) != 0;
+                let long_time = flags & (1 << 2) != 0;
+                let short_date = flags & (1 << 3) != 0;
+                let long_date = flags & (1 << 4) != 0;
+                let day_of_week = flags & (1 << 5) != 0;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let date = r.read_i32()?;
+                Ok(MessageEntity::FormattedDate {
+                    flags,
+                    relative,
+                    short_time,
+                    long_time,
+                    short_date,
+                    long_date,
+                    day_of_week,
+                    offset,
+                    length,
+                    date,
+                })
             }
             MESSAGE_ENTITY_BLOCKQUOTE_ID => {
-    let flags = r.read_i32()?;
-    let collapsed = flags & (1 << 0) != 0;
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-                Ok(MessageEntity::Blockquote { flags, collapsed, offset, length })
+                let flags = r.read_i32()?;
+                let collapsed = flags & (1 << 0) != 0;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                Ok(MessageEntity::Blockquote {
+                    flags,
+                    collapsed,
+                    offset,
+                    length,
+                })
             }
             MESSAGE_ENTITY_CUSTOM_EMOJI_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let document_id = r.read_i64()?;
-                Ok(MessageEntity::CustomEmoji { offset, length, document_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let document_id = r.read_i64()?;
+                Ok(MessageEntity::CustomEmoji {
+                    offset,
+                    length,
+                    document_id,
+                })
             }
             MESSAGE_ENTITY_SPOILER_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Spoiler { offset, length })
             }
             MESSAGE_ENTITY_BANK_CARD_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::BankCard { offset, length })
             }
             MESSAGE_ENTITY_STRIKE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Strike { offset, length })
             }
             MESSAGE_ENTITY_UNDERLINE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Underline { offset, length })
             }
             MESSAGE_ENTITY_CASHTAG_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Cashtag { offset, length })
             }
             MESSAGE_ENTITY_PHONE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Phone { offset, length })
             }
             INPUT_MESSAGE_ENTITY_MENTION_NAME_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let user_id = InputUser::read_from(r)?;
-                Ok(MessageEntity::InputMessageEntityMentionName { offset, length, user_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let user_id = InputUser::read_from(r)?;
+                Ok(MessageEntity::InputMessageEntityMentionName {
+                    offset,
+                    length,
+                    user_id,
+                })
             }
             MESSAGE_ENTITY_MENTION_NAME_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(MessageEntity::MentionName { offset, length, user_id })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(MessageEntity::MentionName {
+                    offset,
+                    length,
+                    user_id,
+                })
             }
             MESSAGE_ENTITY_TEXT_URL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageEntity::TextUrl { offset, length, url })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageEntity::TextUrl {
+                    offset,
+                    length,
+                    url,
+                })
             }
             MESSAGE_ENTITY_PRE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
-    let language = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageEntity::Pre { offset, length, language })
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
+                let language = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageEntity::Pre {
+                    offset,
+                    length,
+                    language,
+                })
             }
             MESSAGE_ENTITY_CODE_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Code { offset, length })
             }
             MESSAGE_ENTITY_ITALIC_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Italic { offset, length })
             }
             MESSAGE_ENTITY_BOLD_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Bold { offset, length })
             }
             MESSAGE_ENTITY_EMAIL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Email { offset, length })
             }
             MESSAGE_ENTITY_URL_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Url { offset, length })
             }
             MESSAGE_ENTITY_BOT_COMMAND_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::BotCommand { offset, length })
             }
             MESSAGE_ENTITY_HASHTAG_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Hashtag { offset, length })
             }
             MESSAGE_ENTITY_MENTION_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Mention { offset, length })
             }
             MESSAGE_ENTITY_UNKNOWN_ID => {
-    let offset = r.read_i32()?;
-    let length = r.read_i32()?;
+                let offset = r.read_i32()?;
+                let length = r.read_i32()?;
                 Ok(MessageEntity::Unknown { offset, length })
             }
             other => Err(Error::Serialization(format!(
@@ -6386,41 +7645,150 @@ impl MessageEntity {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageMedia {
     /// `messageMediaVideoStream#ca5cab89`
-    MessageMediaVideoStream { flags: i32, rtmp_stream: bool, call: InputGroupCall },
+    MessageMediaVideoStream {
+        flags: i32,
+        rtmp_stream: bool,
+        call: InputGroupCall,
+    },
     /// `messageMediaToDo#8a53b014`
-    MessageMediaToDo { flags: i32, todo: TodoList, completions: Option<Vec<TodoCompletion>> },
+    MessageMediaToDo {
+        flags: i32,
+        todo: TodoList,
+        completions: Option<Vec<TodoCompletion>>,
+    },
     /// `messageMediaPaidMedia#a8852491`
-    MessageMediaPaidMedia { stars_amount: i64, extended_media: Vec<MessageExtendedMedia> },
+    MessageMediaPaidMedia {
+        stars_amount: i64,
+        extended_media: Vec<MessageExtendedMedia>,
+    },
     /// `messageMediaGiveawayResults#ceaa3ea1`
-    MessageMediaGiveawayResults { flags: i32, only_new_subscribers: bool, refunded: bool, channel_id: ChannelId, additional_peers_count: Option<i32>, launch_msg_id: i32, winners_count: i32, unclaimed_count: i32, winners: Vec<i64>, months: Option<i32>, stars: Option<i64>, prize_description: Option<String>, until_date: i32 },
+    MessageMediaGiveawayResults {
+        flags: i32,
+        only_new_subscribers: bool,
+        refunded: bool,
+        channel_id: ChannelId,
+        additional_peers_count: Option<i32>,
+        launch_msg_id: i32,
+        winners_count: i32,
+        unclaimed_count: i32,
+        winners: Vec<i64>,
+        months: Option<i32>,
+        stars: Option<i64>,
+        prize_description: Option<String>,
+        until_date: i32,
+    },
     /// `messageMediaGiveaway#aa073beb`
-    MessageMediaGiveaway { flags: i32, only_new_subscribers: bool, winners_are_visible: bool, channels: Vec<i64>, countries_iso2: Option<Vec<Vec<u8>>>, prize_description: Option<String>, quantity: i32, months: Option<i32>, stars: Option<i64>, until_date: i32 },
+    MessageMediaGiveaway {
+        flags: i32,
+        only_new_subscribers: bool,
+        winners_are_visible: bool,
+        channels: Vec<i64>,
+        countries_iso2: Option<Vec<Vec<u8>>>,
+        prize_description: Option<String>,
+        quantity: i32,
+        months: Option<i32>,
+        stars: Option<i64>,
+        until_date: i32,
+    },
     /// `messageMediaStory#68cb6283`
-    MessageMediaStory { flags: i32, via_mention: bool, peer: Peer, id: i32, story: Option<Box<StoryItem>> },
+    MessageMediaStory {
+        flags: i32,
+        via_mention: bool,
+        peer: Peer,
+        id: i32,
+        story: Option<Box<StoryItem>>,
+    },
     /// `messageMediaDice#08cbec07`
-    Dice { flags: i32, value: i32, emoticon: String, game_outcome: Option<MessagesEmojiGameOutcome> },
+    Dice {
+        flags: i32,
+        value: i32,
+        emoticon: String,
+        game_outcome: Option<MessagesEmojiGameOutcome>,
+    },
     /// `messageMediaPoll#773f4e66`
-    Poll { flags: i32, poll: Box<Poll>, results: Box<PollResults>, attached_media: Option<Box<MessageMedia>> },
+    Poll {
+        flags: i32,
+        poll: Box<Poll>,
+        results: Box<PollResults>,
+        attached_media: Option<Box<MessageMedia>>,
+    },
     /// `messageMediaGeoLive#b940c666`
-    GeoLive { flags: i32, geo: GeoPoint, heading: Option<i32>, period: i32, proximity_notification_radius: Option<i32> },
+    GeoLive {
+        flags: i32,
+        geo: GeoPoint,
+        heading: Option<i32>,
+        period: i32,
+        proximity_notification_radius: Option<i32>,
+    },
     /// `messageMediaInvoice#f6a548d3`
-    MessageMediaInvoice { flags: i32, shipping_address_requested: bool, test: bool, title: String, description: String, photo: Option<WebDocument>, receipt_msg_id: Option<i32>, currency: String, total_amount: i64, start_param: String, extended_media: Option<Box<MessageExtendedMedia>> },
+    MessageMediaInvoice {
+        flags: i32,
+        shipping_address_requested: bool,
+        test: bool,
+        title: String,
+        description: String,
+        photo: Option<WebDocument>,
+        receipt_msg_id: Option<i32>,
+        currency: String,
+        total_amount: i64,
+        start_param: String,
+        extended_media: Option<Box<MessageExtendedMedia>>,
+    },
     /// `messageMediaGame#fdb19008`
     Game { game: Game },
     /// `messageMediaVenue#2ec0533f`
-    Venue { geo: GeoPoint, title: String, address: String, provider: String, venue_id: String, venue_type: String },
+    Venue {
+        geo: GeoPoint,
+        title: String,
+        address: String,
+        provider: String,
+        venue_id: String,
+        venue_type: String,
+    },
     /// `messageMediaWebPage#ddf10c3b`
-    WebPage { flags: i32, force_large_media: bool, force_small_media: bool, manual: bool, safe: bool, webpage: Box<WebPage> },
+    WebPage {
+        flags: i32,
+        force_large_media: bool,
+        force_small_media: bool,
+        manual: bool,
+        safe: bool,
+        webpage: Box<WebPage>,
+    },
     /// `messageMediaDocument#52d8ccd9`
-    Document { flags: i32, nopremium: bool, spoiler: bool, video: bool, round: bool, voice: bool, document: Option<Document>, alt_documents: Option<Vec<Document>>, video_cover: Option<Photo>, video_timestamp: Option<i32>, ttl_seconds: Option<i32> },
+    Document {
+        flags: i32,
+        nopremium: bool,
+        spoiler: bool,
+        video: bool,
+        round: bool,
+        voice: bool,
+        document: Option<Document>,
+        alt_documents: Option<Vec<Document>>,
+        video_cover: Option<Photo>,
+        video_timestamp: Option<i32>,
+        ttl_seconds: Option<i32>,
+    },
     /// `messageMediaUnsupported#9f84f49e`
     Unsupported,
     /// `messageMediaContact#70322949`
-    Contact { phone_number: String, first_name: String, last_name: String, vcard: String, user_id: UserId },
+    Contact {
+        phone_number: String,
+        first_name: String,
+        last_name: String,
+        vcard: String,
+        user_id: UserId,
+    },
     /// `messageMediaGeo#56e0d474`
     Geo { geo: GeoPoint },
     /// `messageMediaPhoto#e216eb63`
-    Photo { flags: i32, spoiler: bool, live_photo: bool, photo: Option<Photo>, ttl_seconds: Option<i32>, video: Option<Document> },
+    Photo {
+        flags: i32,
+        spoiler: bool,
+        live_photo: bool,
+        photo: Option<Photo>,
+        ttl_seconds: Option<i32>,
+        video: Option<Document>,
+    },
     /// `messageMediaEmpty#3ded6320`
     None,
     /// Constructor not recognized by this library version.
@@ -6432,309 +7800,414 @@ impl MessageMedia {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_MEDIA_VIDEO_STREAM_ID => {
-    let flags = r.read_i32()?;
-    let rtmp_stream = flags & (1 << 0) != 0;
-    let call = InputGroupCall::read_from(r)?;
-                Ok(MessageMedia::MessageMediaVideoStream { flags, rtmp_stream, call })
+                let flags = r.read_i32()?;
+                let rtmp_stream = flags & (1 << 0) != 0;
+                let call = InputGroupCall::read_from(r)?;
+                Ok(MessageMedia::MessageMediaVideoStream {
+                    flags,
+                    rtmp_stream,
+                    call,
+                })
             }
             MESSAGE_MEDIA_TO_DO_ID => {
-    let flags = r.read_i32()?;
-    let todo = TodoList::read_from(r)?;
-    let completions = if flags & (1 << 0) != 0 {
-        let n = r.read_vector_header()?;
-        let mut completions = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            completions.push(TodoCompletion::read_from(r)?);
-        }
-        Some(completions)
-    } else {
-        None
-    };
-                Ok(MessageMedia::MessageMediaToDo { flags, todo, completions })
+                let flags = r.read_i32()?;
+                let todo = TodoList::read_from(r)?;
+                let completions = if flags & (1 << 0) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut completions = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        completions.push(TodoCompletion::read_from(r)?);
+                    }
+                    Some(completions)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::MessageMediaToDo {
+                    flags,
+                    todo,
+                    completions,
+                })
             }
             MESSAGE_MEDIA_PAID_MEDIA_ID => {
-    let stars_amount = r.read_i64()?;
-    let n = r.read_vector_header()?;
-    let mut extended_media = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        extended_media.push(MessageExtendedMedia::read_from(r)?);
-    }
-                Ok(MessageMedia::MessageMediaPaidMedia { stars_amount, extended_media })
+                let stars_amount = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut extended_media = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    extended_media.push(MessageExtendedMedia::read_from(r)?);
+                }
+                Ok(MessageMedia::MessageMediaPaidMedia {
+                    stars_amount,
+                    extended_media,
+                })
             }
             MESSAGE_MEDIA_GIVEAWAY_RESULTS_ID => {
-    let flags = r.read_i32()?;
-    let only_new_subscribers = flags & (1 << 0) != 0;
-    let refunded = flags & (1 << 2) != 0;
-    let channel_id = r.read_i64()?;
-    let additional_peers_count = if flags & (1 << 3) != 0 {
-        let additional_peers_count = r.read_i32()?;
-        Some(additional_peers_count)
-    } else {
-        None
-    };
-    let launch_msg_id = r.read_i32()?;
-    let winners_count = r.read_i32()?;
-    let unclaimed_count = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut winners = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        winners.push(r.read_i64()?);
-    }
-    let months = if flags & (1 << 4) != 0 {
-        let months = r.read_i32()?;
-        Some(months)
-    } else {
-        None
-    };
-    let stars = if flags & (1 << 5) != 0 {
-        let stars = r.read_i64()?;
-        Some(stars)
-    } else {
-        None
-    };
-    let prize_description = if flags & (1 << 1) != 0 {
-        let prize_description = String::from_utf8(r.read_bytes()?)?;
-        Some(prize_description)
-    } else {
-        None
-    };
-    let until_date = r.read_i32()?;
-    let channel_id = ChannelId(channel_id);
-                Ok(MessageMedia::MessageMediaGiveawayResults { flags, only_new_subscribers, refunded, channel_id, additional_peers_count, launch_msg_id, winners_count, unclaimed_count, winners, months, stars, prize_description, until_date })
+                let flags = r.read_i32()?;
+                let only_new_subscribers = flags & (1 << 0) != 0;
+                let refunded = flags & (1 << 2) != 0;
+                let channel_id = r.read_i64()?;
+                let additional_peers_count = if flags & (1 << 3) != 0 {
+                    let additional_peers_count = r.read_i32()?;
+                    Some(additional_peers_count)
+                } else {
+                    None
+                };
+                let launch_msg_id = r.read_i32()?;
+                let winners_count = r.read_i32()?;
+                let unclaimed_count = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut winners = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    winners.push(r.read_i64()?);
+                }
+                let months = if flags & (1 << 4) != 0 {
+                    let months = r.read_i32()?;
+                    Some(months)
+                } else {
+                    None
+                };
+                let stars = if flags & (1 << 5) != 0 {
+                    let stars = r.read_i64()?;
+                    Some(stars)
+                } else {
+                    None
+                };
+                let prize_description = if flags & (1 << 1) != 0 {
+                    let prize_description = String::from_utf8(r.read_bytes()?)?;
+                    Some(prize_description)
+                } else {
+                    None
+                };
+                let until_date = r.read_i32()?;
+                let channel_id = ChannelId(channel_id);
+                Ok(MessageMedia::MessageMediaGiveawayResults {
+                    flags,
+                    only_new_subscribers,
+                    refunded,
+                    channel_id,
+                    additional_peers_count,
+                    launch_msg_id,
+                    winners_count,
+                    unclaimed_count,
+                    winners,
+                    months,
+                    stars,
+                    prize_description,
+                    until_date,
+                })
             }
             MESSAGE_MEDIA_GIVEAWAY_ID => {
-    let flags = r.read_i32()?;
-    let only_new_subscribers = flags & (1 << 0) != 0;
-    let winners_are_visible = flags & (1 << 2) != 0;
-    let n = r.read_vector_header()?;
-    let mut channels = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        channels.push(r.read_i64()?);
-    }
-    let countries_iso2 = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            countries_iso2.push(r.read_bytes()?);
-        }
-        Some(countries_iso2)
-    } else {
-        None
-    };
-    let prize_description = if flags & (1 << 3) != 0 {
-        let prize_description = String::from_utf8(r.read_bytes()?)?;
-        Some(prize_description)
-    } else {
-        None
-    };
-    let quantity = r.read_i32()?;
-    let months = if flags & (1 << 4) != 0 {
-        let months = r.read_i32()?;
-        Some(months)
-    } else {
-        None
-    };
-    let stars = if flags & (1 << 5) != 0 {
-        let stars = r.read_i64()?;
-        Some(stars)
-    } else {
-        None
-    };
-    let until_date = r.read_i32()?;
-                Ok(MessageMedia::MessageMediaGiveaway { flags, only_new_subscribers, winners_are_visible, channels, countries_iso2, prize_description, quantity, months, stars, until_date })
+                let flags = r.read_i32()?;
+                let only_new_subscribers = flags & (1 << 0) != 0;
+                let winners_are_visible = flags & (1 << 2) != 0;
+                let n = r.read_vector_header()?;
+                let mut channels = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    channels.push(r.read_i64()?);
+                }
+                let countries_iso2 = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut countries_iso2 = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        countries_iso2.push(r.read_bytes()?);
+                    }
+                    Some(countries_iso2)
+                } else {
+                    None
+                };
+                let prize_description = if flags & (1 << 3) != 0 {
+                    let prize_description = String::from_utf8(r.read_bytes()?)?;
+                    Some(prize_description)
+                } else {
+                    None
+                };
+                let quantity = r.read_i32()?;
+                let months = if flags & (1 << 4) != 0 {
+                    let months = r.read_i32()?;
+                    Some(months)
+                } else {
+                    None
+                };
+                let stars = if flags & (1 << 5) != 0 {
+                    let stars = r.read_i64()?;
+                    Some(stars)
+                } else {
+                    None
+                };
+                let until_date = r.read_i32()?;
+                Ok(MessageMedia::MessageMediaGiveaway {
+                    flags,
+                    only_new_subscribers,
+                    winners_are_visible,
+                    channels,
+                    countries_iso2,
+                    prize_description,
+                    quantity,
+                    months,
+                    stars,
+                    until_date,
+                })
             }
             MESSAGE_MEDIA_STORY_ID => {
-    let flags = r.read_i32()?;
-    let via_mention = flags & (1 << 1) != 0;
-    let peer = Peer::read_from(r)?;
-    let id = r.read_i32()?;
-    let story = if flags & (1 << 0) != 0 {
-        let story = Box::new(StoryItem::read_from(r)?);
-        Some(story)
-    } else {
-        None
-    };
-                Ok(MessageMedia::MessageMediaStory { flags, via_mention, peer, id, story })
+                let flags = r.read_i32()?;
+                let via_mention = flags & (1 << 1) != 0;
+                let peer = Peer::read_from(r)?;
+                let id = r.read_i32()?;
+                let story = if flags & (1 << 0) != 0 {
+                    let story = Box::new(StoryItem::read_from(r)?);
+                    Some(story)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::MessageMediaStory {
+                    flags,
+                    via_mention,
+                    peer,
+                    id,
+                    story,
+                })
             }
             MESSAGE_MEDIA_DICE_ID => {
-    let flags = r.read_i32()?;
-    let value = r.read_i32()?;
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
-    let game_outcome = if flags & (1 << 0) != 0 {
-        let game_outcome = MessagesEmojiGameOutcome::read_from(r)?;
-        Some(game_outcome)
-    } else {
-        None
-    };
-                Ok(MessageMedia::Dice { flags, value, emoticon, game_outcome })
+                let flags = r.read_i32()?;
+                let value = r.read_i32()?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let game_outcome = if flags & (1 << 0) != 0 {
+                    let game_outcome = MessagesEmojiGameOutcome::read_from(r)?;
+                    Some(game_outcome)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::Dice {
+                    flags,
+                    value,
+                    emoticon,
+                    game_outcome,
+                })
             }
             0x4bd6e798 | MESSAGE_MEDIA_POLL_ID => {
-    let flags = r.read_i32()?;
-    let poll = Box::new(Poll::read_from(r)?);
-    let results = Box::new(PollResults::read_from(r)?);
-    let attached_media = if flags & (1 << 0) != 0 {
-        let attached_media = Box::new(MessageMedia::read_from(r)?);
-        Some(attached_media)
-    } else {
-        None
-    };
-                Ok(MessageMedia::Poll { flags, poll, results, attached_media })
+                let flags = r.read_i32()?;
+                let poll = Box::new(Poll::read_from(r)?);
+                let results = Box::new(PollResults::read_from(r)?);
+                let attached_media = if flags & (1 << 0) != 0 {
+                    let attached_media = Box::new(MessageMedia::read_from(r)?);
+                    Some(attached_media)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::Poll {
+                    flags,
+                    poll,
+                    results,
+                    attached_media,
+                })
             }
             MESSAGE_MEDIA_GEO_LIVE_ID => {
-    let flags = r.read_i32()?;
-    let geo = GeoPoint::read_from(r)?;
-    let heading = if flags & (1 << 0) != 0 {
-        let heading = r.read_i32()?;
-        Some(heading)
-    } else {
-        None
-    };
-    let period = r.read_i32()?;
-    let proximity_notification_radius = if flags & (1 << 1) != 0 {
-        let proximity_notification_radius = r.read_i32()?;
-        Some(proximity_notification_radius)
-    } else {
-        None
-    };
-                Ok(MessageMedia::GeoLive { flags, geo, heading, period, proximity_notification_radius })
+                let flags = r.read_i32()?;
+                let geo = GeoPoint::read_from(r)?;
+                let heading = if flags & (1 << 0) != 0 {
+                    let heading = r.read_i32()?;
+                    Some(heading)
+                } else {
+                    None
+                };
+                let period = r.read_i32()?;
+                let proximity_notification_radius = if flags & (1 << 1) != 0 {
+                    let proximity_notification_radius = r.read_i32()?;
+                    Some(proximity_notification_radius)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::GeoLive {
+                    flags,
+                    geo,
+                    heading,
+                    period,
+                    proximity_notification_radius,
+                })
             }
             MESSAGE_MEDIA_INVOICE_ID => {
-    let flags = r.read_i32()?;
-    let shipping_address_requested = flags & (1 << 1) != 0;
-    let test = flags & (1 << 3) != 0;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = if flags & (1 << 0) != 0 {
-        let photo = WebDocument::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let receipt_msg_id = if flags & (1 << 2) != 0 {
-        let receipt_msg_id = r.read_i32()?;
-        Some(receipt_msg_id)
-    } else {
-        None
-    };
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let total_amount = r.read_i64()?;
-    let start_param = String::from_utf8(r.read_bytes()?)?;
-    let extended_media = if flags & (1 << 4) != 0 {
-        let extended_media = Box::new(MessageExtendedMedia::read_from(r)?);
-        Some(extended_media)
-    } else {
-        None
-    };
-                Ok(MessageMedia::MessageMediaInvoice { flags, shipping_address_requested, test, title, description, photo, receipt_msg_id, currency, total_amount, start_param, extended_media })
+                let flags = r.read_i32()?;
+                let shipping_address_requested = flags & (1 << 1) != 0;
+                let test = flags & (1 << 3) != 0;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let description = String::from_utf8(r.read_bytes()?)?;
+                let photo = if flags & (1 << 0) != 0 {
+                    let photo = WebDocument::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let receipt_msg_id = if flags & (1 << 2) != 0 {
+                    let receipt_msg_id = r.read_i32()?;
+                    Some(receipt_msg_id)
+                } else {
+                    None
+                };
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let total_amount = r.read_i64()?;
+                let start_param = String::from_utf8(r.read_bytes()?)?;
+                let extended_media = if flags & (1 << 4) != 0 {
+                    let extended_media = Box::new(MessageExtendedMedia::read_from(r)?);
+                    Some(extended_media)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::MessageMediaInvoice {
+                    flags,
+                    shipping_address_requested,
+                    test,
+                    title,
+                    description,
+                    photo,
+                    receipt_msg_id,
+                    currency,
+                    total_amount,
+                    start_param,
+                    extended_media,
+                })
             }
             MESSAGE_MEDIA_GAME_ID => {
-    let game = Game::read_from(r)?;
+                let game = Game::read_from(r)?;
                 Ok(MessageMedia::Game { game })
             }
             MESSAGE_MEDIA_VENUE_ID => {
-    let geo = GeoPoint::read_from(r)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let address = String::from_utf8(r.read_bytes()?)?;
-    let provider = String::from_utf8(r.read_bytes()?)?;
-    let venue_id = String::from_utf8(r.read_bytes()?)?;
-    let venue_type = String::from_utf8(r.read_bytes()?)?;
-                Ok(MessageMedia::Venue { geo, title, address, provider, venue_id, venue_type })
+                let geo = GeoPoint::read_from(r)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let address = String::from_utf8(r.read_bytes()?)?;
+                let provider = String::from_utf8(r.read_bytes()?)?;
+                let venue_id = String::from_utf8(r.read_bytes()?)?;
+                let venue_type = String::from_utf8(r.read_bytes()?)?;
+                Ok(MessageMedia::Venue {
+                    geo,
+                    title,
+                    address,
+                    provider,
+                    venue_id,
+                    venue_type,
+                })
             }
             MESSAGE_MEDIA_WEB_PAGE_ID => {
-    let flags = r.read_i32()?;
-    let force_large_media = flags & (1 << 0) != 0;
-    let force_small_media = flags & (1 << 1) != 0;
-    let manual = flags & (1 << 3) != 0;
-    let safe = flags & (1 << 4) != 0;
-    let webpage = Box::new(WebPage::read_from(r)?);
-                Ok(MessageMedia::WebPage { flags, force_large_media, force_small_media, manual, safe, webpage })
+                let flags = r.read_i32()?;
+                let force_large_media = flags & (1 << 0) != 0;
+                let force_small_media = flags & (1 << 1) != 0;
+                let manual = flags & (1 << 3) != 0;
+                let safe = flags & (1 << 4) != 0;
+                let webpage = Box::new(WebPage::read_from(r)?);
+                Ok(MessageMedia::WebPage {
+                    flags,
+                    force_large_media,
+                    force_small_media,
+                    manual,
+                    safe,
+                    webpage,
+                })
             }
             MESSAGE_MEDIA_DOCUMENT_ID => {
-    let flags = r.read_i32()?;
-    let nopremium = flags & (1 << 3) != 0;
-    let spoiler = flags & (1 << 4) != 0;
-    let video = flags & (1 << 6) != 0;
-    let round = flags & (1 << 7) != 0;
-    let voice = flags & (1 << 8) != 0;
-    let document = if flags & (1 << 0) != 0 {
-        let document = Document::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let alt_documents = if flags & (1 << 5) != 0 {
-        let n = r.read_vector_header()?;
-        let mut alt_documents = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            alt_documents.push(Document::read_from(r)?);
-        }
-        Some(alt_documents)
-    } else {
-        None
-    };
-    let video_cover = if flags & (1 << 9) != 0 {
-        let video_cover = Photo::read_from(r)?;
-        Some(video_cover)
-    } else {
-        None
-    };
-    let video_timestamp = if flags & (1 << 10) != 0 {
-        let video_timestamp = r.read_i32()?;
-        Some(video_timestamp)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 2) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-                Ok(MessageMedia::Document { flags, nopremium, spoiler, video, round, voice, document, alt_documents, video_cover, video_timestamp, ttl_seconds })
+                let flags = r.read_i32()?;
+                let nopremium = flags & (1 << 3) != 0;
+                let spoiler = flags & (1 << 4) != 0;
+                let video = flags & (1 << 6) != 0;
+                let round = flags & (1 << 7) != 0;
+                let voice = flags & (1 << 8) != 0;
+                let document = if flags & (1 << 0) != 0 {
+                    let document = Document::read_from(r)?;
+                    Some(document)
+                } else {
+                    None
+                };
+                let alt_documents = if flags & (1 << 5) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut alt_documents = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        alt_documents.push(Document::read_from(r)?);
+                    }
+                    Some(alt_documents)
+                } else {
+                    None
+                };
+                let video_cover = if flags & (1 << 9) != 0 {
+                    let video_cover = Photo::read_from(r)?;
+                    Some(video_cover)
+                } else {
+                    None
+                };
+                let video_timestamp = if flags & (1 << 10) != 0 {
+                    let video_timestamp = r.read_i32()?;
+                    Some(video_timestamp)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 2) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::Document {
+                    flags,
+                    nopremium,
+                    spoiler,
+                    video,
+                    round,
+                    voice,
+                    document,
+                    alt_documents,
+                    video_cover,
+                    video_timestamp,
+                    ttl_seconds,
+                })
             }
-            MESSAGE_MEDIA_UNSUPPORTED_ID => {
-                Ok(MessageMedia::Unsupported {  })
-            }
+            MESSAGE_MEDIA_UNSUPPORTED_ID => Ok(MessageMedia::Unsupported {}),
             MESSAGE_MEDIA_CONTACT_ID => {
-    let phone_number = String::from_utf8(r.read_bytes()?)?;
-    let first_name = String::from_utf8(r.read_bytes()?)?;
-    let last_name = String::from_utf8(r.read_bytes()?)?;
-    let vcard = String::from_utf8(r.read_bytes()?)?;
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
-                Ok(MessageMedia::Contact { phone_number, first_name, last_name, vcard, user_id })
+                let phone_number = String::from_utf8(r.read_bytes()?)?;
+                let first_name = String::from_utf8(r.read_bytes()?)?;
+                let last_name = String::from_utf8(r.read_bytes()?)?;
+                let vcard = String::from_utf8(r.read_bytes()?)?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(MessageMedia::Contact {
+                    phone_number,
+                    first_name,
+                    last_name,
+                    vcard,
+                    user_id,
+                })
             }
             MESSAGE_MEDIA_GEO_ID => {
-    let geo = GeoPoint::read_from(r)?;
+                let geo = GeoPoint::read_from(r)?;
                 Ok(MessageMedia::Geo { geo })
             }
             0x695150d7 | MESSAGE_MEDIA_PHOTO_ID => {
-    let flags = r.read_i32()?;
-    let spoiler = flags & (1 << 3) != 0;
-    let live_photo = flags & (1 << 4) != 0;
-    let photo = if flags & (1 << 0) != 0 {
-        let photo = Photo::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let ttl_seconds = if flags & (1 << 2) != 0 {
-        let ttl_seconds = r.read_i32()?;
-        Some(ttl_seconds)
-    } else {
-        None
-    };
-    let video = if flags & (1 << 4) != 0 {
-        let video = Document::read_from(r)?;
-        Some(video)
-    } else {
-        None
-    };
-                Ok(MessageMedia::Photo { flags, spoiler, live_photo, photo, ttl_seconds, video })
+                let flags = r.read_i32()?;
+                let spoiler = flags & (1 << 3) != 0;
+                let live_photo = flags & (1 << 4) != 0;
+                let photo = if flags & (1 << 0) != 0 {
+                    let photo = Photo::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let ttl_seconds = if flags & (1 << 2) != 0 {
+                    let ttl_seconds = r.read_i32()?;
+                    Some(ttl_seconds)
+                } else {
+                    None
+                };
+                let video = if flags & (1 << 4) != 0 {
+                    let video = Document::read_from(r)?;
+                    Some(video)
+                } else {
+                    None
+                };
+                Ok(MessageMedia::Photo {
+                    flags,
+                    spoiler,
+                    live_photo,
+                    photo,
+                    ttl_seconds,
+                    video,
+                })
             }
-            MESSAGE_MEDIA_EMPTY_ID => {
-                Ok(MessageMedia::None {  })
-            }
+            MESSAGE_MEDIA_EMPTY_ID => Ok(MessageMedia::None {}),
             other => Ok(MessageMedia::Other { constructor: other }),
         }
     }
@@ -6746,7 +8219,10 @@ pub enum MessageAction {
     /// `messageActionChatJoinedViaCommunity#4a8bfe80`
     ChatJoinedViaCommunity { community_id: i64 },
     /// `messageActionChangeCommunity#5d20bae8`
-    ChangeCommunity { flags: i32, community_id: Option<i64> },
+    ChangeCommunity {
+        flags: i32,
+        community_id: Option<i64>,
+    },
     /// `messageActionManagedBotCreated#16605e3e`
     ManagedBotCreated { bot_id: i64 },
     /// `messageActionPollDeleteAnswer#399674dc`
@@ -6754,7 +8230,12 @@ pub enum MessageAction {
     /// `messageActionPollAppendAnswer#9da1cd6c`
     PollAppendAnswer { answer: PollAnswer },
     /// `messageActionNoForwardsRequest#3e2793ba`
-    NoForwardsRequest { flags: i32, expired: bool, prev_value: bool, new_value: bool },
+    NoForwardsRequest {
+        flags: i32,
+        expired: bool,
+        prev_value: bool,
+        new_value: bool,
+    },
     /// `messageActionNoForwardsToggle#bf7d6572`
     NoForwardsToggle { prev_value: bool, new_value: bool },
     /// `messageActionChangeCreator#e188503b`
@@ -6762,61 +8243,215 @@ pub enum MessageAction {
     /// `messageActionNewCreatorPending#b07ed085`
     NewCreatorPending { new_creator_id: i64 },
     /// `messageActionStarGiftPurchaseOfferDeclined#73ada76b`
-    StarGiftPurchaseOfferDeclined { flags: i32, expired: bool, gift: StarGift, price: StarsAmount },
+    StarGiftPurchaseOfferDeclined {
+        flags: i32,
+        expired: bool,
+        gift: StarGift,
+        price: StarsAmount,
+    },
     /// `messageActionStarGiftPurchaseOffer#774278d4`
-    StarGiftPurchaseOffer { flags: i32, accepted: bool, declined: bool, gift: StarGift, price: StarsAmount, expires_at: i32 },
+    StarGiftPurchaseOffer {
+        flags: i32,
+        accepted: bool,
+        declined: bool,
+        gift: StarGift,
+        price: StarsAmount,
+        expires_at: i32,
+    },
     /// `messageActionSuggestBirthday#2c8f2a25`
     SuggestBirthday { birthday: Birthday },
     /// `messageActionGiftTon#a8a3c699`
-    GiftTon { flags: i32, currency: String, amount: i64, crypto_currency: String, crypto_amount: i64, transaction_id: Option<String> },
+    GiftTon {
+        flags: i32,
+        currency: String,
+        amount: i64,
+        crypto_currency: String,
+        crypto_amount: i64,
+        transaction_id: Option<String>,
+    },
     /// `messageActionSuggestedPostRefund#69f916f8`
     SuggestedPostRefund { flags: i32, payer_initiated: bool },
     /// `messageActionSuggestedPostSuccess#95ddcf69`
     SuggestedPostSuccess { price: StarsAmount },
     /// `messageActionSuggestedPostApproval#ee7a1596`
-    SuggestedPostApproval { flags: i32, rejected: bool, balance_too_low: bool, reject_comment: Option<String>, schedule_date: Option<i32>, price: Option<StarsAmount> },
+    SuggestedPostApproval {
+        flags: i32,
+        rejected: bool,
+        balance_too_low: bool,
+        reject_comment: Option<String>,
+        schedule_date: Option<i32>,
+        price: Option<StarsAmount>,
+    },
     /// `messageActionTodoAppendTasks#c7edbc83`
     TodoAppendTasks { list: Vec<TodoItem> },
     /// `messageActionTodoCompletions#cc7c5c89`
-    TodoCompletions { completed: Vec<i32>, incompleted: Vec<i32> },
+    TodoCompletions {
+        completed: Vec<i32>,
+        incompleted: Vec<i32>,
+    },
     /// `messageActionConferenceCall#2ffe2f7a`
-    ConferenceCall { flags: i32, missed: bool, active: bool, video: bool, call_id: i64, duration: Option<i32>, other_participants: Option<Vec<Peer>> },
+    ConferenceCall {
+        flags: i32,
+        missed: bool,
+        active: bool,
+        video: bool,
+        call_id: i64,
+        duration: Option<i32>,
+        other_participants: Option<Vec<Peer>>,
+    },
     /// `messageActionPaidMessagesPrice#84b88578`
-    PaidMessagesPrice { flags: i32, broadcast_messages_allowed: bool, stars: i64 },
+    PaidMessagesPrice {
+        flags: i32,
+        broadcast_messages_allowed: bool,
+        stars: i64,
+    },
     /// `messageActionPaidMessagesRefunded#ac1f1fcd`
     PaidMessagesRefunded { count: i32, stars: i64 },
     /// `messageActionStarGiftUnique#7e1c1187`
-    StarGiftUnique { flags: i32, upgrade: bool, transferred: bool, saved: bool, refunded: bool, prepaid_upgrade: bool, assigned: bool, from_offer: bool, craft: bool, name_hidden: bool, gift: StarGift, can_export_at: Option<i32>, transfer_stars: Option<i64>, from_id: Option<Peer>, peer: Option<Peer>, saved_id: Option<i64>, resale_amount: Option<StarsAmount>, can_transfer_at: Option<i32>, can_resell_at: Option<i32>, drop_original_details_stars: Option<i64>, can_craft_at: Option<i32>, message: Option<TextWithEntities> },
+    StarGiftUnique {
+        flags: i32,
+        upgrade: bool,
+        transferred: bool,
+        saved: bool,
+        refunded: bool,
+        prepaid_upgrade: bool,
+        assigned: bool,
+        from_offer: bool,
+        craft: bool,
+        name_hidden: bool,
+        gift: StarGift,
+        can_export_at: Option<i32>,
+        transfer_stars: Option<i64>,
+        from_id: Option<Peer>,
+        peer: Option<Peer>,
+        saved_id: Option<i64>,
+        resale_amount: Option<StarsAmount>,
+        can_transfer_at: Option<i32>,
+        can_resell_at: Option<i32>,
+        drop_original_details_stars: Option<i64>,
+        can_craft_at: Option<i32>,
+        message: Option<TextWithEntities>,
+    },
     /// `messageActionStarGift#ea2c31d3`
-    StarGift { flags: i32, name_hidden: bool, saved: bool, converted: bool, upgraded: bool, refunded: bool, can_upgrade: bool, prepaid_upgrade: bool, upgrade_separate: bool, auction_acquired: bool, gift: StarGift, message: Option<TextWithEntities>, convert_stars: Option<i64>, upgrade_msg_id: Option<i32>, upgrade_stars: Option<i64>, from_id: Option<Peer>, peer: Option<Peer>, saved_id: Option<i64>, prepaid_upgrade_hash: Option<String>, gift_msg_id: Option<i32>, to_id: Option<Peer>, gift_num: Option<i32> },
+    StarGift {
+        flags: i32,
+        name_hidden: bool,
+        saved: bool,
+        converted: bool,
+        upgraded: bool,
+        refunded: bool,
+        can_upgrade: bool,
+        prepaid_upgrade: bool,
+        upgrade_separate: bool,
+        auction_acquired: bool,
+        gift: StarGift,
+        message: Option<TextWithEntities>,
+        convert_stars: Option<i64>,
+        upgrade_msg_id: Option<i32>,
+        upgrade_stars: Option<i64>,
+        from_id: Option<Peer>,
+        peer: Option<Peer>,
+        saved_id: Option<i64>,
+        prepaid_upgrade_hash: Option<String>,
+        gift_msg_id: Option<i32>,
+        to_id: Option<Peer>,
+        gift_num: Option<i32>,
+    },
     /// `messageActionPrizeStars#b00c47a2`
-    PrizeStars { flags: i32, unclaimed: bool, stars: i64, transaction_id: String, boost_peer: Peer, giveaway_msg_id: i32 },
+    PrizeStars {
+        flags: i32,
+        unclaimed: bool,
+        stars: i64,
+        transaction_id: String,
+        boost_peer: Peer,
+        giveaway_msg_id: i32,
+    },
     /// `messageActionGiftStars#45d5b021`
-    GiftStars { flags: i32, currency: String, amount: i64, stars: i64, crypto_currency: Option<String>, crypto_amount: Option<i64>, transaction_id: Option<String> },
+    GiftStars {
+        flags: i32,
+        currency: String,
+        amount: i64,
+        stars: i64,
+        crypto_currency: Option<String>,
+        crypto_amount: Option<i64>,
+        transaction_id: Option<String>,
+    },
     /// `messageActionPaymentRefunded#41b3e202`
-    PaymentRefunded { flags: i32, peer: Peer, currency: String, total_amount: i64, payload: Option<Vec<u8>>, charge: PaymentCharge },
+    PaymentRefunded {
+        flags: i32,
+        peer: Peer,
+        currency: String,
+        total_amount: i64,
+        payload: Option<Vec<u8>>,
+        charge: PaymentCharge,
+    },
     /// `messageActionRequestedPeerSentMe#93b31848`
-    RequestedPeerSentMe { button_id: i32, peers: Vec<RequestedPeer> },
+    RequestedPeerSentMe {
+        button_id: i32,
+        peers: Vec<RequestedPeer>,
+    },
     /// `messageActionBoostApply#cc02aa6d`
     BoostApply { boosts: i32 },
     /// `messageActionGiveawayResults#87e2f155`
-    GiveawayResults { flags: i32, stars: bool, winners_count: i32, unclaimed_count: i32 },
+    GiveawayResults {
+        flags: i32,
+        stars: bool,
+        winners_count: i32,
+        unclaimed_count: i32,
+    },
     /// `messageActionGiveawayLaunch#a80f51e4`
     GiveawayLaunch { flags: i32, stars: Option<i64> },
     /// `messageActionGiftCode#31c48347`
-    GiftCode { flags: i32, via_giveaway: bool, unclaimed: bool, boost_peer: Option<Peer>, days: i32, slug: String, currency: Option<String>, amount: Option<i64>, crypto_currency: Option<String>, crypto_amount: Option<i64>, message: Option<TextWithEntities> },
+    GiftCode {
+        flags: i32,
+        via_giveaway: bool,
+        unclaimed: bool,
+        boost_peer: Option<Peer>,
+        days: i32,
+        slug: String,
+        currency: Option<String>,
+        amount: Option<i64>,
+        crypto_currency: Option<String>,
+        crypto_amount: Option<i64>,
+        message: Option<TextWithEntities>,
+    },
     /// `messageActionSetChatWallPaper#5060a3f4`
-    SetChatWallPaper { flags: i32, same: bool, for_both: bool, wallpaper: WallPaper },
+    SetChatWallPaper {
+        flags: i32,
+        same: bool,
+        for_both: bool,
+        wallpaper: WallPaper,
+    },
     /// `messageActionRequestedPeer#31518e9b`
     RequestedPeer { button_id: i32, peers: Vec<Peer> },
     /// `messageActionSuggestProfilePhoto#57de635e`
     SuggestProfilePhoto { photo: Photo },
     /// `messageActionTopicEdit#c0944820`
-    TopicEdit { flags: i32, title: Option<String>, icon_emoji_id: Option<i64>, closed: Option<bool>, hidden: Option<bool> },
+    TopicEdit {
+        flags: i32,
+        title: Option<String>,
+        icon_emoji_id: Option<i64>,
+        closed: Option<bool>,
+        hidden: Option<bool>,
+    },
     /// `messageActionTopicCreate#0d999256`
-    TopicCreate { flags: i32, title_missing: bool, title: String, icon_color: i32, icon_emoji_id: Option<i64> },
+    TopicCreate {
+        flags: i32,
+        title_missing: bool,
+        title: String,
+        icon_color: i32,
+        icon_emoji_id: Option<i64>,
+    },
     /// `messageActionGiftPremium#48e91302`
-    GiftPremium { flags: i32, currency: String, amount: i64, days: i32, crypto_currency: Option<String>, crypto_amount: Option<i64>, message: Option<TextWithEntities> },
+    GiftPremium {
+        flags: i32,
+        currency: String,
+        amount: i64,
+        days: i32,
+        crypto_currency: Option<String>,
+        crypto_amount: Option<i64>,
+        message: Option<TextWithEntities>,
+    },
     /// `messageActionWebViewDataSent#b4c38cb5`
     WebViewDataSent { text: String },
     /// `messageActionWebViewDataSentMe#47dd8079`
@@ -6826,33 +8461,85 @@ pub enum MessageAction {
     /// `messageActionSetChatTheme#b91bbd3a`
     SetChatTheme { theme: ChatTheme },
     /// `messageActionGroupCallScheduled#b3a07661`
-    GroupCallScheduled { call: InputGroupCall, schedule_date: i32 },
+    GroupCallScheduled {
+        call: InputGroupCall,
+        schedule_date: i32,
+    },
     /// `messageActionSetMessagesTTL#3c134d7b`
-    SetMessagesTTL { flags: i32, period: i32, auto_setting_from: Option<i64> },
+    SetMessagesTTL {
+        flags: i32,
+        period: i32,
+        auto_setting_from: Option<i64>,
+    },
     /// `messageActionInviteToGroupCall#502f92f7`
-    InviteToGroupCall { call: InputGroupCall, users: Vec<i64> },
+    InviteToGroupCall {
+        call: InputGroupCall,
+        users: Vec<i64>,
+    },
     /// `messageActionGroupCall#7a0d7f42`
-    GroupCall { flags: i32, call: InputGroupCall, duration: Option<i32> },
+    GroupCall {
+        flags: i32,
+        call: InputGroupCall,
+        duration: Option<i32>,
+    },
     /// `messageActionGeoProximityReached#98e0d697`
-    GeoProximityReached { from_id: Peer, to_id: Peer, distance: i32 },
+    GeoProximityReached {
+        from_id: Peer,
+        to_id: Peer,
+        distance: i32,
+    },
     /// `messageActionContactSignUp#f3f25f76`
     ContactSignUp,
     /// `messageActionSecureValuesSent#d95c6154`
     SecureValuesSent { types: Vec<SecureValueType> },
     /// `messageActionSecureValuesSentMe#1b287353`
-    SecureValuesSentMe { values: Vec<SecureValue>, credentials: SecureCredentialsEncrypted },
+    SecureValuesSentMe {
+        values: Vec<SecureValue>,
+        credentials: SecureCredentialsEncrypted,
+    },
     /// `messageActionBotAllowed#c516d679`
-    BotAllowed { flags: i32, attach_menu: bool, from_request: bool, domain: Option<String>, app: Option<BotApp> },
+    BotAllowed {
+        flags: i32,
+        attach_menu: bool,
+        from_request: bool,
+        domain: Option<String>,
+        app: Option<BotApp>,
+    },
     /// `messageActionCustomAction#fae69f56`
     CustomAction { message: String },
     /// `messageActionScreenshotTaken#4792929b`
     ScreenshotTaken,
     /// `messageActionPhoneCall#80e11a7f`
-    PhoneCall { flags: i32, video: bool, call_id: i64, reason: Option<PhoneCallDiscardReason>, duration: Option<i32> },
+    PhoneCall {
+        flags: i32,
+        video: bool,
+        call_id: i64,
+        reason: Option<PhoneCallDiscardReason>,
+        duration: Option<i32>,
+    },
     /// `messageActionPaymentSent#c624b16e`
-    PaymentSent { flags: i32, recurring_init: bool, recurring_used: bool, currency: String, total_amount: i64, invoice_slug: Option<String>, subscription_until_date: Option<i32> },
+    PaymentSent {
+        flags: i32,
+        recurring_init: bool,
+        recurring_used: bool,
+        currency: String,
+        total_amount: i64,
+        invoice_slug: Option<String>,
+        subscription_until_date: Option<i32>,
+    },
     /// `messageActionPaymentSentMe#ffa00ccc`
-    PaymentSentMe { flags: i32, recurring_init: bool, recurring_used: bool, currency: String, total_amount: i64, payload: Vec<u8>, info: Option<PaymentRequestedInfo>, shipping_option_id: Option<String>, charge: PaymentCharge, subscription_until_date: Option<i32> },
+    PaymentSentMe {
+        flags: i32,
+        recurring_init: bool,
+        recurring_used: bool,
+        currency: String,
+        total_amount: i64,
+        payload: Vec<u8>,
+        info: Option<PaymentRequestedInfo>,
+        shipping_option_id: Option<String>,
+        charge: PaymentCharge,
+        subscription_until_date: Option<i32>,
+    },
     /// `messageActionGameScore#92a72876`
     GameScore { game_id: i64, score: i32 },
     /// `messageActionHistoryClear#9fbab604`
@@ -6890,777 +8577,977 @@ impl MessageAction {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_ACTION_CHAT_JOINED_VIA_COMMUNITY_ID => {
-    let community_id = r.read_i64()?;
+                let community_id = r.read_i64()?;
                 Ok(MessageAction::ChatJoinedViaCommunity { community_id })
             }
             MESSAGE_ACTION_CHANGE_COMMUNITY_ID => {
-    let flags = r.read_i32()?;
-    let community_id = if flags & (1 << 0) != 0 {
-        let community_id = r.read_i64()?;
-        Some(community_id)
-    } else {
-        None
-    };
-                Ok(MessageAction::ChangeCommunity { flags, community_id })
+                let flags = r.read_i32()?;
+                let community_id = if flags & (1 << 0) != 0 {
+                    let community_id = r.read_i64()?;
+                    Some(community_id)
+                } else {
+                    None
+                };
+                Ok(MessageAction::ChangeCommunity {
+                    flags,
+                    community_id,
+                })
             }
             MESSAGE_ACTION_MANAGED_BOT_CREATED_ID => {
-    let bot_id = r.read_i64()?;
+                let bot_id = r.read_i64()?;
                 Ok(MessageAction::ManagedBotCreated { bot_id })
             }
             MESSAGE_ACTION_POLL_DELETE_ANSWER_ID => {
-    let answer = PollAnswer::read_from(r)?;
+                let answer = PollAnswer::read_from(r)?;
                 Ok(MessageAction::PollDeleteAnswer { answer })
             }
             MESSAGE_ACTION_POLL_APPEND_ANSWER_ID => {
-    let answer = PollAnswer::read_from(r)?;
+                let answer = PollAnswer::read_from(r)?;
                 Ok(MessageAction::PollAppendAnswer { answer })
             }
             MESSAGE_ACTION_NO_FORWARDS_REQUEST_ID => {
-    let flags = r.read_i32()?;
-    let expired = flags & (1 << 0) != 0;
-    let prev_value = r.read_u32()? == 0x997275b5; // boolTrue
-    let new_value = r.read_u32()? == 0x997275b5; // boolTrue
-                Ok(MessageAction::NoForwardsRequest { flags, expired, prev_value, new_value })
+                let flags = r.read_i32()?;
+                let expired = flags & (1 << 0) != 0;
+                let prev_value = r.read_u32()? == 0x997275b5; // boolTrue
+                let new_value = r.read_u32()? == 0x997275b5; // boolTrue
+                Ok(MessageAction::NoForwardsRequest {
+                    flags,
+                    expired,
+                    prev_value,
+                    new_value,
+                })
             }
             MESSAGE_ACTION_NO_FORWARDS_TOGGLE_ID => {
-    let prev_value = r.read_u32()? == 0x997275b5; // boolTrue
-    let new_value = r.read_u32()? == 0x997275b5; // boolTrue
-                Ok(MessageAction::NoForwardsToggle { prev_value, new_value })
+                let prev_value = r.read_u32()? == 0x997275b5; // boolTrue
+                let new_value = r.read_u32()? == 0x997275b5; // boolTrue
+                Ok(MessageAction::NoForwardsToggle {
+                    prev_value,
+                    new_value,
+                })
             }
             MESSAGE_ACTION_CHANGE_CREATOR_ID => {
-    let new_creator_id = r.read_i64()?;
+                let new_creator_id = r.read_i64()?;
                 Ok(MessageAction::ChangeCreator { new_creator_id })
             }
             MESSAGE_ACTION_NEW_CREATOR_PENDING_ID => {
-    let new_creator_id = r.read_i64()?;
+                let new_creator_id = r.read_i64()?;
                 Ok(MessageAction::NewCreatorPending { new_creator_id })
             }
             MESSAGE_ACTION_STAR_GIFT_PURCHASE_OFFER_DECLINED_ID => {
-    let flags = r.read_i32()?;
-    let expired = flags & (1 << 0) != 0;
-    let gift = StarGift::read_from(r)?;
-    let price = StarsAmount::read_from(r)?;
-                Ok(MessageAction::StarGiftPurchaseOfferDeclined { flags, expired, gift, price })
+                let flags = r.read_i32()?;
+                let expired = flags & (1 << 0) != 0;
+                let gift = StarGift::read_from(r)?;
+                let price = StarsAmount::read_from(r)?;
+                Ok(MessageAction::StarGiftPurchaseOfferDeclined {
+                    flags,
+                    expired,
+                    gift,
+                    price,
+                })
             }
             MESSAGE_ACTION_STAR_GIFT_PURCHASE_OFFER_ID => {
-    let flags = r.read_i32()?;
-    let accepted = flags & (1 << 0) != 0;
-    let declined = flags & (1 << 1) != 0;
-    let gift = StarGift::read_from(r)?;
-    let price = StarsAmount::read_from(r)?;
-    let expires_at = r.read_i32()?;
-                Ok(MessageAction::StarGiftPurchaseOffer { flags, accepted, declined, gift, price, expires_at })
+                let flags = r.read_i32()?;
+                let accepted = flags & (1 << 0) != 0;
+                let declined = flags & (1 << 1) != 0;
+                let gift = StarGift::read_from(r)?;
+                let price = StarsAmount::read_from(r)?;
+                let expires_at = r.read_i32()?;
+                Ok(MessageAction::StarGiftPurchaseOffer {
+                    flags,
+                    accepted,
+                    declined,
+                    gift,
+                    price,
+                    expires_at,
+                })
             }
             MESSAGE_ACTION_SUGGEST_BIRTHDAY_ID => {
-    let birthday = Birthday::read_from(r)?;
+                let birthday = Birthday::read_from(r)?;
                 Ok(MessageAction::SuggestBirthday { birthday })
             }
             MESSAGE_ACTION_GIFT_TON_ID => {
-    let flags = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let crypto_currency = String::from_utf8(r.read_bytes()?)?;
-    let crypto_amount = r.read_i64()?;
-    let transaction_id = if flags & (1 << 0) != 0 {
-        let transaction_id = String::from_utf8(r.read_bytes()?)?;
-        Some(transaction_id)
-    } else {
-        None
-    };
-                Ok(MessageAction::GiftTon { flags, currency, amount, crypto_currency, crypto_amount, transaction_id })
+                let flags = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let crypto_currency = String::from_utf8(r.read_bytes()?)?;
+                let crypto_amount = r.read_i64()?;
+                let transaction_id = if flags & (1 << 0) != 0 {
+                    let transaction_id = String::from_utf8(r.read_bytes()?)?;
+                    Some(transaction_id)
+                } else {
+                    None
+                };
+                Ok(MessageAction::GiftTon {
+                    flags,
+                    currency,
+                    amount,
+                    crypto_currency,
+                    crypto_amount,
+                    transaction_id,
+                })
             }
             MESSAGE_ACTION_SUGGESTED_POST_REFUND_ID => {
-    let flags = r.read_i32()?;
-    let payer_initiated = flags & (1 << 0) != 0;
-                Ok(MessageAction::SuggestedPostRefund { flags, payer_initiated })
+                let flags = r.read_i32()?;
+                let payer_initiated = flags & (1 << 0) != 0;
+                Ok(MessageAction::SuggestedPostRefund {
+                    flags,
+                    payer_initiated,
+                })
             }
             MESSAGE_ACTION_SUGGESTED_POST_SUCCESS_ID => {
-    let price = StarsAmount::read_from(r)?;
+                let price = StarsAmount::read_from(r)?;
                 Ok(MessageAction::SuggestedPostSuccess { price })
             }
             MESSAGE_ACTION_SUGGESTED_POST_APPROVAL_ID => {
-    let flags = r.read_i32()?;
-    let rejected = flags & (1 << 0) != 0;
-    let balance_too_low = flags & (1 << 1) != 0;
-    let reject_comment = if flags & (1 << 2) != 0 {
-        let reject_comment = String::from_utf8(r.read_bytes()?)?;
-        Some(reject_comment)
-    } else {
-        None
-    };
-    let schedule_date = if flags & (1 << 3) != 0 {
-        let schedule_date = r.read_i32()?;
-        Some(schedule_date)
-    } else {
-        None
-    };
-    let price = if flags & (1 << 4) != 0 {
-        let price = StarsAmount::read_from(r)?;
-        Some(price)
-    } else {
-        None
-    };
-                Ok(MessageAction::SuggestedPostApproval { flags, rejected, balance_too_low, reject_comment, schedule_date, price })
+                let flags = r.read_i32()?;
+                let rejected = flags & (1 << 0) != 0;
+                let balance_too_low = flags & (1 << 1) != 0;
+                let reject_comment = if flags & (1 << 2) != 0 {
+                    let reject_comment = String::from_utf8(r.read_bytes()?)?;
+                    Some(reject_comment)
+                } else {
+                    None
+                };
+                let schedule_date = if flags & (1 << 3) != 0 {
+                    let schedule_date = r.read_i32()?;
+                    Some(schedule_date)
+                } else {
+                    None
+                };
+                let price = if flags & (1 << 4) != 0 {
+                    let price = StarsAmount::read_from(r)?;
+                    Some(price)
+                } else {
+                    None
+                };
+                Ok(MessageAction::SuggestedPostApproval {
+                    flags,
+                    rejected,
+                    balance_too_low,
+                    reject_comment,
+                    schedule_date,
+                    price,
+                })
             }
             MESSAGE_ACTION_TODO_APPEND_TASKS_ID => {
-    let n = r.read_vector_header()?;
-    let mut list = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        list.push(TodoItem::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut list = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    list.push(TodoItem::read_from(r)?);
+                }
                 Ok(MessageAction::TodoAppendTasks { list })
             }
             MESSAGE_ACTION_TODO_COMPLETIONS_ID => {
-    let n = r.read_vector_header()?;
-    let mut completed = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        completed.push(r.read_i32()?);
-    }
-    let n = r.read_vector_header()?;
-    let mut incompleted = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        incompleted.push(r.read_i32()?);
-    }
-                Ok(MessageAction::TodoCompletions { completed, incompleted })
+                let n = r.read_vector_header()?;
+                let mut completed = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    completed.push(r.read_i32()?);
+                }
+                let n = r.read_vector_header()?;
+                let mut incompleted = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    incompleted.push(r.read_i32()?);
+                }
+                Ok(MessageAction::TodoCompletions {
+                    completed,
+                    incompleted,
+                })
             }
             MESSAGE_ACTION_CONFERENCE_CALL_ID => {
-    let flags = r.read_i32()?;
-    let missed = flags & (1 << 0) != 0;
-    let active = flags & (1 << 1) != 0;
-    let video = flags & (1 << 4) != 0;
-    let call_id = r.read_i64()?;
-    let duration = if flags & (1 << 2) != 0 {
-        let duration = r.read_i32()?;
-        Some(duration)
-    } else {
-        None
-    };
-    let other_participants = if flags & (1 << 3) != 0 {
-        let n = r.read_vector_header()?;
-        let mut other_participants = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            other_participants.push(Peer::read_from(r)?);
-        }
-        Some(other_participants)
-    } else {
-        None
-    };
-                Ok(MessageAction::ConferenceCall { flags, missed, active, video, call_id, duration, other_participants })
+                let flags = r.read_i32()?;
+                let missed = flags & (1 << 0) != 0;
+                let active = flags & (1 << 1) != 0;
+                let video = flags & (1 << 4) != 0;
+                let call_id = r.read_i64()?;
+                let duration = if flags & (1 << 2) != 0 {
+                    let duration = r.read_i32()?;
+                    Some(duration)
+                } else {
+                    None
+                };
+                let other_participants = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut other_participants = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        other_participants.push(Peer::read_from(r)?);
+                    }
+                    Some(other_participants)
+                } else {
+                    None
+                };
+                Ok(MessageAction::ConferenceCall {
+                    flags,
+                    missed,
+                    active,
+                    video,
+                    call_id,
+                    duration,
+                    other_participants,
+                })
             }
             MESSAGE_ACTION_PAID_MESSAGES_PRICE_ID => {
-    let flags = r.read_i32()?;
-    let broadcast_messages_allowed = flags & (1 << 0) != 0;
-    let stars = r.read_i64()?;
-                Ok(MessageAction::PaidMessagesPrice { flags, broadcast_messages_allowed, stars })
+                let flags = r.read_i32()?;
+                let broadcast_messages_allowed = flags & (1 << 0) != 0;
+                let stars = r.read_i64()?;
+                Ok(MessageAction::PaidMessagesPrice {
+                    flags,
+                    broadcast_messages_allowed,
+                    stars,
+                })
             }
             MESSAGE_ACTION_PAID_MESSAGES_REFUNDED_ID => {
-    let count = r.read_i32()?;
-    let stars = r.read_i64()?;
+                let count = r.read_i32()?;
+                let stars = r.read_i64()?;
                 Ok(MessageAction::PaidMessagesRefunded { count, stars })
             }
             MESSAGE_ACTION_STAR_GIFT_UNIQUE_ID => {
-    let flags = r.read_i32()?;
-    let upgrade = flags & (1 << 0) != 0;
-    let transferred = flags & (1 << 1) != 0;
-    let saved = flags & (1 << 2) != 0;
-    let refunded = flags & (1 << 5) != 0;
-    let prepaid_upgrade = flags & (1 << 11) != 0;
-    let assigned = flags & (1 << 13) != 0;
-    let from_offer = flags & (1 << 14) != 0;
-    let craft = flags & (1 << 16) != 0;
-    let name_hidden = flags & (1 << 17) != 0;
-    let gift = StarGift::read_from(r)?;
-    let can_export_at = if flags & (1 << 3) != 0 {
-        let can_export_at = r.read_i32()?;
-        Some(can_export_at)
-    } else {
-        None
-    };
-    let transfer_stars = if flags & (1 << 4) != 0 {
-        let transfer_stars = r.read_i64()?;
-        Some(transfer_stars)
-    } else {
-        None
-    };
-    let from_id = if flags & (1 << 6) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let peer = if flags & (1 << 7) != 0 {
-        let peer = Peer::read_from(r)?;
-        Some(peer)
-    } else {
-        None
-    };
-    let saved_id = if flags & (1 << 7) != 0 {
-        let saved_id = r.read_i64()?;
-        Some(saved_id)
-    } else {
-        None
-    };
-    let resale_amount = if flags & (1 << 8) != 0 {
-        let resale_amount = StarsAmount::read_from(r)?;
-        Some(resale_amount)
-    } else {
-        None
-    };
-    let can_transfer_at = if flags & (1 << 9) != 0 {
-        let can_transfer_at = r.read_i32()?;
-        Some(can_transfer_at)
-    } else {
-        None
-    };
-    let can_resell_at = if flags & (1 << 10) != 0 {
-        let can_resell_at = r.read_i32()?;
-        Some(can_resell_at)
-    } else {
-        None
-    };
-    let drop_original_details_stars = if flags & (1 << 12) != 0 {
-        let drop_original_details_stars = r.read_i64()?;
-        Some(drop_original_details_stars)
-    } else {
-        None
-    };
-    let can_craft_at = if flags & (1 << 15) != 0 {
-        let can_craft_at = r.read_i32()?;
-        Some(can_craft_at)
-    } else {
-        None
-    };
-    let message = if flags & (1 << 18) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-                Ok(MessageAction::StarGiftUnique { flags, upgrade, transferred, saved, refunded, prepaid_upgrade, assigned, from_offer, craft, name_hidden, gift, can_export_at, transfer_stars, from_id, peer, saved_id, resale_amount, can_transfer_at, can_resell_at, drop_original_details_stars, can_craft_at, message })
+                let flags = r.read_i32()?;
+                let upgrade = flags & (1 << 0) != 0;
+                let transferred = flags & (1 << 1) != 0;
+                let saved = flags & (1 << 2) != 0;
+                let refunded = flags & (1 << 5) != 0;
+                let prepaid_upgrade = flags & (1 << 11) != 0;
+                let assigned = flags & (1 << 13) != 0;
+                let from_offer = flags & (1 << 14) != 0;
+                let craft = flags & (1 << 16) != 0;
+                let name_hidden = flags & (1 << 17) != 0;
+                let gift = StarGift::read_from(r)?;
+                let can_export_at = if flags & (1 << 3) != 0 {
+                    let can_export_at = r.read_i32()?;
+                    Some(can_export_at)
+                } else {
+                    None
+                };
+                let transfer_stars = if flags & (1 << 4) != 0 {
+                    let transfer_stars = r.read_i64()?;
+                    Some(transfer_stars)
+                } else {
+                    None
+                };
+                let from_id = if flags & (1 << 6) != 0 {
+                    let from_id = Peer::read_from(r)?;
+                    Some(from_id)
+                } else {
+                    None
+                };
+                let peer = if flags & (1 << 7) != 0 {
+                    let peer = Peer::read_from(r)?;
+                    Some(peer)
+                } else {
+                    None
+                };
+                let saved_id = if flags & (1 << 7) != 0 {
+                    let saved_id = r.read_i64()?;
+                    Some(saved_id)
+                } else {
+                    None
+                };
+                let resale_amount = if flags & (1 << 8) != 0 {
+                    let resale_amount = StarsAmount::read_from(r)?;
+                    Some(resale_amount)
+                } else {
+                    None
+                };
+                let can_transfer_at = if flags & (1 << 9) != 0 {
+                    let can_transfer_at = r.read_i32()?;
+                    Some(can_transfer_at)
+                } else {
+                    None
+                };
+                let can_resell_at = if flags & (1 << 10) != 0 {
+                    let can_resell_at = r.read_i32()?;
+                    Some(can_resell_at)
+                } else {
+                    None
+                };
+                let drop_original_details_stars = if flags & (1 << 12) != 0 {
+                    let drop_original_details_stars = r.read_i64()?;
+                    Some(drop_original_details_stars)
+                } else {
+                    None
+                };
+                let can_craft_at = if flags & (1 << 15) != 0 {
+                    let can_craft_at = r.read_i32()?;
+                    Some(can_craft_at)
+                } else {
+                    None
+                };
+                let message = if flags & (1 << 18) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                Ok(MessageAction::StarGiftUnique {
+                    flags,
+                    upgrade,
+                    transferred,
+                    saved,
+                    refunded,
+                    prepaid_upgrade,
+                    assigned,
+                    from_offer,
+                    craft,
+                    name_hidden,
+                    gift,
+                    can_export_at,
+                    transfer_stars,
+                    from_id,
+                    peer,
+                    saved_id,
+                    resale_amount,
+                    can_transfer_at,
+                    can_resell_at,
+                    drop_original_details_stars,
+                    can_craft_at,
+                    message,
+                })
             }
             MESSAGE_ACTION_STAR_GIFT_ID => {
-    let flags = r.read_i32()?;
-    let name_hidden = flags & (1 << 0) != 0;
-    let saved = flags & (1 << 2) != 0;
-    let converted = flags & (1 << 3) != 0;
-    let upgraded = flags & (1 << 5) != 0;
-    let refunded = flags & (1 << 9) != 0;
-    let can_upgrade = flags & (1 << 10) != 0;
-    let prepaid_upgrade = flags & (1 << 13) != 0;
-    let upgrade_separate = flags & (1 << 16) != 0;
-    let auction_acquired = flags & (1 << 17) != 0;
-    let gift = StarGift::read_from(r)?;
-    let message = if flags & (1 << 1) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-    let convert_stars = if flags & (1 << 4) != 0 {
-        let convert_stars = r.read_i64()?;
-        Some(convert_stars)
-    } else {
-        None
-    };
-    let upgrade_msg_id = if flags & (1 << 5) != 0 {
-        let upgrade_msg_id = r.read_i32()?;
-        Some(upgrade_msg_id)
-    } else {
-        None
-    };
-    let upgrade_stars = if flags & (1 << 8) != 0 {
-        let upgrade_stars = r.read_i64()?;
-        Some(upgrade_stars)
-    } else {
-        None
-    };
-    let from_id = if flags & (1 << 11) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let peer = if flags & (1 << 12) != 0 {
-        let peer = Peer::read_from(r)?;
-        Some(peer)
-    } else {
-        None
-    };
-    let saved_id = if flags & (1 << 12) != 0 {
-        let saved_id = r.read_i64()?;
-        Some(saved_id)
-    } else {
-        None
-    };
-    let prepaid_upgrade_hash = if flags & (1 << 14) != 0 {
-        let prepaid_upgrade_hash = String::from_utf8(r.read_bytes()?)?;
-        Some(prepaid_upgrade_hash)
-    } else {
-        None
-    };
-    let gift_msg_id = if flags & (1 << 15) != 0 {
-        let gift_msg_id = r.read_i32()?;
-        Some(gift_msg_id)
-    } else {
-        None
-    };
-    let to_id = if flags & (1 << 18) != 0 {
-        let to_id = Peer::read_from(r)?;
-        Some(to_id)
-    } else {
-        None
-    };
-    let gift_num = if flags & (1 << 19) != 0 {
-        let gift_num = r.read_i32()?;
-        Some(gift_num)
-    } else {
-        None
-    };
-                Ok(MessageAction::StarGift { flags, name_hidden, saved, converted, upgraded, refunded, can_upgrade, prepaid_upgrade, upgrade_separate, auction_acquired, gift, message, convert_stars, upgrade_msg_id, upgrade_stars, from_id, peer, saved_id, prepaid_upgrade_hash, gift_msg_id, to_id, gift_num })
+                let flags = r.read_i32()?;
+                let name_hidden = flags & (1 << 0) != 0;
+                let saved = flags & (1 << 2) != 0;
+                let converted = flags & (1 << 3) != 0;
+                let upgraded = flags & (1 << 5) != 0;
+                let refunded = flags & (1 << 9) != 0;
+                let can_upgrade = flags & (1 << 10) != 0;
+                let prepaid_upgrade = flags & (1 << 13) != 0;
+                let upgrade_separate = flags & (1 << 16) != 0;
+                let auction_acquired = flags & (1 << 17) != 0;
+                let gift = StarGift::read_from(r)?;
+                let message = if flags & (1 << 1) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                let convert_stars = if flags & (1 << 4) != 0 {
+                    let convert_stars = r.read_i64()?;
+                    Some(convert_stars)
+                } else {
+                    None
+                };
+                let upgrade_msg_id = if flags & (1 << 5) != 0 {
+                    let upgrade_msg_id = r.read_i32()?;
+                    Some(upgrade_msg_id)
+                } else {
+                    None
+                };
+                let upgrade_stars = if flags & (1 << 8) != 0 {
+                    let upgrade_stars = r.read_i64()?;
+                    Some(upgrade_stars)
+                } else {
+                    None
+                };
+                let from_id = if flags & (1 << 11) != 0 {
+                    let from_id = Peer::read_from(r)?;
+                    Some(from_id)
+                } else {
+                    None
+                };
+                let peer = if flags & (1 << 12) != 0 {
+                    let peer = Peer::read_from(r)?;
+                    Some(peer)
+                } else {
+                    None
+                };
+                let saved_id = if flags & (1 << 12) != 0 {
+                    let saved_id = r.read_i64()?;
+                    Some(saved_id)
+                } else {
+                    None
+                };
+                let prepaid_upgrade_hash = if flags & (1 << 14) != 0 {
+                    let prepaid_upgrade_hash = String::from_utf8(r.read_bytes()?)?;
+                    Some(prepaid_upgrade_hash)
+                } else {
+                    None
+                };
+                let gift_msg_id = if flags & (1 << 15) != 0 {
+                    let gift_msg_id = r.read_i32()?;
+                    Some(gift_msg_id)
+                } else {
+                    None
+                };
+                let to_id = if flags & (1 << 18) != 0 {
+                    let to_id = Peer::read_from(r)?;
+                    Some(to_id)
+                } else {
+                    None
+                };
+                let gift_num = if flags & (1 << 19) != 0 {
+                    let gift_num = r.read_i32()?;
+                    Some(gift_num)
+                } else {
+                    None
+                };
+                Ok(MessageAction::StarGift {
+                    flags,
+                    name_hidden,
+                    saved,
+                    converted,
+                    upgraded,
+                    refunded,
+                    can_upgrade,
+                    prepaid_upgrade,
+                    upgrade_separate,
+                    auction_acquired,
+                    gift,
+                    message,
+                    convert_stars,
+                    upgrade_msg_id,
+                    upgrade_stars,
+                    from_id,
+                    peer,
+                    saved_id,
+                    prepaid_upgrade_hash,
+                    gift_msg_id,
+                    to_id,
+                    gift_num,
+                })
             }
             MESSAGE_ACTION_PRIZE_STARS_ID => {
-    let flags = r.read_i32()?;
-    let unclaimed = flags & (1 << 0) != 0;
-    let stars = r.read_i64()?;
-    let transaction_id = String::from_utf8(r.read_bytes()?)?;
-    let boost_peer = Peer::read_from(r)?;
-    let giveaway_msg_id = r.read_i32()?;
-                Ok(MessageAction::PrizeStars { flags, unclaimed, stars, transaction_id, boost_peer, giveaway_msg_id })
+                let flags = r.read_i32()?;
+                let unclaimed = flags & (1 << 0) != 0;
+                let stars = r.read_i64()?;
+                let transaction_id = String::from_utf8(r.read_bytes()?)?;
+                let boost_peer = Peer::read_from(r)?;
+                let giveaway_msg_id = r.read_i32()?;
+                Ok(MessageAction::PrizeStars {
+                    flags,
+                    unclaimed,
+                    stars,
+                    transaction_id,
+                    boost_peer,
+                    giveaway_msg_id,
+                })
             }
             MESSAGE_ACTION_GIFT_STARS_ID => {
-    let flags = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let stars = r.read_i64()?;
-    let crypto_currency = if flags & (1 << 0) != 0 {
-        let crypto_currency = String::from_utf8(r.read_bytes()?)?;
-        Some(crypto_currency)
-    } else {
-        None
-    };
-    let crypto_amount = if flags & (1 << 0) != 0 {
-        let crypto_amount = r.read_i64()?;
-        Some(crypto_amount)
-    } else {
-        None
-    };
-    let transaction_id = if flags & (1 << 1) != 0 {
-        let transaction_id = String::from_utf8(r.read_bytes()?)?;
-        Some(transaction_id)
-    } else {
-        None
-    };
-                Ok(MessageAction::GiftStars { flags, currency, amount, stars, crypto_currency, crypto_amount, transaction_id })
+                let flags = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let stars = r.read_i64()?;
+                let crypto_currency = if flags & (1 << 0) != 0 {
+                    let crypto_currency = String::from_utf8(r.read_bytes()?)?;
+                    Some(crypto_currency)
+                } else {
+                    None
+                };
+                let crypto_amount = if flags & (1 << 0) != 0 {
+                    let crypto_amount = r.read_i64()?;
+                    Some(crypto_amount)
+                } else {
+                    None
+                };
+                let transaction_id = if flags & (1 << 1) != 0 {
+                    let transaction_id = String::from_utf8(r.read_bytes()?)?;
+                    Some(transaction_id)
+                } else {
+                    None
+                };
+                Ok(MessageAction::GiftStars {
+                    flags,
+                    currency,
+                    amount,
+                    stars,
+                    crypto_currency,
+                    crypto_amount,
+                    transaction_id,
+                })
             }
             MESSAGE_ACTION_PAYMENT_REFUNDED_ID => {
-    let flags = r.read_i32()?;
-    let peer = Peer::read_from(r)?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let total_amount = r.read_i64()?;
-    let payload = if flags & (1 << 0) != 0 {
-        let payload = r.read_bytes()?;
-        Some(payload)
-    } else {
-        None
-    };
-    let charge = PaymentCharge::read_from(r)?;
-                Ok(MessageAction::PaymentRefunded { flags, peer, currency, total_amount, payload, charge })
+                let flags = r.read_i32()?;
+                let peer = Peer::read_from(r)?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let total_amount = r.read_i64()?;
+                let payload = if flags & (1 << 0) != 0 {
+                    let payload = r.read_bytes()?;
+                    Some(payload)
+                } else {
+                    None
+                };
+                let charge = PaymentCharge::read_from(r)?;
+                Ok(MessageAction::PaymentRefunded {
+                    flags,
+                    peer,
+                    currency,
+                    total_amount,
+                    payload,
+                    charge,
+                })
             }
             MESSAGE_ACTION_REQUESTED_PEER_SENT_ME_ID => {
-    let button_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        peers.push(RequestedPeer::read_from(r)?);
-    }
+                let button_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    peers.push(RequestedPeer::read_from(r)?);
+                }
                 Ok(MessageAction::RequestedPeerSentMe { button_id, peers })
             }
             MESSAGE_ACTION_BOOST_APPLY_ID => {
-    let boosts = r.read_i32()?;
+                let boosts = r.read_i32()?;
                 Ok(MessageAction::BoostApply { boosts })
             }
             MESSAGE_ACTION_GIVEAWAY_RESULTS_ID => {
-    let flags = r.read_i32()?;
-    let stars = flags & (1 << 0) != 0;
-    let winners_count = r.read_i32()?;
-    let unclaimed_count = r.read_i32()?;
-                Ok(MessageAction::GiveawayResults { flags, stars, winners_count, unclaimed_count })
+                let flags = r.read_i32()?;
+                let stars = flags & (1 << 0) != 0;
+                let winners_count = r.read_i32()?;
+                let unclaimed_count = r.read_i32()?;
+                Ok(MessageAction::GiveawayResults {
+                    flags,
+                    stars,
+                    winners_count,
+                    unclaimed_count,
+                })
             }
             MESSAGE_ACTION_GIVEAWAY_LAUNCH_ID => {
-    let flags = r.read_i32()?;
-    let stars = if flags & (1 << 0) != 0 {
-        let stars = r.read_i64()?;
-        Some(stars)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let stars = if flags & (1 << 0) != 0 {
+                    let stars = r.read_i64()?;
+                    Some(stars)
+                } else {
+                    None
+                };
                 Ok(MessageAction::GiveawayLaunch { flags, stars })
             }
             MESSAGE_ACTION_GIFT_CODE_ID => {
-    let flags = r.read_i32()?;
-    let via_giveaway = flags & (1 << 0) != 0;
-    let unclaimed = flags & (1 << 5) != 0;
-    let boost_peer = if flags & (1 << 1) != 0 {
-        let boost_peer = Peer::read_from(r)?;
-        Some(boost_peer)
-    } else {
-        None
-    };
-    let days = r.read_i32()?;
-    let slug = String::from_utf8(r.read_bytes()?)?;
-    let currency = if flags & (1 << 2) != 0 {
-        let currency = String::from_utf8(r.read_bytes()?)?;
-        Some(currency)
-    } else {
-        None
-    };
-    let amount = if flags & (1 << 2) != 0 {
-        let amount = r.read_i64()?;
-        Some(amount)
-    } else {
-        None
-    };
-    let crypto_currency = if flags & (1 << 3) != 0 {
-        let crypto_currency = String::from_utf8(r.read_bytes()?)?;
-        Some(crypto_currency)
-    } else {
-        None
-    };
-    let crypto_amount = if flags & (1 << 3) != 0 {
-        let crypto_amount = r.read_i64()?;
-        Some(crypto_amount)
-    } else {
-        None
-    };
-    let message = if flags & (1 << 4) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-                Ok(MessageAction::GiftCode { flags, via_giveaway, unclaimed, boost_peer, days, slug, currency, amount, crypto_currency, crypto_amount, message })
+                let flags = r.read_i32()?;
+                let via_giveaway = flags & (1 << 0) != 0;
+                let unclaimed = flags & (1 << 5) != 0;
+                let boost_peer = if flags & (1 << 1) != 0 {
+                    let boost_peer = Peer::read_from(r)?;
+                    Some(boost_peer)
+                } else {
+                    None
+                };
+                let days = r.read_i32()?;
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                let currency = if flags & (1 << 2) != 0 {
+                    let currency = String::from_utf8(r.read_bytes()?)?;
+                    Some(currency)
+                } else {
+                    None
+                };
+                let amount = if flags & (1 << 2) != 0 {
+                    let amount = r.read_i64()?;
+                    Some(amount)
+                } else {
+                    None
+                };
+                let crypto_currency = if flags & (1 << 3) != 0 {
+                    let crypto_currency = String::from_utf8(r.read_bytes()?)?;
+                    Some(crypto_currency)
+                } else {
+                    None
+                };
+                let crypto_amount = if flags & (1 << 3) != 0 {
+                    let crypto_amount = r.read_i64()?;
+                    Some(crypto_amount)
+                } else {
+                    None
+                };
+                let message = if flags & (1 << 4) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                Ok(MessageAction::GiftCode {
+                    flags,
+                    via_giveaway,
+                    unclaimed,
+                    boost_peer,
+                    days,
+                    slug,
+                    currency,
+                    amount,
+                    crypto_currency,
+                    crypto_amount,
+                    message,
+                })
             }
             MESSAGE_ACTION_SET_CHAT_WALL_PAPER_ID => {
-    let flags = r.read_i32()?;
-    let same = flags & (1 << 0) != 0;
-    let for_both = flags & (1 << 1) != 0;
-    let wallpaper = WallPaper::read_from(r)?;
-                Ok(MessageAction::SetChatWallPaper { flags, same, for_both, wallpaper })
+                let flags = r.read_i32()?;
+                let same = flags & (1 << 0) != 0;
+                let for_both = flags & (1 << 1) != 0;
+                let wallpaper = WallPaper::read_from(r)?;
+                Ok(MessageAction::SetChatWallPaper {
+                    flags,
+                    same,
+                    for_both,
+                    wallpaper,
+                })
             }
             MESSAGE_ACTION_REQUESTED_PEER_ID => {
-    let button_id = r.read_i32()?;
-    let n = r.read_vector_header()?;
-    let mut peers = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        peers.push(Peer::read_from(r)?);
-    }
+                let button_id = r.read_i32()?;
+                let n = r.read_vector_header()?;
+                let mut peers = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    peers.push(Peer::read_from(r)?);
+                }
                 Ok(MessageAction::RequestedPeer { button_id, peers })
             }
             MESSAGE_ACTION_SUGGEST_PROFILE_PHOTO_ID => {
-    let photo = Photo::read_from(r)?;
+                let photo = Photo::read_from(r)?;
                 Ok(MessageAction::SuggestProfilePhoto { photo })
             }
             MESSAGE_ACTION_TOPIC_EDIT_ID => {
-    let flags = r.read_i32()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let icon_emoji_id = if flags & (1 << 1) != 0 {
-        let icon_emoji_id = r.read_i64()?;
-        Some(icon_emoji_id)
-    } else {
-        None
-    };
-    let closed = if flags & (1 << 2) != 0 {
-        let closed = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(closed)
-    } else {
-        None
-    };
-    let hidden = if flags & (1 << 3) != 0 {
-        let hidden = r.read_u32()? == 0x997275b5; // boolTrue
-        Some(hidden)
-    } else {
-        None
-    };
-                Ok(MessageAction::TopicEdit { flags, title, icon_emoji_id, closed, hidden })
+                let flags = r.read_i32()?;
+                let title = if flags & (1 << 0) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let icon_emoji_id = if flags & (1 << 1) != 0 {
+                    let icon_emoji_id = r.read_i64()?;
+                    Some(icon_emoji_id)
+                } else {
+                    None
+                };
+                let closed = if flags & (1 << 2) != 0 {
+                    let closed = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(closed)
+                } else {
+                    None
+                };
+                let hidden = if flags & (1 << 3) != 0 {
+                    let hidden = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(hidden)
+                } else {
+                    None
+                };
+                Ok(MessageAction::TopicEdit {
+                    flags,
+                    title,
+                    icon_emoji_id,
+                    closed,
+                    hidden,
+                })
             }
             MESSAGE_ACTION_TOPIC_CREATE_ID => {
-    let flags = r.read_i32()?;
-    let title_missing = flags & (1 << 1) != 0;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let icon_color = r.read_i32()?;
-    let icon_emoji_id = if flags & (1 << 0) != 0 {
-        let icon_emoji_id = r.read_i64()?;
-        Some(icon_emoji_id)
-    } else {
-        None
-    };
-                Ok(MessageAction::TopicCreate { flags, title_missing, title, icon_color, icon_emoji_id })
+                let flags = r.read_i32()?;
+                let title_missing = flags & (1 << 1) != 0;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let icon_color = r.read_i32()?;
+                let icon_emoji_id = if flags & (1 << 0) != 0 {
+                    let icon_emoji_id = r.read_i64()?;
+                    Some(icon_emoji_id)
+                } else {
+                    None
+                };
+                Ok(MessageAction::TopicCreate {
+                    flags,
+                    title_missing,
+                    title,
+                    icon_color,
+                    icon_emoji_id,
+                })
             }
             MESSAGE_ACTION_GIFT_PREMIUM_ID => {
-    let flags = r.read_i32()?;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let amount = r.read_i64()?;
-    let days = r.read_i32()?;
-    let crypto_currency = if flags & (1 << 0) != 0 {
-        let crypto_currency = String::from_utf8(r.read_bytes()?)?;
-        Some(crypto_currency)
-    } else {
-        None
-    };
-    let crypto_amount = if flags & (1 << 0) != 0 {
-        let crypto_amount = r.read_i64()?;
-        Some(crypto_amount)
-    } else {
-        None
-    };
-    let message = if flags & (1 << 1) != 0 {
-        let message = TextWithEntities::read_from(r)?;
-        Some(message)
-    } else {
-        None
-    };
-                Ok(MessageAction::GiftPremium { flags, currency, amount, days, crypto_currency, crypto_amount, message })
+                let flags = r.read_i32()?;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let amount = r.read_i64()?;
+                let days = r.read_i32()?;
+                let crypto_currency = if flags & (1 << 0) != 0 {
+                    let crypto_currency = String::from_utf8(r.read_bytes()?)?;
+                    Some(crypto_currency)
+                } else {
+                    None
+                };
+                let crypto_amount = if flags & (1 << 0) != 0 {
+                    let crypto_amount = r.read_i64()?;
+                    Some(crypto_amount)
+                } else {
+                    None
+                };
+                let message = if flags & (1 << 1) != 0 {
+                    let message = TextWithEntities::read_from(r)?;
+                    Some(message)
+                } else {
+                    None
+                };
+                Ok(MessageAction::GiftPremium {
+                    flags,
+                    currency,
+                    amount,
+                    days,
+                    crypto_currency,
+                    crypto_amount,
+                    message,
+                })
             }
             MESSAGE_ACTION_WEB_VIEW_DATA_SENT_ID => {
-    let text = String::from_utf8(r.read_bytes()?)?;
+                let text = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageAction::WebViewDataSent { text })
             }
             MESSAGE_ACTION_WEB_VIEW_DATA_SENT_ME_ID => {
-    let text = String::from_utf8(r.read_bytes()?)?;
-    let data = String::from_utf8(r.read_bytes()?)?;
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let data = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageAction::WebViewDataSentMe { text, data })
             }
-            MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST_ID => {
-                Ok(MessageAction::ChatJoinedByRequest {  })
-            }
+            MESSAGE_ACTION_CHAT_JOINED_BY_REQUEST_ID => Ok(MessageAction::ChatJoinedByRequest {}),
             MESSAGE_ACTION_SET_CHAT_THEME_ID => {
-    let theme = ChatTheme::read_from(r)?;
+                let theme = ChatTheme::read_from(r)?;
                 Ok(MessageAction::SetChatTheme { theme })
             }
             MESSAGE_ACTION_GROUP_CALL_SCHEDULED_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let schedule_date = r.read_i32()?;
-                Ok(MessageAction::GroupCallScheduled { call, schedule_date })
+                let call = InputGroupCall::read_from(r)?;
+                let schedule_date = r.read_i32()?;
+                Ok(MessageAction::GroupCallScheduled {
+                    call,
+                    schedule_date,
+                })
             }
             MESSAGE_ACTION_SET_MESSAGES_TTL_ID => {
-    let flags = r.read_i32()?;
-    let period = r.read_i32()?;
-    let auto_setting_from = if flags & (1 << 0) != 0 {
-        let auto_setting_from = r.read_i64()?;
-        Some(auto_setting_from)
-    } else {
-        None
-    };
-                Ok(MessageAction::SetMessagesTTL { flags, period, auto_setting_from })
+                let flags = r.read_i32()?;
+                let period = r.read_i32()?;
+                let auto_setting_from = if flags & (1 << 0) != 0 {
+                    let auto_setting_from = r.read_i64()?;
+                    Some(auto_setting_from)
+                } else {
+                    None
+                };
+                Ok(MessageAction::SetMessagesTTL {
+                    flags,
+                    period,
+                    auto_setting_from,
+                })
             }
             MESSAGE_ACTION_INVITE_TO_GROUP_CALL_ID => {
-    let call = InputGroupCall::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(r.read_i64()?);
-    }
+                let call = InputGroupCall::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(r.read_i64()?);
+                }
                 Ok(MessageAction::InviteToGroupCall { call, users })
             }
             MESSAGE_ACTION_GROUP_CALL_ID => {
-    let flags = r.read_i32()?;
-    let call = InputGroupCall::read_from(r)?;
-    let duration = if flags & (1 << 0) != 0 {
-        let duration = r.read_i32()?;
-        Some(duration)
-    } else {
-        None
-    };
-                Ok(MessageAction::GroupCall { flags, call, duration })
+                let flags = r.read_i32()?;
+                let call = InputGroupCall::read_from(r)?;
+                let duration = if flags & (1 << 0) != 0 {
+                    let duration = r.read_i32()?;
+                    Some(duration)
+                } else {
+                    None
+                };
+                Ok(MessageAction::GroupCall {
+                    flags,
+                    call,
+                    duration,
+                })
             }
             MESSAGE_ACTION_GEO_PROXIMITY_REACHED_ID => {
-    let from_id = Peer::read_from(r)?;
-    let to_id = Peer::read_from(r)?;
-    let distance = r.read_i32()?;
-                Ok(MessageAction::GeoProximityReached { from_id, to_id, distance })
+                let from_id = Peer::read_from(r)?;
+                let to_id = Peer::read_from(r)?;
+                let distance = r.read_i32()?;
+                Ok(MessageAction::GeoProximityReached {
+                    from_id,
+                    to_id,
+                    distance,
+                })
             }
-            MESSAGE_ACTION_CONTACT_SIGN_UP_ID => {
-                Ok(MessageAction::ContactSignUp {  })
-            }
+            MESSAGE_ACTION_CONTACT_SIGN_UP_ID => Ok(MessageAction::ContactSignUp {}),
             MESSAGE_ACTION_SECURE_VALUES_SENT_ID => {
-    let n = r.read_vector_header()?;
-    let mut types = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        types.push(SecureValueType::read_from(r)?);
-    }
+                let n = r.read_vector_header()?;
+                let mut types = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    types.push(SecureValueType::read_from(r)?);
+                }
                 Ok(MessageAction::SecureValuesSent { types })
             }
             MESSAGE_ACTION_SECURE_VALUES_SENT_ME_ID => {
-    let n = r.read_vector_header()?;
-    let mut values = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        values.push(SecureValue::read_from(r)?);
-    }
-    let credentials = SecureCredentialsEncrypted::read_from(r)?;
-                Ok(MessageAction::SecureValuesSentMe { values, credentials })
+                let n = r.read_vector_header()?;
+                let mut values = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    values.push(SecureValue::read_from(r)?);
+                }
+                let credentials = SecureCredentialsEncrypted::read_from(r)?;
+                Ok(MessageAction::SecureValuesSentMe {
+                    values,
+                    credentials,
+                })
             }
             MESSAGE_ACTION_BOT_ALLOWED_ID => {
-    let flags = r.read_i32()?;
-    let attach_menu = flags & (1 << 1) != 0;
-    let from_request = flags & (1 << 3) != 0;
-    let domain = if flags & (1 << 0) != 0 {
-        let domain = String::from_utf8(r.read_bytes()?)?;
-        Some(domain)
-    } else {
-        None
-    };
-    let app = if flags & (1 << 2) != 0 {
-        let app = BotApp::read_from(r)?;
-        Some(app)
-    } else {
-        None
-    };
-                Ok(MessageAction::BotAllowed { flags, attach_menu, from_request, domain, app })
+                let flags = r.read_i32()?;
+                let attach_menu = flags & (1 << 1) != 0;
+                let from_request = flags & (1 << 3) != 0;
+                let domain = if flags & (1 << 0) != 0 {
+                    let domain = String::from_utf8(r.read_bytes()?)?;
+                    Some(domain)
+                } else {
+                    None
+                };
+                let app = if flags & (1 << 2) != 0 {
+                    let app = BotApp::read_from(r)?;
+                    Some(app)
+                } else {
+                    None
+                };
+                Ok(MessageAction::BotAllowed {
+                    flags,
+                    attach_menu,
+                    from_request,
+                    domain,
+                    app,
+                })
             }
             MESSAGE_ACTION_CUSTOM_ACTION_ID => {
-    let message = String::from_utf8(r.read_bytes()?)?;
+                let message = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageAction::CustomAction { message })
             }
-            MESSAGE_ACTION_SCREENSHOT_TAKEN_ID => {
-                Ok(MessageAction::ScreenshotTaken {  })
-            }
+            MESSAGE_ACTION_SCREENSHOT_TAKEN_ID => Ok(MessageAction::ScreenshotTaken {}),
             MESSAGE_ACTION_PHONE_CALL_ID => {
-    let flags = r.read_i32()?;
-    let video = flags & (1 << 2) != 0;
-    let call_id = r.read_i64()?;
-    let reason = if flags & (1 << 0) != 0 {
-        let reason = PhoneCallDiscardReason::read_from(r)?;
-        Some(reason)
-    } else {
-        None
-    };
-    let duration = if flags & (1 << 1) != 0 {
-        let duration = r.read_i32()?;
-        Some(duration)
-    } else {
-        None
-    };
-                Ok(MessageAction::PhoneCall { flags, video, call_id, reason, duration })
+                let flags = r.read_i32()?;
+                let video = flags & (1 << 2) != 0;
+                let call_id = r.read_i64()?;
+                let reason = if flags & (1 << 0) != 0 {
+                    let reason = PhoneCallDiscardReason::read_from(r)?;
+                    Some(reason)
+                } else {
+                    None
+                };
+                let duration = if flags & (1 << 1) != 0 {
+                    let duration = r.read_i32()?;
+                    Some(duration)
+                } else {
+                    None
+                };
+                Ok(MessageAction::PhoneCall {
+                    flags,
+                    video,
+                    call_id,
+                    reason,
+                    duration,
+                })
             }
             MESSAGE_ACTION_PAYMENT_SENT_ID => {
-    let flags = r.read_i32()?;
-    let recurring_init = flags & (1 << 2) != 0;
-    let recurring_used = flags & (1 << 3) != 0;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let total_amount = r.read_i64()?;
-    let invoice_slug = if flags & (1 << 0) != 0 {
-        let invoice_slug = String::from_utf8(r.read_bytes()?)?;
-        Some(invoice_slug)
-    } else {
-        None
-    };
-    let subscription_until_date = if flags & (1 << 4) != 0 {
-        let subscription_until_date = r.read_i32()?;
-        Some(subscription_until_date)
-    } else {
-        None
-    };
-                Ok(MessageAction::PaymentSent { flags, recurring_init, recurring_used, currency, total_amount, invoice_slug, subscription_until_date })
+                let flags = r.read_i32()?;
+                let recurring_init = flags & (1 << 2) != 0;
+                let recurring_used = flags & (1 << 3) != 0;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let total_amount = r.read_i64()?;
+                let invoice_slug = if flags & (1 << 0) != 0 {
+                    let invoice_slug = String::from_utf8(r.read_bytes()?)?;
+                    Some(invoice_slug)
+                } else {
+                    None
+                };
+                let subscription_until_date = if flags & (1 << 4) != 0 {
+                    let subscription_until_date = r.read_i32()?;
+                    Some(subscription_until_date)
+                } else {
+                    None
+                };
+                Ok(MessageAction::PaymentSent {
+                    flags,
+                    recurring_init,
+                    recurring_used,
+                    currency,
+                    total_amount,
+                    invoice_slug,
+                    subscription_until_date,
+                })
             }
             MESSAGE_ACTION_PAYMENT_SENT_ME_ID => {
-    let flags = r.read_i32()?;
-    let recurring_init = flags & (1 << 2) != 0;
-    let recurring_used = flags & (1 << 3) != 0;
-    let currency = String::from_utf8(r.read_bytes()?)?;
-    let total_amount = r.read_i64()?;
-    let payload = r.read_bytes()?;
-    let info = if flags & (1 << 0) != 0 {
-        let info = PaymentRequestedInfo::read_from(r)?;
-        Some(info)
-    } else {
-        None
-    };
-    let shipping_option_id = if flags & (1 << 1) != 0 {
-        let shipping_option_id = String::from_utf8(r.read_bytes()?)?;
-        Some(shipping_option_id)
-    } else {
-        None
-    };
-    let charge = PaymentCharge::read_from(r)?;
-    let subscription_until_date = if flags & (1 << 4) != 0 {
-        let subscription_until_date = r.read_i32()?;
-        Some(subscription_until_date)
-    } else {
-        None
-    };
-                Ok(MessageAction::PaymentSentMe { flags, recurring_init, recurring_used, currency, total_amount, payload, info, shipping_option_id, charge, subscription_until_date })
+                let flags = r.read_i32()?;
+                let recurring_init = flags & (1 << 2) != 0;
+                let recurring_used = flags & (1 << 3) != 0;
+                let currency = String::from_utf8(r.read_bytes()?)?;
+                let total_amount = r.read_i64()?;
+                let payload = r.read_bytes()?;
+                let info = if flags & (1 << 0) != 0 {
+                    let info = PaymentRequestedInfo::read_from(r)?;
+                    Some(info)
+                } else {
+                    None
+                };
+                let shipping_option_id = if flags & (1 << 1) != 0 {
+                    let shipping_option_id = String::from_utf8(r.read_bytes()?)?;
+                    Some(shipping_option_id)
+                } else {
+                    None
+                };
+                let charge = PaymentCharge::read_from(r)?;
+                let subscription_until_date = if flags & (1 << 4) != 0 {
+                    let subscription_until_date = r.read_i32()?;
+                    Some(subscription_until_date)
+                } else {
+                    None
+                };
+                Ok(MessageAction::PaymentSentMe {
+                    flags,
+                    recurring_init,
+                    recurring_used,
+                    currency,
+                    total_amount,
+                    payload,
+                    info,
+                    shipping_option_id,
+                    charge,
+                    subscription_until_date,
+                })
             }
             MESSAGE_ACTION_GAME_SCORE_ID => {
-    let game_id = r.read_i64()?;
-    let score = r.read_i32()?;
+                let game_id = r.read_i64()?;
+                let score = r.read_i32()?;
                 Ok(MessageAction::GameScore { game_id, score })
             }
-            MESSAGE_ACTION_HISTORY_CLEAR_ID => {
-                Ok(MessageAction::HistoryClear {  })
-            }
-            MESSAGE_ACTION_PIN_MESSAGE_ID => {
-                Ok(MessageAction::PinMessage {  })
-            }
+            MESSAGE_ACTION_HISTORY_CLEAR_ID => Ok(MessageAction::HistoryClear {}),
+            MESSAGE_ACTION_PIN_MESSAGE_ID => Ok(MessageAction::PinMessage {}),
             MESSAGE_ACTION_CHANNEL_MIGRATE_FROM_ID => {
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let chat_id = r.read_i64()?;
-    let chat_id = ChatId(chat_id);
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let chat_id = r.read_i64()?;
+                let chat_id = ChatId(chat_id);
                 Ok(MessageAction::ChannelMigrateFrom { title, chat_id })
             }
             MESSAGE_ACTION_CHAT_MIGRATE_TO_ID => {
-    let channel_id = r.read_i64()?;
-    let channel_id = ChannelId(channel_id);
+                let channel_id = r.read_i64()?;
+                let channel_id = ChannelId(channel_id);
                 Ok(MessageAction::ChatMigrateTo { channel_id })
             }
             MESSAGE_ACTION_CHANNEL_CREATE_ID => {
-    let title = String::from_utf8(r.read_bytes()?)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageAction::ChannelCreate { title })
             }
             MESSAGE_ACTION_CHAT_JOINED_BY_LINK_ID => {
-    let inviter_id = r.read_i64()?;
+                let inviter_id = r.read_i64()?;
                 Ok(MessageAction::ChatJoinedByLink { inviter_id })
             }
             MESSAGE_ACTION_CHAT_DELETE_USER_ID => {
-    let user_id = r.read_i64()?;
-    let user_id = UserId(user_id);
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
                 Ok(MessageAction::ChatDeleteUser { user_id })
             }
             MESSAGE_ACTION_CHAT_ADD_USER_ID => {
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(r.read_i64()?);
-    }
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(r.read_i64()?);
+                }
                 Ok(MessageAction::ChatAddUser { users })
             }
-            MESSAGE_ACTION_CHAT_DELETE_PHOTO_ID => {
-                Ok(MessageAction::ChatDeletePhoto {  })
-            }
+            MESSAGE_ACTION_CHAT_DELETE_PHOTO_ID => Ok(MessageAction::ChatDeletePhoto {}),
             MESSAGE_ACTION_CHAT_EDIT_PHOTO_ID => {
-    let photo = Photo::read_from(r)?;
+                let photo = Photo::read_from(r)?;
                 Ok(MessageAction::ChatEditPhoto { photo })
             }
             MESSAGE_ACTION_CHAT_EDIT_TITLE_ID => {
-    let title = String::from_utf8(r.read_bytes()?)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
                 Ok(MessageAction::ChatEditTitle { title })
             }
             MESSAGE_ACTION_CHAT_CREATE_ID => {
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let n = r.read_vector_header()?;
-    let mut users = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        users.push(r.read_i64()?);
-    }
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(r.read_i64()?);
+                }
                 Ok(MessageAction::ChatCreate { title, users })
             }
-            MESSAGE_ACTION_EMPTY_ID => {
-                Ok(MessageAction::Empty {  })
-            }
+            MESSAGE_ACTION_EMPTY_ID => Ok(MessageAction::Empty {}),
             other => Ok(MessageAction::Other { constructor: other }),
         }
     }
@@ -7681,8 +9568,8 @@ impl PaymentCharge {
                 "expected paymentCharge, got {ctor:#x}"
             )));
         }
-    let id = String::from_utf8(r.read_bytes()?)?;
-    let provider_charge_id = String::from_utf8(r.read_bytes()?)?;
+        let id = String::from_utf8(r.read_bytes()?)?;
+        let provider_charge_id = String::from_utf8(r.read_bytes()?)?;
         Ok(PaymentCharge {
             id,
             provider_charge_id,
@@ -7691,9 +9578,9 @@ impl PaymentCharge {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(PAYMENT_CHARGE_ID);
-    w.write_bytes(self.id.as_bytes());
-    w.write_bytes(self.provider_charge_id.as_bytes());
+        w.write_u32(PAYMENT_CHARGE_ID);
+        w.write_bytes(self.id.as_bytes());
+        w.write_bytes(self.provider_charge_id.as_bytes());
     }
 }
 
@@ -7701,11 +9588,29 @@ impl PaymentCharge {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RequestedPeer {
     /// `requestedPeerChannel#8ba403e4`
-    RequestedPeerChannel { flags: i32, channel_id: ChannelId, title: Option<String>, username: Option<String>, photo: Option<Photo> },
+    RequestedPeerChannel {
+        flags: i32,
+        channel_id: ChannelId,
+        title: Option<String>,
+        username: Option<String>,
+        photo: Option<Photo>,
+    },
     /// `requestedPeerChat#7307544f`
-    RequestedPeerChat { flags: i32, chat_id: ChatId, title: Option<String>, photo: Option<Photo> },
+    RequestedPeerChat {
+        flags: i32,
+        chat_id: ChatId,
+        title: Option<String>,
+        photo: Option<Photo>,
+    },
     /// `requestedPeerUser#d62ff46a`
-    RequestedPeerUser { flags: i32, user_id: UserId, first_name: Option<String>, last_name: Option<String>, username: Option<String>, photo: Option<Photo> },
+    RequestedPeerUser {
+        flags: i32,
+        user_id: UserId,
+        first_name: Option<String>,
+        last_name: Option<String>,
+        username: Option<String>,
+        photo: Option<Photo>,
+    },
 }
 
 impl RequestedPeer {
@@ -7713,76 +9618,94 @@ impl RequestedPeer {
         let ctor = r.read_u32()?;
         match ctor {
             REQUESTED_PEER_CHANNEL_ID => {
-    let flags = r.read_i32()?;
-    let channel_id = r.read_i64()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let username = if flags & (1 << 1) != 0 {
-        let username = String::from_utf8(r.read_bytes()?)?;
-        Some(username)
-    } else {
-        None
-    };
-    let photo = if flags & (1 << 2) != 0 {
-        let photo = Photo::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let channel_id = ChannelId(channel_id);
-                Ok(RequestedPeer::RequestedPeerChannel { flags, channel_id, title, username, photo })
+                let flags = r.read_i32()?;
+                let channel_id = r.read_i64()?;
+                let title = if flags & (1 << 0) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let username = if flags & (1 << 1) != 0 {
+                    let username = String::from_utf8(r.read_bytes()?)?;
+                    Some(username)
+                } else {
+                    None
+                };
+                let photo = if flags & (1 << 2) != 0 {
+                    let photo = Photo::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let channel_id = ChannelId(channel_id);
+                Ok(RequestedPeer::RequestedPeerChannel {
+                    flags,
+                    channel_id,
+                    title,
+                    username,
+                    photo,
+                })
             }
             REQUESTED_PEER_CHAT_ID => {
-    let flags = r.read_i32()?;
-    let chat_id = r.read_i64()?;
-    let title = if flags & (1 << 0) != 0 {
-        let title = String::from_utf8(r.read_bytes()?)?;
-        Some(title)
-    } else {
-        None
-    };
-    let photo = if flags & (1 << 2) != 0 {
-        let photo = Photo::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let chat_id = ChatId(chat_id);
-                Ok(RequestedPeer::RequestedPeerChat { flags, chat_id, title, photo })
+                let flags = r.read_i32()?;
+                let chat_id = r.read_i64()?;
+                let title = if flags & (1 << 0) != 0 {
+                    let title = String::from_utf8(r.read_bytes()?)?;
+                    Some(title)
+                } else {
+                    None
+                };
+                let photo = if flags & (1 << 2) != 0 {
+                    let photo = Photo::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let chat_id = ChatId(chat_id);
+                Ok(RequestedPeer::RequestedPeerChat {
+                    flags,
+                    chat_id,
+                    title,
+                    photo,
+                })
             }
             REQUESTED_PEER_USER_ID => {
-    let flags = r.read_i32()?;
-    let user_id = r.read_i64()?;
-    let first_name = if flags & (1 << 0) != 0 {
-        let first_name = String::from_utf8(r.read_bytes()?)?;
-        Some(first_name)
-    } else {
-        None
-    };
-    let last_name = if flags & (1 << 0) != 0 {
-        let last_name = String::from_utf8(r.read_bytes()?)?;
-        Some(last_name)
-    } else {
-        None
-    };
-    let username = if flags & (1 << 1) != 0 {
-        let username = String::from_utf8(r.read_bytes()?)?;
-        Some(username)
-    } else {
-        None
-    };
-    let photo = if flags & (1 << 2) != 0 {
-        let photo = Photo::read_from(r)?;
-        Some(photo)
-    } else {
-        None
-    };
-    let user_id = UserId(user_id);
-                Ok(RequestedPeer::RequestedPeerUser { flags, user_id, first_name, last_name, username, photo })
+                let flags = r.read_i32()?;
+                let user_id = r.read_i64()?;
+                let first_name = if flags & (1 << 0) != 0 {
+                    let first_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(first_name)
+                } else {
+                    None
+                };
+                let last_name = if flags & (1 << 0) != 0 {
+                    let last_name = String::from_utf8(r.read_bytes()?)?;
+                    Some(last_name)
+                } else {
+                    None
+                };
+                let username = if flags & (1 << 1) != 0 {
+                    let username = String::from_utf8(r.read_bytes()?)?;
+                    Some(username)
+                } else {
+                    None
+                };
+                let photo = if flags & (1 << 2) != 0 {
+                    let photo = Photo::read_from(r)?;
+                    Some(photo)
+                } else {
+                    None
+                };
+                let user_id = UserId(user_id);
+                Ok(RequestedPeer::RequestedPeerUser {
+                    flags,
+                    user_id,
+                    first_name,
+                    last_name,
+                    username,
+                    photo,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown RequestedPeer constructor {other:#x}"
@@ -7795,7 +9718,10 @@ impl RequestedPeer {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatTheme {
     /// `chatThemeUniqueGift#3458f9c8`
-    ChatThemeUniqueGift { gift: StarGift, theme_settings: Vec<ThemeSettings> },
+    ChatThemeUniqueGift {
+        gift: StarGift,
+        theme_settings: Vec<ThemeSettings>,
+    },
     /// `chatTheme#c3dffc04`
     ChatTheme { emoticon: String },
 }
@@ -7805,16 +9731,19 @@ impl ChatTheme {
         let ctor = r.read_u32()?;
         match ctor {
             CHAT_THEME_UNIQUE_GIFT_ID => {
-    let gift = StarGift::read_from(r)?;
-    let n = r.read_vector_header()?;
-    let mut theme_settings = Vec::with_capacity(n.max(0) as usize);
-    for _ in 0..n {
-        theme_settings.push(ThemeSettings::read_from(r)?);
-    }
-                Ok(ChatTheme::ChatThemeUniqueGift { gift, theme_settings })
+                let gift = StarGift::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut theme_settings = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    theme_settings.push(ThemeSettings::read_from(r)?);
+                }
+                Ok(ChatTheme::ChatThemeUniqueGift {
+                    gift,
+                    theme_settings,
+                })
             }
             CHAT_THEME_ID => {
-    let emoticon = String::from_utf8(r.read_bytes()?)?;
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
                 Ok(ChatTheme::ChatTheme { emoticon })
             }
             other => Err(Error::Serialization(format!(
@@ -7859,44 +9788,34 @@ impl SecureValueType {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            SECURE_VALUE_TYPE_EMAIL_ID => {
-                Ok(SecureValueType::SecureValueTypeEmail {  })
-            }
-            SECURE_VALUE_TYPE_PHONE_ID => {
-                Ok(SecureValueType::SecureValueTypePhone {  })
-            }
+            SECURE_VALUE_TYPE_EMAIL_ID => Ok(SecureValueType::SecureValueTypeEmail {}),
+            SECURE_VALUE_TYPE_PHONE_ID => Ok(SecureValueType::SecureValueTypePhone {}),
             SECURE_VALUE_TYPE_TEMPORARY_REGISTRATION_ID => {
-                Ok(SecureValueType::SecureValueTypeTemporaryRegistration {  })
+                Ok(SecureValueType::SecureValueTypeTemporaryRegistration {})
             }
             SECURE_VALUE_TYPE_PASSPORT_REGISTRATION_ID => {
-                Ok(SecureValueType::SecureValueTypePassportRegistration {  })
+                Ok(SecureValueType::SecureValueTypePassportRegistration {})
             }
             SECURE_VALUE_TYPE_RENTAL_AGREEMENT_ID => {
-                Ok(SecureValueType::SecureValueTypeRentalAgreement {  })
+                Ok(SecureValueType::SecureValueTypeRentalAgreement {})
             }
             SECURE_VALUE_TYPE_BANK_STATEMENT_ID => {
-                Ok(SecureValueType::SecureValueTypeBankStatement {  })
+                Ok(SecureValueType::SecureValueTypeBankStatement {})
             }
-            SECURE_VALUE_TYPE_UTILITY_BILL_ID => {
-                Ok(SecureValueType::SecureValueTypeUtilityBill {  })
-            }
-            SECURE_VALUE_TYPE_ADDRESS_ID => {
-                Ok(SecureValueType::SecureValueTypeAddress {  })
-            }
+            SECURE_VALUE_TYPE_UTILITY_BILL_ID => Ok(SecureValueType::SecureValueTypeUtilityBill {}),
+            SECURE_VALUE_TYPE_ADDRESS_ID => Ok(SecureValueType::SecureValueTypeAddress {}),
             SECURE_VALUE_TYPE_INTERNAL_PASSPORT_ID => {
-                Ok(SecureValueType::SecureValueTypeInternalPassport {  })
+                Ok(SecureValueType::SecureValueTypeInternalPassport {})
             }
             SECURE_VALUE_TYPE_IDENTITY_CARD_ID => {
-                Ok(SecureValueType::SecureValueTypeIdentityCard {  })
+                Ok(SecureValueType::SecureValueTypeIdentityCard {})
             }
             SECURE_VALUE_TYPE_DRIVER_LICENSE_ID => {
-                Ok(SecureValueType::SecureValueTypeDriverLicense {  })
+                Ok(SecureValueType::SecureValueTypeDriverLicense {})
             }
-            SECURE_VALUE_TYPE_PASSPORT_ID => {
-                Ok(SecureValueType::SecureValueTypePassport {  })
-            }
+            SECURE_VALUE_TYPE_PASSPORT_ID => Ok(SecureValueType::SecureValueTypePassport {}),
             SECURE_VALUE_TYPE_PERSONAL_DETAILS_ID => {
-                Ok(SecureValueType::SecureValueTypePersonalDetails {  })
+                Ok(SecureValueType::SecureValueTypePersonalDetails {})
             }
             other => Err(Error::Serialization(format!(
                 "unknown SecureValueType constructor {other:#x}"
@@ -7921,22 +9840,18 @@ impl SecureCredentialsEncrypted {
                 "expected secureCredentialsEncrypted, got {ctor:#x}"
             )));
         }
-    let data = r.read_bytes()?;
-    let hash = r.read_bytes()?;
-    let secret = r.read_bytes()?;
-        Ok(SecureCredentialsEncrypted {
-            data,
-            hash,
-            secret,
-        })
+        let data = r.read_bytes()?;
+        let hash = r.read_bytes()?;
+        let secret = r.read_bytes()?;
+        Ok(SecureCredentialsEncrypted { data, hash, secret })
     }
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(SECURE_CREDENTIALS_ENCRYPTED_ID);
-    w.write_bytes(&self.data);
-    w.write_bytes(&self.hash);
-    w.write_bytes(&self.secret);
+        w.write_u32(SECURE_CREDENTIALS_ENCRYPTED_ID);
+        w.write_bytes(&self.data);
+        w.write_bytes(&self.hash);
+        w.write_bytes(&self.secret);
     }
 }
 
@@ -7962,58 +9877,58 @@ impl InputSecureValue {
                 "expected inputSecureValue, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let r#type = SecureValueType::read_from(r)?;
-    let data = if flags & (1 << 0) != 0 {
-        let data = SecureData::read_from(r)?;
-        Some(data)
-    } else {
-        None
-    };
-    let front_side = if flags & (1 << 1) != 0 {
-        let front_side = InputSecureFile::read_from(r)?;
-        Some(front_side)
-    } else {
-        None
-    };
-    let reverse_side = if flags & (1 << 2) != 0 {
-        let reverse_side = InputSecureFile::read_from(r)?;
-        Some(reverse_side)
-    } else {
-        None
-    };
-    let selfie = if flags & (1 << 3) != 0 {
-        let selfie = InputSecureFile::read_from(r)?;
-        Some(selfie)
-    } else {
-        None
-    };
-    let translation = if flags & (1 << 6) != 0 {
-        let n = r.read_vector_header()?;
-        let mut translation = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            translation.push(InputSecureFile::read_from(r)?);
-        }
-        Some(translation)
-    } else {
-        None
-    };
-    let files = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut files = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            files.push(InputSecureFile::read_from(r)?);
-        }
-        Some(files)
-    } else {
-        None
-    };
-    let plain_data = if flags & (1 << 5) != 0 {
-        let plain_data = SecurePlainData::read_from(r)?;
-        Some(plain_data)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let r#type = SecureValueType::read_from(r)?;
+        let data = if flags & (1 << 0) != 0 {
+            let data = SecureData::read_from(r)?;
+            Some(data)
+        } else {
+            None
+        };
+        let front_side = if flags & (1 << 1) != 0 {
+            let front_side = InputSecureFile::read_from(r)?;
+            Some(front_side)
+        } else {
+            None
+        };
+        let reverse_side = if flags & (1 << 2) != 0 {
+            let reverse_side = InputSecureFile::read_from(r)?;
+            Some(reverse_side)
+        } else {
+            None
+        };
+        let selfie = if flags & (1 << 3) != 0 {
+            let selfie = InputSecureFile::read_from(r)?;
+            Some(selfie)
+        } else {
+            None
+        };
+        let translation = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut translation = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                translation.push(InputSecureFile::read_from(r)?);
+            }
+            Some(translation)
+        } else {
+            None
+        };
+        let files = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut files = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                files.push(InputSecureFile::read_from(r)?);
+            }
+            Some(files)
+        } else {
+            None
+        };
+        let plain_data = if flags & (1 << 5) != 0 {
+            let plain_data = SecurePlainData::read_from(r)?;
+            Some(plain_data)
+        } else {
+            None
+        };
         Ok(InputSecureValue {
             flags,
             r#type,
@@ -8026,7 +9941,6 @@ impl InputSecureValue {
             plain_data,
         })
     }
-
 }
 
 /// Union `SecurePlainData` (2 constructors).
@@ -8043,11 +9957,11 @@ impl SecurePlainData {
         let ctor = r.read_u32()?;
         match ctor {
             SECURE_PLAIN_EMAIL_ID => {
-    let email = String::from_utf8(r.read_bytes()?)?;
+                let email = String::from_utf8(r.read_bytes()?)?;
                 Ok(SecurePlainData::SecurePlainEmail { email })
             }
             SECURE_PLAIN_PHONE_ID => {
-    let phone = String::from_utf8(r.read_bytes()?)?;
+                let phone = String::from_utf8(r.read_bytes()?)?;
                 Ok(SecurePlainData::SecurePlainPhone { phone })
             }
             other => Err(Error::Serialization(format!(
@@ -8063,7 +9977,13 @@ pub enum InputSecureFile {
     /// `inputSecureFile#5367e5be`
     InputSecureFile { id: i64, access_hash: AccessHash },
     /// `inputSecureFileUploaded#3334b0f0`
-    InputSecureFileUploaded { id: i64, parts: i32, md5_checksum: String, file_hash: Vec<u8>, secret: Vec<u8> },
+    InputSecureFileUploaded {
+        id: i64,
+        parts: i32,
+        md5_checksum: String,
+        file_hash: Vec<u8>,
+        secret: Vec<u8>,
+    },
 }
 
 impl InputSecureFile {
@@ -8071,18 +9991,24 @@ impl InputSecureFile {
         let ctor = r.read_u32()?;
         match ctor {
             INPUT_SECURE_FILE_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
                 Ok(InputSecureFile::InputSecureFile { id, access_hash })
             }
             INPUT_SECURE_FILE_UPLOADED_ID => {
-    let id = r.read_i64()?;
-    let parts = r.read_i32()?;
-    let md5_checksum = String::from_utf8(r.read_bytes()?)?;
-    let file_hash = r.read_bytes()?;
-    let secret = r.read_bytes()?;
-                Ok(InputSecureFile::InputSecureFileUploaded { id, parts, md5_checksum, file_hash, secret })
+                let id = r.read_i64()?;
+                let parts = r.read_i32()?;
+                let md5_checksum = String::from_utf8(r.read_bytes()?)?;
+                let file_hash = r.read_bytes()?;
+                let secret = r.read_bytes()?;
+                Ok(InputSecureFile::InputSecureFileUploaded {
+                    id,
+                    parts,
+                    md5_checksum,
+                    file_hash,
+                    secret,
+                })
             }
             other => Err(Error::Serialization(format!(
                 "unknown InputSecureFile constructor {other:#x}"
@@ -8107,9 +10033,9 @@ impl SecureData {
                 "expected secureData, got {ctor:#x}"
             )));
         }
-    let data = r.read_bytes()?;
-    let data_hash = r.read_bytes()?;
-    let secret = r.read_bytes()?;
+        let data = r.read_bytes()?;
+        let data_hash = r.read_bytes()?;
+        let secret = r.read_bytes()?;
         Ok(SecureData {
             data,
             data_hash,
@@ -8119,10 +10045,10 @@ impl SecureData {
 
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-    w.write_u32(SECURE_DATA_ID);
-    w.write_bytes(&self.data);
-    w.write_bytes(&self.data_hash);
-    w.write_bytes(&self.secret);
+        w.write_u32(SECURE_DATA_ID);
+        w.write_bytes(&self.data);
+        w.write_bytes(&self.data_hash);
+        w.write_bytes(&self.secret);
     }
 }
 
@@ -8149,59 +10075,59 @@ impl SecureValue {
                 "expected secureValue, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let r#type = SecureValueType::read_from(r)?;
-    let data = if flags & (1 << 0) != 0 {
-        let data = SecureData::read_from(r)?;
-        Some(data)
-    } else {
-        None
-    };
-    let front_side = if flags & (1 << 1) != 0 {
-        let front_side = SecureFile::read_from(r)?;
-        Some(front_side)
-    } else {
-        None
-    };
-    let reverse_side = if flags & (1 << 2) != 0 {
-        let reverse_side = SecureFile::read_from(r)?;
-        Some(reverse_side)
-    } else {
-        None
-    };
-    let selfie = if flags & (1 << 3) != 0 {
-        let selfie = SecureFile::read_from(r)?;
-        Some(selfie)
-    } else {
-        None
-    };
-    let translation = if flags & (1 << 6) != 0 {
-        let n = r.read_vector_header()?;
-        let mut translation = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            translation.push(SecureFile::read_from(r)?);
-        }
-        Some(translation)
-    } else {
-        None
-    };
-    let files = if flags & (1 << 4) != 0 {
-        let n = r.read_vector_header()?;
-        let mut files = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            files.push(SecureFile::read_from(r)?);
-        }
-        Some(files)
-    } else {
-        None
-    };
-    let plain_data = if flags & (1 << 5) != 0 {
-        let plain_data = SecurePlainData::read_from(r)?;
-        Some(plain_data)
-    } else {
-        None
-    };
-    let hash = r.read_bytes()?;
+        let flags = r.read_i32()?;
+        let r#type = SecureValueType::read_from(r)?;
+        let data = if flags & (1 << 0) != 0 {
+            let data = SecureData::read_from(r)?;
+            Some(data)
+        } else {
+            None
+        };
+        let front_side = if flags & (1 << 1) != 0 {
+            let front_side = SecureFile::read_from(r)?;
+            Some(front_side)
+        } else {
+            None
+        };
+        let reverse_side = if flags & (1 << 2) != 0 {
+            let reverse_side = SecureFile::read_from(r)?;
+            Some(reverse_side)
+        } else {
+            None
+        };
+        let selfie = if flags & (1 << 3) != 0 {
+            let selfie = SecureFile::read_from(r)?;
+            Some(selfie)
+        } else {
+            None
+        };
+        let translation = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut translation = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                translation.push(SecureFile::read_from(r)?);
+            }
+            Some(translation)
+        } else {
+            None
+        };
+        let files = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut files = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                files.push(SecureFile::read_from(r)?);
+            }
+            Some(files)
+        } else {
+            None
+        };
+        let plain_data = if flags & (1 << 5) != 0 {
+            let plain_data = SecurePlainData::read_from(r)?;
+            Some(plain_data)
+        } else {
+            None
+        };
+        let hash = r.read_bytes()?;
         Ok(SecureValue {
             flags,
             r#type,
@@ -8215,14 +10141,21 @@ impl SecureValue {
             hash,
         })
     }
-
 }
 
 /// Union `SecureFile` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SecureFile {
     /// `secureFile#7d09c27e`
-    SecureFile { id: i64, access_hash: AccessHash, size: i64, dc_id: i32, date: i32, file_hash: Vec<u8>, secret: Vec<u8> },
+    SecureFile {
+        id: i64,
+        access_hash: AccessHash,
+        size: i64,
+        dc_id: i32,
+        date: i32,
+        file_hash: Vec<u8>,
+        secret: Vec<u8>,
+    },
     /// `secureFileEmpty#64199744`
     SecureFileEmpty,
 }
@@ -8232,19 +10165,25 @@ impl SecureFile {
         let ctor = r.read_u32()?;
         match ctor {
             SECURE_FILE_ID => {
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let size = r.read_i64()?;
-    let dc_id = r.read_i32()?;
-    let date = r.read_i32()?;
-    let file_hash = r.read_bytes()?;
-    let secret = r.read_bytes()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(SecureFile::SecureFile { id, access_hash, size, dc_id, date, file_hash, secret })
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let size = r.read_i64()?;
+                let dc_id = r.read_i32()?;
+                let date = r.read_i32()?;
+                let file_hash = r.read_bytes()?;
+                let secret = r.read_bytes()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(SecureFile::SecureFile {
+                    id,
+                    access_hash,
+                    size,
+                    dc_id,
+                    date,
+                    file_hash,
+                    secret,
+                })
             }
-            SECURE_FILE_EMPTY_ID => {
-                Ok(SecureFile::SecureFileEmpty {  })
-            }
+            SECURE_FILE_EMPTY_ID => Ok(SecureFile::SecureFileEmpty {}),
             other => Err(Error::Serialization(format!(
                 "unknown SecureFile constructor {other:#x}"
             ))),
@@ -8256,7 +10195,17 @@ impl SecureFile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BotApp {
     /// `botApp#95fcd1d6`
-    BotApp { flags: i32, id: i64, access_hash: AccessHash, short_name: String, title: String, description: String, photo: Photo, document: Option<Document>, hash: i64 },
+    BotApp {
+        flags: i32,
+        id: i64,
+        access_hash: AccessHash,
+        short_name: String,
+        title: String,
+        description: String,
+        photo: Photo,
+        document: Option<Document>,
+        hash: i64,
+    },
     /// `botAppNotModified#5da674b7`
     BotAppNotModified,
 }
@@ -8266,26 +10215,34 @@ impl BotApp {
         let ctor = r.read_u32()?;
         match ctor {
             BOT_APP_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i64()?;
-    let access_hash = r.read_i64()?;
-    let short_name = String::from_utf8(r.read_bytes()?)?;
-    let title = String::from_utf8(r.read_bytes()?)?;
-    let description = String::from_utf8(r.read_bytes()?)?;
-    let photo = Photo::read_from(r)?;
-    let document = if flags & (1 << 0) != 0 {
-        let document = Document::read_from(r)?;
-        Some(document)
-    } else {
-        None
-    };
-    let hash = r.read_i64()?;
-    let access_hash = AccessHash(access_hash);
-                Ok(BotApp::BotApp { flags, id, access_hash, short_name, title, description, photo, document, hash })
+                let flags = r.read_i32()?;
+                let id = r.read_i64()?;
+                let access_hash = r.read_i64()?;
+                let short_name = String::from_utf8(r.read_bytes()?)?;
+                let title = String::from_utf8(r.read_bytes()?)?;
+                let description = String::from_utf8(r.read_bytes()?)?;
+                let photo = Photo::read_from(r)?;
+                let document = if flags & (1 << 0) != 0 {
+                    let document = Document::read_from(r)?;
+                    Some(document)
+                } else {
+                    None
+                };
+                let hash = r.read_i64()?;
+                let access_hash = AccessHash(access_hash);
+                Ok(BotApp::BotApp {
+                    flags,
+                    id,
+                    access_hash,
+                    short_name,
+                    title,
+                    description,
+                    photo,
+                    document,
+                    hash,
+                })
             }
-            BOT_APP_NOT_MODIFIED_ID => {
-                Ok(BotApp::BotAppNotModified {  })
-            }
+            BOT_APP_NOT_MODIFIED_ID => Ok(BotApp::BotAppNotModified {}),
             other => Err(Error::Serialization(format!(
                 "unknown BotApp constructor {other:#x}"
             ))),
@@ -8297,11 +10254,85 @@ impl BotApp {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     /// `messageService#7a800e0a`
-    Service { flags: i32, out: bool, mentioned: bool, media_unread: bool, reactions_are_possible: bool, silent: bool, post: bool, legacy: bool, id: i32, from_id: Option<Peer>, peer_id: Peer, saved_peer_id: Option<Peer>, reply_to: Option<MessageReplyHeader>, date: i32, action: MessageAction, reactions: Option<MessageReactions>, ttl_period: Option<i32> },
+    Service {
+        flags: i32,
+        out: bool,
+        mentioned: bool,
+        media_unread: bool,
+        reactions_are_possible: bool,
+        silent: bool,
+        post: bool,
+        legacy: bool,
+        id: i32,
+        from_id: Option<Peer>,
+        peer_id: Peer,
+        saved_peer_id: Option<Peer>,
+        reply_to: Option<MessageReplyHeader>,
+        date: i32,
+        action: MessageAction,
+        reactions: Option<MessageReactions>,
+        ttl_period: Option<i32>,
+    },
     /// `message#7600b9d3`
-    Message { flags: i32, out: bool, mentioned: bool, media_unread: bool, silent: bool, post: bool, from_scheduled: bool, legacy: bool, edit_hide: bool, pinned: bool, noforwards: bool, invert_media: bool, flags2: i32, offline: bool, video_processing_pending: bool, paid_suggested_post_stars: bool, paid_suggested_post_ton: bool, id: i32, from_id: Option<Peer>, from_boosts_applied: Option<i32>, from_rank: Option<String>, peer_id: Peer, saved_peer_id: Option<Peer>, fwd_from: Option<MessageFwdHeader>, via_bot_id: Option<i64>, via_business_bot_id: Option<i64>, guestchat_via_from: Option<Peer>, reply_to: Option<MessageReplyHeader>, date: i32, message: String, media: Option<MessageMedia>, reply_markup: Option<ReplyMarkup>, entities: Option<Vec<MessageEntity>>, views: Option<i32>, forwards: Option<i32>, replies: Option<MessageReplies>, edit_date: Option<i32>, post_author: Option<String>, grouped_id: Option<i64>, reactions: Option<MessageReactions>, restriction_reason: Option<Vec<RestrictionReason>>, ttl_period: Option<i32>, quick_reply_shortcut_id: Option<i32>, effect: Option<i64>, factcheck: Option<FactCheck>, report_delivery_until_date: Option<i32>, paid_message_stars: Option<i64>, suggested_post: Option<SuggestedPost>, schedule_repeat_period: Option<i32>, summary_from_language: Option<String>, rich_message: Option<RichMessage> },
+    Message {
+        flags: i32,
+        out: bool,
+        mentioned: bool,
+        media_unread: bool,
+        silent: bool,
+        post: bool,
+        from_scheduled: bool,
+        legacy: bool,
+        edit_hide: bool,
+        pinned: bool,
+        noforwards: bool,
+        invert_media: bool,
+        flags2: i32,
+        offline: bool,
+        video_processing_pending: bool,
+        paid_suggested_post_stars: bool,
+        paid_suggested_post_ton: bool,
+        id: i32,
+        from_id: Option<Peer>,
+        from_boosts_applied: Option<i32>,
+        from_rank: Option<String>,
+        peer_id: Peer,
+        saved_peer_id: Option<Peer>,
+        fwd_from: Option<MessageFwdHeader>,
+        via_bot_id: Option<i64>,
+        via_business_bot_id: Option<i64>,
+        guestchat_via_from: Option<Peer>,
+        reply_to: Option<MessageReplyHeader>,
+        date: i32,
+        message: String,
+        media: Option<MessageMedia>,
+        reply_markup: Option<ReplyMarkup>,
+        entities: Option<Vec<MessageEntity>>,
+        views: Option<i32>,
+        forwards: Option<i32>,
+        replies: Option<MessageReplies>,
+        edit_date: Option<i32>,
+        post_author: Option<String>,
+        grouped_id: Option<i64>,
+        reactions: Option<MessageReactions>,
+        restriction_reason: Option<Vec<RestrictionReason>>,
+        ttl_period: Option<i32>,
+        quick_reply_shortcut_id: Option<i32>,
+        effect: Option<i64>,
+        factcheck: Option<FactCheck>,
+        report_delivery_until_date: Option<i32>,
+        paid_message_stars: Option<i64>,
+        suggested_post: Option<SuggestedPost>,
+        schedule_repeat_period: Option<i32>,
+        summary_from_language: Option<String>,
+        rich_message: Option<RichMessage>,
+    },
     /// `messageEmpty#90a6ca84`
-    Empty { flags: i32, id: i32, peer_id: Option<Peer> },
+    Empty {
+        flags: i32,
+        id: i32,
+        peer_id: Option<Peer>,
+    },
 }
 
 impl Message {
@@ -8309,271 +10340,341 @@ impl Message {
         let ctor = r.read_u32()?;
         match ctor {
             MESSAGE_SERVICE_ID => {
-    let flags = r.read_i32()?;
-    let out = flags & (1 << 1) != 0;
-    let mentioned = flags & (1 << 4) != 0;
-    let media_unread = flags & (1 << 5) != 0;
-    let reactions_are_possible = flags & (1 << 9) != 0;
-    let silent = flags & (1 << 13) != 0;
-    let post = flags & (1 << 14) != 0;
-    let legacy = flags & (1 << 19) != 0;
-    let id = r.read_i32()?;
-    let from_id = if flags & (1 << 8) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let peer_id = Peer::read_from(r)?;
-    let saved_peer_id = if flags & (1 << 28) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-    let reply_to = if flags & (1 << 3) != 0 {
-        let reply_to = MessageReplyHeader::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let action = MessageAction::read_from(r)?;
-    let reactions = if flags & (1 << 20) != 0 {
-        let reactions = MessageReactions::read_from(r)?;
-        Some(reactions)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 25) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-                Ok(Message::Service { flags, out, mentioned, media_unread, reactions_are_possible, silent, post, legacy, id, from_id, peer_id, saved_peer_id, reply_to, date, action, reactions, ttl_period })
+                let flags = r.read_i32()?;
+                let out = flags & (1 << 1) != 0;
+                let mentioned = flags & (1 << 4) != 0;
+                let media_unread = flags & (1 << 5) != 0;
+                let reactions_are_possible = flags & (1 << 9) != 0;
+                let silent = flags & (1 << 13) != 0;
+                let post = flags & (1 << 14) != 0;
+                let legacy = flags & (1 << 19) != 0;
+                let id = r.read_i32()?;
+                let from_id = if flags & (1 << 8) != 0 {
+                    let from_id = Peer::read_from(r)?;
+                    Some(from_id)
+                } else {
+                    None
+                };
+                let peer_id = Peer::read_from(r)?;
+                let saved_peer_id = if flags & (1 << 28) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                let reply_to = if flags & (1 << 3) != 0 {
+                    let reply_to = MessageReplyHeader::read_from(r)?;
+                    Some(reply_to)
+                } else {
+                    None
+                };
+                let date = r.read_i32()?;
+                let action = MessageAction::read_from(r)?;
+                let reactions = if flags & (1 << 20) != 0 {
+                    let reactions = MessageReactions::read_from(r)?;
+                    Some(reactions)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 25) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                Ok(Message::Service {
+                    flags,
+                    out,
+                    mentioned,
+                    media_unread,
+                    reactions_are_possible,
+                    silent,
+                    post,
+                    legacy,
+                    id,
+                    from_id,
+                    peer_id,
+                    saved_peer_id,
+                    reply_to,
+                    date,
+                    action,
+                    reactions,
+                    ttl_period,
+                })
             }
             0x95ef6f2b | MESSAGE_ID => {
-    let flags = r.read_i32()?;
-    let flags2 = r.read_i32()?;
-    let out = flags & (1 << 1) != 0;
-    let mentioned = flags & (1 << 4) != 0;
-    let media_unread = flags & (1 << 5) != 0;
-    let silent = flags & (1 << 13) != 0;
-    let post = flags & (1 << 14) != 0;
-    let from_scheduled = flags & (1 << 18) != 0;
-    let legacy = flags & (1 << 19) != 0;
-    let edit_hide = flags & (1 << 21) != 0;
-    let pinned = flags & (1 << 24) != 0;
-    let noforwards = flags & (1 << 26) != 0;
-    let invert_media = flags & (1 << 27) != 0;
-    let offline = flags2 & (1 << 1) != 0;
-    let video_processing_pending = flags2 & (1 << 4) != 0;
-    let paid_suggested_post_stars = flags2 & (1 << 8) != 0;
-    let paid_suggested_post_ton = flags2 & (1 << 9) != 0;
-    let id = r.read_i32()?;
-    let from_id = if flags & (1 << 8) != 0 {
-        let from_id = Peer::read_from(r)?;
-        Some(from_id)
-    } else {
-        None
-    };
-    let from_boosts_applied = if flags & (1 << 29) != 0 {
-        let from_boosts_applied = r.read_i32()?;
-        Some(from_boosts_applied)
-    } else {
-        None
-    };
-    let from_rank = if flags2 & (1 << 12) != 0 {
-        let from_rank = String::from_utf8(r.read_bytes()?)?;
-        Some(from_rank)
-    } else {
-        None
-    };
-    let peer_id = Peer::read_from(r)?;
-    let saved_peer_id = if flags & (1 << 28) != 0 {
-        let saved_peer_id = Peer::read_from(r)?;
-        Some(saved_peer_id)
-    } else {
-        None
-    };
-    let fwd_from = if flags & (1 << 2) != 0 {
-        let fwd_from = MessageFwdHeader::read_from(r)?;
-        Some(fwd_from)
-    } else {
-        None
-    };
-    let via_bot_id = if flags & (1 << 11) != 0 {
-        let via_bot_id = r.read_i64()?;
-        Some(via_bot_id)
-    } else {
-        None
-    };
-    let via_business_bot_id = if flags2 & (1 << 0) != 0 {
-        let via_business_bot_id = r.read_i64()?;
-        Some(via_business_bot_id)
-    } else {
-        None
-    };
-    let guestchat_via_from = if flags2 & (1 << 19) != 0 {
-        let guestchat_via_from = Peer::read_from(r)?;
-        Some(guestchat_via_from)
-    } else {
-        None
-    };
-    let reply_to = if flags & (1 << 3) != 0 {
-        let reply_to = MessageReplyHeader::read_from(r)?;
-        Some(reply_to)
-    } else {
-        None
-    };
-    let date = r.read_i32()?;
-    let message = String::from_utf8(r.read_bytes()?)?;
-    let media = if flags & (1 << 9) != 0 {
-        let media = MessageMedia::read_from(r)?;
-        Some(media)
-    } else {
-        None
-    };
-    let reply_markup = if flags & (1 << 6) != 0 {
-        let reply_markup = ReplyMarkup::read_from(r)?;
-        Some(reply_markup)
-    } else {
-        None
-    };
-    let entities = if flags & (1 << 7) != 0 {
-        let n = r.read_vector_header()?;
-        let mut entities = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            entities.push(MessageEntity::read_from(r)?);
-        }
-        Some(entities)
-    } else {
-        None
-    };
-    let views = if flags & (1 << 10) != 0 {
-        let views = r.read_i32()?;
-        Some(views)
-    } else {
-        None
-    };
-    let forwards = if flags & (1 << 10) != 0 {
-        let forwards = r.read_i32()?;
-        Some(forwards)
-    } else {
-        None
-    };
-    let replies = if flags & (1 << 23) != 0 {
-        let replies = MessageReplies::read_from(r)?;
-        Some(replies)
-    } else {
-        None
-    };
-    let edit_date = if flags & (1 << 15) != 0 {
-        let edit_date = r.read_i32()?;
-        Some(edit_date)
-    } else {
-        None
-    };
-    let post_author = if flags & (1 << 16) != 0 {
-        let post_author = String::from_utf8(r.read_bytes()?)?;
-        Some(post_author)
-    } else {
-        None
-    };
-    let grouped_id = if flags & (1 << 17) != 0 {
-        let grouped_id = r.read_i64()?;
-        Some(grouped_id)
-    } else {
-        None
-    };
-    let reactions = if flags & (1 << 20) != 0 {
-        let reactions = MessageReactions::read_from(r)?;
-        Some(reactions)
-    } else {
-        None
-    };
-    let restriction_reason = if flags & (1 << 22) != 0 {
-        let n = r.read_vector_header()?;
-        let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            restriction_reason.push(RestrictionReason::read_from(r)?);
-        }
-        Some(restriction_reason)
-    } else {
-        None
-    };
-    let ttl_period = if flags & (1 << 25) != 0 {
-        let ttl_period = r.read_i32()?;
-        Some(ttl_period)
-    } else {
-        None
-    };
-    let quick_reply_shortcut_id = if flags & (1 << 30) != 0 {
-        let quick_reply_shortcut_id = r.read_i32()?;
-        Some(quick_reply_shortcut_id)
-    } else {
-        None
-    };
-    let effect = if flags2 & (1 << 2) != 0 {
-        let effect = r.read_i64()?;
-        Some(effect)
-    } else {
-        None
-    };
-    let factcheck = if flags2 & (1 << 3) != 0 {
-        let factcheck = FactCheck::read_from(r)?;
-        Some(factcheck)
-    } else {
-        None
-    };
-    let report_delivery_until_date = if flags2 & (1 << 5) != 0 {
-        let report_delivery_until_date = r.read_i32()?;
-        Some(report_delivery_until_date)
-    } else {
-        None
-    };
-    let paid_message_stars = if flags2 & (1 << 6) != 0 {
-        let paid_message_stars = r.read_i64()?;
-        Some(paid_message_stars)
-    } else {
-        None
-    };
-    let suggested_post = if flags2 & (1 << 7) != 0 {
-        let suggested_post = SuggestedPost::read_from(r)?;
-        Some(suggested_post)
-    } else {
-        None
-    };
-    let schedule_repeat_period = if flags2 & (1 << 10) != 0 {
-        let schedule_repeat_period = r.read_i32()?;
-        Some(schedule_repeat_period)
-    } else {
-        None
-    };
-    let summary_from_language = if flags2 & (1 << 11) != 0 {
-        let summary_from_language = String::from_utf8(r.read_bytes()?)?;
-        Some(summary_from_language)
-    } else {
-        None
-    };
-    let rich_message = if flags2 & (1 << 13) != 0 {
-        let rich_message = RichMessage::read_from(r)?;
-        Some(rich_message)
-    } else {
-        None
-    };
-                Ok(Message::Message { flags, out, mentioned, media_unread, silent, post, from_scheduled, legacy, edit_hide, pinned, noforwards, invert_media, flags2, offline, video_processing_pending, paid_suggested_post_stars, paid_suggested_post_ton, id, from_id, from_boosts_applied, from_rank, peer_id, saved_peer_id, fwd_from, via_bot_id, via_business_bot_id, guestchat_via_from, reply_to, date, message, media, reply_markup, entities, views, forwards, replies, edit_date, post_author, grouped_id, reactions, restriction_reason, ttl_period, quick_reply_shortcut_id, effect, factcheck, report_delivery_until_date, paid_message_stars, suggested_post, schedule_repeat_period, summary_from_language, rich_message })
+                let flags = r.read_i32()?;
+                let flags2 = r.read_i32()?;
+                let out = flags & (1 << 1) != 0;
+                let mentioned = flags & (1 << 4) != 0;
+                let media_unread = flags & (1 << 5) != 0;
+                let silent = flags & (1 << 13) != 0;
+                let post = flags & (1 << 14) != 0;
+                let from_scheduled = flags & (1 << 18) != 0;
+                let legacy = flags & (1 << 19) != 0;
+                let edit_hide = flags & (1 << 21) != 0;
+                let pinned = flags & (1 << 24) != 0;
+                let noforwards = flags & (1 << 26) != 0;
+                let invert_media = flags & (1 << 27) != 0;
+                let offline = flags2 & (1 << 1) != 0;
+                let video_processing_pending = flags2 & (1 << 4) != 0;
+                let paid_suggested_post_stars = flags2 & (1 << 8) != 0;
+                let paid_suggested_post_ton = flags2 & (1 << 9) != 0;
+                let id = r.read_i32()?;
+                let from_id = if flags & (1 << 8) != 0 {
+                    let from_id = Peer::read_from(r)?;
+                    Some(from_id)
+                } else {
+                    None
+                };
+                let from_boosts_applied = if flags & (1 << 29) != 0 {
+                    let from_boosts_applied = r.read_i32()?;
+                    Some(from_boosts_applied)
+                } else {
+                    None
+                };
+                let from_rank = if flags2 & (1 << 12) != 0 {
+                    let from_rank = String::from_utf8(r.read_bytes()?)?;
+                    Some(from_rank)
+                } else {
+                    None
+                };
+                let peer_id = Peer::read_from(r)?;
+                let saved_peer_id = if flags & (1 << 28) != 0 {
+                    let saved_peer_id = Peer::read_from(r)?;
+                    Some(saved_peer_id)
+                } else {
+                    None
+                };
+                let fwd_from = if flags & (1 << 2) != 0 {
+                    let fwd_from = MessageFwdHeader::read_from(r)?;
+                    Some(fwd_from)
+                } else {
+                    None
+                };
+                let via_bot_id = if flags & (1 << 11) != 0 {
+                    let via_bot_id = r.read_i64()?;
+                    Some(via_bot_id)
+                } else {
+                    None
+                };
+                let via_business_bot_id = if flags2 & (1 << 0) != 0 {
+                    let via_business_bot_id = r.read_i64()?;
+                    Some(via_business_bot_id)
+                } else {
+                    None
+                };
+                let guestchat_via_from = if flags2 & (1 << 19) != 0 {
+                    let guestchat_via_from = Peer::read_from(r)?;
+                    Some(guestchat_via_from)
+                } else {
+                    None
+                };
+                let reply_to = if flags & (1 << 3) != 0 {
+                    let reply_to = MessageReplyHeader::read_from(r)?;
+                    Some(reply_to)
+                } else {
+                    None
+                };
+                let date = r.read_i32()?;
+                let message = String::from_utf8(r.read_bytes()?)?;
+                let media = if flags & (1 << 9) != 0 {
+                    let media = MessageMedia::read_from(r)?;
+                    Some(media)
+                } else {
+                    None
+                };
+                let reply_markup = if flags & (1 << 6) != 0 {
+                    let reply_markup = ReplyMarkup::read_from(r)?;
+                    Some(reply_markup)
+                } else {
+                    None
+                };
+                let entities = if flags & (1 << 7) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(entities)
+                } else {
+                    None
+                };
+                let views = if flags & (1 << 10) != 0 {
+                    let views = r.read_i32()?;
+                    Some(views)
+                } else {
+                    None
+                };
+                let forwards = if flags & (1 << 10) != 0 {
+                    let forwards = r.read_i32()?;
+                    Some(forwards)
+                } else {
+                    None
+                };
+                let replies = if flags & (1 << 23) != 0 {
+                    let replies = MessageReplies::read_from(r)?;
+                    Some(replies)
+                } else {
+                    None
+                };
+                let edit_date = if flags & (1 << 15) != 0 {
+                    let edit_date = r.read_i32()?;
+                    Some(edit_date)
+                } else {
+                    None
+                };
+                let post_author = if flags & (1 << 16) != 0 {
+                    let post_author = String::from_utf8(r.read_bytes()?)?;
+                    Some(post_author)
+                } else {
+                    None
+                };
+                let grouped_id = if flags & (1 << 17) != 0 {
+                    let grouped_id = r.read_i64()?;
+                    Some(grouped_id)
+                } else {
+                    None
+                };
+                let reactions = if flags & (1 << 20) != 0 {
+                    let reactions = MessageReactions::read_from(r)?;
+                    Some(reactions)
+                } else {
+                    None
+                };
+                let restriction_reason = if flags & (1 << 22) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut restriction_reason = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        restriction_reason.push(RestrictionReason::read_from(r)?);
+                    }
+                    Some(restriction_reason)
+                } else {
+                    None
+                };
+                let ttl_period = if flags & (1 << 25) != 0 {
+                    let ttl_period = r.read_i32()?;
+                    Some(ttl_period)
+                } else {
+                    None
+                };
+                let quick_reply_shortcut_id = if flags & (1 << 30) != 0 {
+                    let quick_reply_shortcut_id = r.read_i32()?;
+                    Some(quick_reply_shortcut_id)
+                } else {
+                    None
+                };
+                let effect = if flags2 & (1 << 2) != 0 {
+                    let effect = r.read_i64()?;
+                    Some(effect)
+                } else {
+                    None
+                };
+                let factcheck = if flags2 & (1 << 3) != 0 {
+                    let factcheck = FactCheck::read_from(r)?;
+                    Some(factcheck)
+                } else {
+                    None
+                };
+                let report_delivery_until_date = if flags2 & (1 << 5) != 0 {
+                    let report_delivery_until_date = r.read_i32()?;
+                    Some(report_delivery_until_date)
+                } else {
+                    None
+                };
+                let paid_message_stars = if flags2 & (1 << 6) != 0 {
+                    let paid_message_stars = r.read_i64()?;
+                    Some(paid_message_stars)
+                } else {
+                    None
+                };
+                let suggested_post = if flags2 & (1 << 7) != 0 {
+                    let suggested_post = SuggestedPost::read_from(r)?;
+                    Some(suggested_post)
+                } else {
+                    None
+                };
+                let schedule_repeat_period = if flags2 & (1 << 10) != 0 {
+                    let schedule_repeat_period = r.read_i32()?;
+                    Some(schedule_repeat_period)
+                } else {
+                    None
+                };
+                let summary_from_language = if flags2 & (1 << 11) != 0 {
+                    let summary_from_language = String::from_utf8(r.read_bytes()?)?;
+                    Some(summary_from_language)
+                } else {
+                    None
+                };
+                let rich_message = if flags2 & (1 << 13) != 0 {
+                    let rich_message = RichMessage::read_from(r)?;
+                    Some(rich_message)
+                } else {
+                    None
+                };
+                Ok(Message::Message {
+                    flags,
+                    out,
+                    mentioned,
+                    media_unread,
+                    silent,
+                    post,
+                    from_scheduled,
+                    legacy,
+                    edit_hide,
+                    pinned,
+                    noforwards,
+                    invert_media,
+                    flags2,
+                    offline,
+                    video_processing_pending,
+                    paid_suggested_post_stars,
+                    paid_suggested_post_ton,
+                    id,
+                    from_id,
+                    from_boosts_applied,
+                    from_rank,
+                    peer_id,
+                    saved_peer_id,
+                    fwd_from,
+                    via_bot_id,
+                    via_business_bot_id,
+                    guestchat_via_from,
+                    reply_to,
+                    date,
+                    message,
+                    media,
+                    reply_markup,
+                    entities,
+                    views,
+                    forwards,
+                    replies,
+                    edit_date,
+                    post_author,
+                    grouped_id,
+                    reactions,
+                    restriction_reason,
+                    ttl_period,
+                    quick_reply_shortcut_id,
+                    effect,
+                    factcheck,
+                    report_delivery_until_date,
+                    paid_message_stars,
+                    suggested_post,
+                    schedule_repeat_period,
+                    summary_from_language,
+                    rich_message,
+                })
             }
             MESSAGE_EMPTY_ID => {
-    let flags = r.read_i32()?;
-    let id = r.read_i32()?;
-    let peer_id = if flags & (1 << 0) != 0 {
-        let peer_id = Peer::read_from(r)?;
-        Some(peer_id)
-    } else {
-        None
-    };
+                let flags = r.read_i32()?;
+                let id = r.read_i32()?;
+                let peer_id = if flags & (1 << 0) != 0 {
+                    let peer_id = Peer::read_from(r)?;
+                    Some(peer_id)
+                } else {
+                    None
+                };
                 Ok(Message::Empty { flags, id, peer_id })
             }
             other => Err(Error::Serialization(format!(
@@ -8601,21 +10702,21 @@ impl FactCheck {
                 "expected factCheck, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let need_check = flags & (1 << 0) != 0;
-    let country = if flags & (1 << 1) != 0 {
-        let country = String::from_utf8(r.read_bytes()?)?;
-        Some(country)
-    } else {
-        None
-    };
-    let text = if flags & (1 << 1) != 0 {
-        let text = TextWithEntities::read_from(r)?;
-        Some(text)
-    } else {
-        None
-    };
-    let hash = r.read_i64()?;
+        let flags = r.read_i32()?;
+        let need_check = flags & (1 << 0) != 0;
+        let country = if flags & (1 << 1) != 0 {
+            let country = String::from_utf8(r.read_bytes()?)?;
+            Some(country)
+        } else {
+            None
+        };
+        let text = if flags & (1 << 1) != 0 {
+            let text = TextWithEntities::read_from(r)?;
+            Some(text)
+        } else {
+            None
+        };
+        let hash = r.read_i64()?;
         Ok(FactCheck {
             flags,
             need_check,
@@ -8624,7 +10725,6 @@ impl FactCheck {
             hash,
         })
     }
-
 }
 
 /// `messageReplies#83d60fc2 = MessageReplies`
@@ -8648,38 +10748,38 @@ impl MessageReplies {
                 "expected messageReplies, got {ctor:#x}"
             )));
         }
-    let flags = r.read_i32()?;
-    let comments = flags & (1 << 0) != 0;
-    let replies = r.read_i32()?;
-    let replies_pts = r.read_i32()?;
-    let recent_repliers = if flags & (1 << 1) != 0 {
-        let n = r.read_vector_header()?;
-        let mut recent_repliers = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            recent_repliers.push(Peer::read_from(r)?);
-        }
-        Some(recent_repliers)
-    } else {
-        None
-    };
-    let channel_id = if flags & (1 << 0) != 0 {
-        let channel_id = r.read_i64()?;
-        Some(ChannelId(channel_id))
-    } else {
-        None
-    };
-    let max_id = if flags & (1 << 2) != 0 {
-        let max_id = r.read_i32()?;
-        Some(max_id)
-    } else {
-        None
-    };
-    let read_max_id = if flags & (1 << 3) != 0 {
-        let read_max_id = r.read_i32()?;
-        Some(read_max_id)
-    } else {
-        None
-    };
+        let flags = r.read_i32()?;
+        let comments = flags & (1 << 0) != 0;
+        let replies = r.read_i32()?;
+        let replies_pts = r.read_i32()?;
+        let recent_repliers = if flags & (1 << 1) != 0 {
+            let n = r.read_vector_header()?;
+            let mut recent_repliers = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                recent_repliers.push(Peer::read_from(r)?);
+            }
+            Some(recent_repliers)
+        } else {
+            None
+        };
+        let channel_id = if flags & (1 << 0) != 0 {
+            let channel_id = r.read_i64()?;
+            Some(ChannelId(channel_id))
+        } else {
+            None
+        };
+        let max_id = if flags & (1 << 2) != 0 {
+            let max_id = r.read_i32()?;
+            Some(max_id)
+        } else {
+            None
+        };
+        let read_max_id = if flags & (1 << 3) != 0 {
+            let read_max_id = r.read_i32()?;
+            Some(read_max_id)
+        } else {
+            None
+        };
         Ok(MessageReplies {
             flags,
             comments,
@@ -8691,5 +10791,4 @@ impl MessageReplies {
             read_max_id,
         })
     }
-
 }

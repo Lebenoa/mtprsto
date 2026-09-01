@@ -14,9 +14,9 @@
 //!   cargo run --example advanced_rpc -- 123456:BOT_TOKEN
 //! ```
 
+use mtprsto::Client;
 use mtprsto::error::Error;
 use mtprsto::serialize::TLWriter;
-use mtprsto::Client;
 
 /// Retry a fallible op with backoff while errors are transient
 /// (FLOOD_WAIT, network drops, dropped answers).
@@ -43,7 +43,9 @@ where
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let bot_token = std::env::args().nth(1).expect("usage: advanced_rpc <BOT_TOKEN>");
+    let bot_token = std::env::args()
+        .nth(1)
+        .expect("usage: advanced_rpc <BOT_TOKEN>");
     let api_id: i32 = std::env::var("TELEGRAM_API_ID")?.parse()?;
     let api_hash = std::env::var("TELEGRAM_API_HASH")?;
 
@@ -110,7 +112,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Non-transient errors surface directly — no retry can fix them.
     match client.send("@definitely_not_a_real_peer_xyz", "hi").await {
         Ok(_) => unreachable!(),
-        Err(e @ Error::Rpc { error_code: 400, .. }) => {
+        Err(
+            e @ Error::Rpc {
+                error_code: 400, ..
+            },
+        ) => {
             println!("expected 400 for a bad peer: {e}");
             println!("  is_transient = {}", e.is_transient());
         }

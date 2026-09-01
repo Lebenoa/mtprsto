@@ -1,22 +1,39 @@
 //! Telegram API types, constructor definitions, and authorization flows.
 //!
 //! Supports both:
-//! - **User auth** via phone number + OTP code (full MTProto DH handshake)
-//! - **Bot auth** via bot token (direct authorizeURL call)
+//! - **User auth** via phone number + OTP code (full `MTProto` DH handshake)
+//! - **Bot auth** via bot token (direct `authorize` call)
+
+// Wire-format engine: byte wrangling is this module's job — TL field
+// order, int32 wire ids, offset arithmetic over length-checked
+// buffers. The cast/index/arithmetic classes are inherent to that
+// job; they are relaxed once here, invariants held by hand. Every
+// other lint still applies.
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::string_slice
+)]
+#![allow(clippy::unreadable_literal)] // ids/hex quoted verbatim from the TL schema
 
 use crate::error::{Error, Result};
 use crate::mtproto::{AuthKeyCreation, AuthKeyResult, MtProtoSession};
-use crate::serialize::{TLWriter, TLReader, *};
-use crate::types;
+use crate::serialize::{RPC_ERROR, TLReader, TLWriter};
 use crate::transport;
+use crate::types;
 use tokio::io::AsyncWriteExt;
 
-/// API layer version. docs-layer branch: negotiate the PUBLISHED layer
-/// 223 (the number core.telegram.org/schema currently documents).
+/// API layer version.
+///
+/// docs-layer branch: negotiate the PUBLISHED layer 223 (the number
+/// core.telegram.org/schema currently documents).
+///
 /// NOTE: the curated parsers in this branch still carry several
-/// 225/229-dialect field shapes (dialog unread_poll_votes_count,
-/// 229 inline-button structure, ...) — wire-verify and reconcile those
-/// before relying on docs-layer for production traffic.
+/// 225/229-dialect field shapes (dialog `unread_poll_votes_count`,
+/// 229 inline-button structure, ...) — wire-verify and reconcile
+/// those before relying on docs-layer for production traffic.
 pub const API_LAYER: i32 = 223;
 
 // ---------------------------------------------------------------------------
@@ -34,7 +51,8 @@ pub struct TelegramClient {
 
 impl TelegramClient {
     /// Create a new client without an existing session.
-    pub fn new(dc_id: i32, api_id: Option<i32>, api_hash: Option<String>) -> Self {
+    #[must_use]
+    pub const fn new(dc_id: i32, api_id: Option<i32>, api_hash: Option<String>) -> Self {
         Self {
             session: None,
             user_id: None,
@@ -45,6 +63,7 @@ impl TelegramClient {
     }
 
     /// Create a client with a pre-existing auth key and salt.
+    #[must_use]
     pub fn with_session(
         dc_id: i32,
         auth_key: Vec<u8>,
@@ -69,7 +88,20 @@ impl TelegramClient {
     ///
     /// This is a synchronous, step-by-step flow (no network calls inside).
     /// The caller must handle the network I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns the transport or protocol error from any handshake step.
+    ///
+    /// # Panics
+    ///
+    /// Panics via direct field access on auth state that the preceding
+    /// steps guarantee to have populated.
     pub async fn create_auth_key(&mut self) -> Result<()> {
+        // Bounded retry ladder for dh_gen_retry (SPEC §7/§9): four
+        // attempts cover the spec without spinning forever. Hoisted to
+        // the top of the fn so the const precedes all statements.
+        const MAX_DH_ATTEMPTS: u32 = 4;
         // Auth keys are one-time per DC/device — a fresh DH handshake is
         // only needed when this client has no key yet.
         if self.session.is_some() {
@@ -91,11 +123,13 @@ impl TelegramClient {
         // Step 4: Build req_DH_params
         let req_dh = auth.build_req_dh_params(self.dc_id)?;
         if std::env::var("MTPRSTO_DEBUG_DH").is_ok() {
-            tracing::warn!(
-                "req_DH_params ({} bytes): {}",
-                req_dh.len(),
-                req_dh.iter().map(|b| format!("{b:02x}")).collect::<String>()
-            );
+            let mut hex_dump = String::with_capacity(req_dh.len() * 2);
+            for b in &req_dh {
+                // debug-only byte dump; writing beats format-collect here
+                use std::fmt::Write as _;
+                let _ = write!(hex_dump, "{b:02x}");
+            }
+            tracing::warn!("req_DH_params ({} bytes): {hex_dump}", req_dh.len());
         }
 
         // Step 5: Send req_DH_params
@@ -109,7 +143,7 @@ impl TelegramClient {
         // Steps 7-9: set_client_DH_params, parse answer; on dh_gen_retry,
         // regenerate b and retry with retry_id = previous attempt's
         // auth_key_aux_hash (SPEC §7/§9).
-        const MAX_DH_ATTEMPTS: u32 = 4;
+        #[allow(clippy::items_after_statements)] // const sits beside its only use
         for attempt in 0..MAX_DH_ATTEMPTS {
             // Step 7: Build set_client_DH_params (fresh b every attempt;
             // retry_id inside is 0 first, then the previous aux hash).
@@ -132,7 +166,7 @@ impl TelegramClient {
                     // their first RPC on the same connection). Send a ping
                     // here and absorb the reply (pong or bad_server_salt).
                     let mut w = TLWriter::new();
-                    w.write_u32(0x7abe77ec); // ping#7abe77ec ping_id:long
+                    w.write_u32(0x7abe_77ec); // ping#7abe77ec ping_id:long
                     w.write_i64(rand::random::<i64>());
                     let payload = w.into_bytes();
                     let msg_id = sess.next_msg_id();
@@ -148,11 +182,17 @@ impl TelegramClient {
                     // bad_server_salt#edab447b bad_msg_id:long(8)
                     // bad_msg_seqno:int(4) error_code:int(4) new_salt:long(8)
                     if plaintext.len() >= 28
-                        && u32::from_le_bytes(plaintext[0..4].try_into().unwrap())
-                            == crate::serialize::BAD_SERVER_SALT
+                        && u32::from_le_bytes({
+                            // len >= 28 guard above makes [0..4] in-bounds
+                            #[allow(clippy::unwrap_used)]
+                            plaintext[0..4].try_into().unwrap()
+                        }) == crate::serialize::BAD_SERVER_SALT
                     {
-                        let new_salt =
-                            u64::from_le_bytes(plaintext[20..28].try_into().unwrap());
+                        let new_salt = u64::from_le_bytes({
+                            // guarded by the same len >= 28 check
+                            #[allow(clippy::unwrap_used)]
+                            plaintext[20..28].try_into().unwrap()
+                        });
                         tracing::debug!("adopting corrected server salt after handshake");
                         sess.server_salt = new_salt;
                     }
@@ -168,7 +208,8 @@ impl TelegramClient {
                     auth.retry_id = auth.auth_key_aux_hash.unwrap_or(0);
                     tracing::warn!(
                         "dh_gen_retry from server (attempt {}), retrying with retry_id={:#x}",
-                        attempt + 1, auth.retry_id
+                        attempt + 1,
+                        auth.retry_id
                     );
                 }
                 AuthKeyResult::Fail => {
@@ -195,14 +236,22 @@ impl TelegramClient {
                 other => return other,
             }
         }
-        unreachable!("retry loop returns on every path")
+        // Loop body returns on every iteration: success, non-transport
+        // error, or (second pass) a transport error. Unreachable here.
+        #[allow(clippy::unreachable)]
+        {
+            unreachable!("retry loop returns on every path")
+        }
     }
 
     /// One full exchange on a single connection: send the encrypted
-    /// request, then service the session/salt dance (bad_server_salt,
-    /// new_session_created) by adopting the server state and re-sending
-    /// on the SAME connection — a new connection would just earn a fresh
+    /// request, then service the session/salt dance by adopting the
+    /// server state and re-sending on the SAME connection.
+    ///
+    /// `bad_server_salt` and `new_session_created` are the two service
+    /// frames handled here — a new connection would just earn a fresh
     /// session handshake every time.
+    #[allow(clippy::too_many_lines)] // the frame walk is inherently long but linear
     async fn exchange_once(&mut self, payload: &[u8]) -> Result<Vec<u8>> {
         let session = self.session.as_mut().ok_or(Error::NoAuthKey)?;
         let mut stream = transport::connect(self.dc_id).await?;
@@ -244,10 +293,17 @@ impl TelegramClient {
                 // Iterate messages in the frame (single body or container).
                 let mut items: Vec<&[u8]> = Vec::new();
                 if plaintext.len() >= 8
-                    && u32::from_le_bytes(plaintext[0..4].try_into().unwrap())
-                        == crate::serialize::MSG_CONTAINER
+                    && u32::from_le_bytes({
+                        // len >= 8 guard above makes [0..4] in-bounds
+                        #[allow(clippy::unwrap_used)]
+                        plaintext[0..4].try_into().unwrap()
+                    }) == crate::serialize::MSG_CONTAINER
                 {
-                    let count = i32::from_le_bytes(plaintext[4..8].try_into().unwrap());
+                    let count = i32::from_le_bytes({
+                        // guarded by the same len >= 8 check
+                        #[allow(clippy::unwrap_used)]
+                        plaintext[4..8].try_into().unwrap()
+                    });
                     let mut off = 8usize;
                     for _ in 0..count.max(0) {
                         if off + 12 > plaintext.len() {
@@ -257,8 +313,11 @@ impl TelegramClient {
                         if off + 4 > plaintext.len() {
                             break;
                         }
-                        let len =
-                            i32::from_le_bytes(plaintext[off..off + 4].try_into().unwrap()) as usize;
+                        let len = i32::from_le_bytes({
+                            // off+4 <= len was checked just above
+                            #[allow(clippy::unwrap_used)]
+                            plaintext[off..off + 4].try_into().unwrap()
+                        }) as usize;
                         off += 4;
                         if off + len > plaintext.len() {
                             break;
@@ -272,46 +331,56 @@ impl TelegramClient {
 
                 for item in items {
                     if item.len() < 4 {
+                        // too short to carry a constructor — skip it
                         continue;
                     }
-                    let ctor = u32::from_le_bytes(item[0..4].try_into().unwrap());
+                    let ctor = u32::from_le_bytes({
+                        // len >= 4 guard above makes [0..4] in-bounds
+                        #[allow(clippy::unwrap_used)]
+                        item[0..4].try_into().unwrap()
+                    });
                     match ctor {
-                        crate::serialize::BAD_SERVER_SALT => {
-                            // The query was NOT processed — adopt the fresh
-                            // salt (at [20..28]) and re-send it.
+                        crate::serialize::BAD_SERVER_SALT
+                        | crate::serialize::NEW_SESSION_CREATED => {
+                            // The two differ in whether the query was
+                            // processed (salt re-send only for BAD);
+                            // the 8-byte salt extraction is shared.
                             if item.len() >= 28 {
-                                session.server_salt =
-                                    u64::from_le_bytes(item[20..28].try_into().unwrap());
+                                session.server_salt = u64::from_le_bytes({
+                                    // guarded by the len >= 28 check
+                                    #[allow(clippy::unwrap_used)]
+                                    item[20..28].try_into().unwrap()
+                                });
                             }
-                            resend = true;
-                        }
-                        crate::serialize::NEW_SESSION_CREATED => {
-                            // The server re-earned the session but DOES
-                            // process the triggering message — adopt the
-                            // salt and keep waiting for the answer.
-                            // Re-sending would execute the query twice
-                            // (double sendCode, self-inflicted flood on
-                            // the second copy).
-                            if item.len() >= 28 {
-                                session.server_salt =
-                                    u64::from_le_bytes(item[20..28].try_into().unwrap());
+                            if ctor == crate::serialize::BAD_SERVER_SALT {
+                                // The query was NOT processed — adopt
+                                // the fresh salt and re-send it.
+                                resend = true;
                             }
                         }
                         crate::serialize::NEW_SERVER_SALT => {
                             if item.len() >= 12 {
-                                session.server_salt =
-                                    u64::from_le_bytes(item[4..12].try_into().unwrap());
+                                session.server_salt = u64::from_le_bytes({
+                                    // guarded by the len >= 12 check
+                                    #[allow(clippy::unwrap_used)]
+                                    item[4..12].try_into().unwrap()
+                                });
                             }
                         }
-                        crate::serialize::MSGS_ACK | crate::serialize::PONG => {}
                         crate::serialize::RPC_RESULT if item.len() >= 12 => {
-                            let req = i64::from_le_bytes(item[4..12].try_into().unwrap());
+                            let req = i64::from_le_bytes({
+                                // guarded by the item.len() >= 12 guard
+                                #[allow(clippy::unwrap_used)]
+                                item[4..12].try_into().unwrap()
+                            });
                             ack_ids.push(req);
                             if req == msg_id as i64 && answer.is_none() {
                                 answer = Some(item[12..].to_vec());
                             }
                         }
-                        _ => {} // updates / pong-like payloads: ignored
+                        // msgs_ack / pong / updates / pong-like payloads:
+                        // explicitly ignored.
+                        _ => {}
                     }
                 }
 
@@ -342,10 +411,12 @@ impl TelegramClient {
             if let Some(a) = answer {
                 return Ok(a);
             }
-            if resend {
-                tracing::debug!("session/salt correction — re-sending query");
-                continue;
+            if !resend {
+                // Neither an answer nor a salt correction: the server
+                // went quiet — fall through to the protocol error.
+                break;
             }
+            tracing::debug!("session/salt correction — re-sending query");
         }
         Err(Error::Protocol(
             "exchange did not settle after session/salt corrections".into(),
@@ -355,6 +426,11 @@ impl TelegramClient {
     /// Authorize as a bot using a bot token.
     ///
     /// This sends `auth.importBotAuthorization` to the server.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] when the exchange fails or the
+    /// server answers with an RPC error.
     pub async fn authorize_bot(&mut self, bot_token: &str) -> Result<i64> {
         // importBotAuthorization flags:0 api_id:int api_hash:string bot_auth_token:string = auth.Authorization;
         let mut payload = TLWriter::new();
@@ -382,16 +458,13 @@ impl TelegramClient {
                 tracing::info!("bot authorization succeeded");
                 Ok(user.id().0)
             }
-            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
-                Err(Error::SignUpRequired)
-            }
+            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => Err(Error::SignUpRequired),
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in bot auth response",
-                constructor
+                "unexpected constructor {constructor:#x} in bot auth response",
             ))),
         }
     }
@@ -401,9 +474,12 @@ impl TelegramClient {
     // ------------------------------------------------------------------
 
     /// Step 1: Send verification code to phone number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] when the exchange fails or the
+    /// server answers with an RPC error.
     pub async fn auth_send_code(&mut self, phone_number: &str) -> Result<AuthSentCodeInfo> {
-
-
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SEND_CODE);
         // auth.sendCode#... phone_number:string api_id:int api_hash:string settings:CodeSettings = auth.SentCode;
@@ -427,21 +503,24 @@ impl TelegramClient {
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_send_code response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_send_code response",
             ))),
         }
     }
 
     /// Step 2: Sign in with the verification code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] when the exchange fails or the
+    /// server answers with an RPC error; [`Error::CodeResent`] when the
+    /// code session expired and a fresh hash was issued.
     pub async fn auth_sign_in(
         &mut self,
         phone_number: &str,
         phone_code_hash: &[u8],
         phone_code: &str,
     ) -> Result<()> {
-
-
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_IN);
         // auth.signIn#8d52a951 flags:# phone_number:string phone_code_hash:string
@@ -462,9 +541,15 @@ impl TelegramClient {
                 // otherwise_relogin_days:flags.1?int tmp_sessions:flags.0?int
                 // future_auth_token:flags.2?bytes user:User
                 let flags = r.read_i32()?;
-                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; } // tmp_sessions
-                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; } // otherwise_relogin_days
-                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; } // future_auth_token
+                if flags & (1 << 0) != 0 {
+                    let _ = r.read_i32()?;
+                } // tmp_sessions
+                if flags & (1 << 1) != 0 {
+                    let _ = r.read_i32()?;
+                } // otherwise_relogin_days
+                if flags & (1 << 2) != 0 {
+                    let _ = r.read_bytes()?;
+                } // future_auth_token
                 let user = types::User::read_from(&mut r)?;
                 self.user_id = Some(user.id().0);
                 Ok(())
@@ -473,23 +558,27 @@ impl TelegramClient {
                 // The code session expired while the user was typing — the
                 // server sent a fresh code. Retry sign-in with the new hash.
                 let sent = parse_sent_code_response(&plaintext)?;
-                Err(Error::CodeResent { phone_code_hash: sent.phone_code_hash })
+                Err(Error::CodeResent {
+                    phone_code_hash: sent.phone_code_hash,
+                })
             }
-            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => {
-                Err(Error::SignUpRequired)
-            }
+            types::AUTH_AUTHORIZATION_SIGN_UP_REQUIRED => Err(Error::SignUpRequired),
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_sign_in response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_sign_in response",
             ))),
         }
     }
 
     /// Step 2 (alternative): Sign up as a new user.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] when the exchange fails or the
+    /// server answers with an RPC error.
     pub async fn auth_sign_up(
         &mut self,
         phone_number: &str,
@@ -497,8 +586,6 @@ impl TelegramClient {
         first_name: &str,
         last_name: &str,
     ) -> Result<()> {
-
-
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_SIGN_UP);
         payload.write_i32(0); // flags# (no_joined_notifications off)
@@ -516,24 +603,31 @@ impl TelegramClient {
             types::AUTH_AUTHORIZATION => {
                 // auth.authorization#2ea2c0d4 — same layout as auth_sign_in
                 let flags = r.read_i32()?;
-                if flags & (1 << 0) != 0 { let _ = r.read_i32()?; } // tmp_sessions
-                if flags & (1 << 1) != 0 { let _ = r.read_i32()?; } // otherwise_relogin_days
-                if flags & (1 << 2) != 0 { let _ = r.read_bytes()?; } // future_auth_token
+                if flags & (1 << 0) != 0 {
+                    let _ = r.read_i32()?;
+                } // tmp_sessions
+                if flags & (1 << 1) != 0 {
+                    let _ = r.read_i32()?;
+                } // otherwise_relogin_days
+                if flags & (1 << 2) != 0 {
+                    let _ = r.read_bytes()?;
+                } // future_auth_token
                 let user = types::User::read_from(&mut r)?;
                 self.user_id = Some(user.id().0);
                 Ok(())
             }
             types::AUTH_SENT_CODE => {
                 let sent = parse_sent_code_response(&plaintext)?;
-                Err(Error::CodeResent { phone_code_hash: sent.phone_code_hash })
+                Err(Error::CodeResent {
+                    phone_code_hash: sent.phone_code_hash,
+                })
             }
             RPC_ERROR => {
                 let (code, msg) = crate::mtproto::parse_rpc_error(&plaintext)?;
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_sign_up response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_sign_up response",
             ))),
         }
     }
@@ -542,6 +636,11 @@ impl TelegramClient {
     ///
     /// `auth.logOut#3e72ba19 = auth.LoggedOut;` — server may return a
     /// `future_auth_token` for resync; we surface it to the caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] when the exchange fails or the
+    /// server answers with an RPC error.
     pub async fn auth_log_out(&mut self) -> Result<Option<Vec<u8>>> {
         let plaintext = self.invoke(types::AUTH_LOG_OUT, &[]).await?;
         let mut r = TLReader::new(&plaintext);
@@ -564,8 +663,7 @@ impl TelegramClient {
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_log_out response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_log_out response",
             ))),
         }
     }
@@ -575,6 +673,11 @@ impl TelegramClient {
     /// `auth.checkPassword#d18b4d16 password:InputCheckPasswordSRP`.
     /// Fetches `account.getPassword` for the server challenge, runs the
     /// client side of SRP with the password, and sends the proof.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the challenge fetch, SRP proof, or
+    /// authorization response fails, including RPC errors from Telegram.
     pub async fn auth_check_password(&mut self, password: &str) -> Result<()> {
         // account.getPassword → the SRP challenge (algo + srp_B + srp_id).
         let raw = self.invoke(types::ACCOUNT_GET_PASSWORD, &[]).await?;
@@ -600,7 +703,9 @@ impl TelegramClient {
         srp_payload.write_bytes(&answer.a);
         srp_payload.write_bytes(&answer.m1);
 
-        let plaintext = self.invoke(types::AUTH_CHECK_PASSWORD, &srp_payload.into_bytes()).await?;
+        let plaintext = self
+            .invoke(types::AUTH_CHECK_PASSWORD, &srp_payload.into_bytes())
+            .await?;
         let mut r = TLReader::new(&plaintext);
         let constructor = r.read_u32()?;
 
@@ -616,8 +721,7 @@ impl TelegramClient {
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_check_password response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_check_password response",
             ))),
         }
     }
@@ -626,10 +730,12 @@ impl TelegramClient {
     /// `tg://login?token=...`.
     ///
     /// `auth.exportLoginToken#b7e085fe api_id:int api_hash:string except_ids:Vector<long>`.
-    pub async fn auth_export_login_token(
-        &mut self,
-        except_ids: &[i64],
-    ) -> Result<AuthLoginToken> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the token request fails, including
+    /// RPC errors from Telegram.
+    pub async fn auth_export_login_token(&mut self, except_ids: &[i64]) -> Result<AuthLoginToken> {
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_EXPORT_LOGIN_TOKEN);
         payload.write_i32(self.api_id.unwrap_or(0));
@@ -639,7 +745,9 @@ impl TelegramClient {
             payload.write_i64(*id);
         }
 
-        let plaintext = self.invoke(types::AUTH_EXPORT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        let plaintext = self
+            .invoke(types::AUTH_EXPORT_LOGIN_TOKEN, &payload.into_bytes())
+            .await?;
         parse_login_token_response(&plaintext)
     }
 
@@ -647,12 +755,19 @@ impl TelegramClient {
     /// another device and poll until it is approved.
     ///
     /// `auth.importLoginToken#95ac5ce4 token:bytes = auth.LoginToken;`
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the token import fails, including
+    /// RPC errors from Telegram.
     pub async fn auth_import_login_token(&mut self, token: &[u8]) -> Result<AuthLoginToken> {
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_IMPORT_LOGIN_TOKEN);
         payload.write_bytes(token);
 
-        let plaintext = self.invoke(types::AUTH_IMPORT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        let plaintext = self
+            .invoke(types::AUTH_IMPORT_LOGIN_TOKEN, &payload.into_bytes())
+            .await?;
         parse_login_token_response(&plaintext)
     }
 
@@ -660,12 +775,19 @@ impl TelegramClient {
     ///
     /// `auth.acceptLoginToken#e894ad4d token:bytes = Authorization;`
     /// Returns the authorized user id, if the token was valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the token acceptance fails, including
+    /// RPC errors from Telegram.
     pub async fn auth_accept_login_token(&mut self, token: &[u8]) -> Result<i64> {
         let mut payload = TLWriter::new();
         payload.write_u32(types::AUTH_ACCEPT_LOGIN_TOKEN);
         payload.write_bytes(token);
 
-        let plaintext = self.invoke(types::AUTH_ACCEPT_LOGIN_TOKEN, &payload.into_bytes()).await?;
+        let plaintext = self
+            .invoke(types::AUTH_ACCEPT_LOGIN_TOKEN, &payload.into_bytes())
+            .await?;
         let mut r = TLReader::new(&plaintext);
         let constructor = r.read_u32()?;
 
@@ -676,8 +798,7 @@ impl TelegramClient {
                 Err(crate::error::classify_rpc_error(code, &msg))
             }
             _ => Err(Error::UnexpectedResponse(format!(
-                "unexpected constructor {:#x} in auth_accept_login_token response",
-                constructor
+                "unexpected constructor {constructor:#x} in auth_accept_login_token response",
             ))),
         }
     }
@@ -687,6 +808,11 @@ impl TelegramClient {
     // ------------------------------------------------------------------
 
     /// Invoke a raw TL method (generic RPC call).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the exchange fails or Telegram
+    /// answers with an RPC error.
     pub async fn invoke(&mut self, method_id: u32, payload: &[u8]) -> Result<Vec<u8>> {
         let mut full_payload = TLWriter::new();
         full_payload.write_u32(method_id);
@@ -702,6 +828,11 @@ impl TelegramClient {
     ///
     /// Returns `(this_dc, nearest_dc)`. Requires an auth key (any key,
     /// even unauthenticated) — usable right after the DH handshake.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if the request fails or the response
+    /// is not a `nearestDc` object, including RPC errors.
     pub async fn help_get_nearest_dc(&mut self) -> Result<(i32, i32)> {
         let result = self.invoke(types::HELP_GET_NEAREST_DC, &[]).await?;
         let mut r = TLReader::new(&result);
@@ -735,27 +866,46 @@ pub(crate) fn parse_sent_code_response(plaintext: &[u8]) -> Result<AuthSentCodeI
     let flags = r.read_i32()?;
     let sent_code_type = read_sent_code_type(&mut r)?;
     let phone_code_hash = r.read_bytes()?;
-    if flags & (1 << 1) != 0 { skip_code_type(&mut r)?; }
-    if flags & (1 << 2) != 0 { let _ = r.read_i32()?; }
-    Ok(AuthSentCodeInfo { phone_code_hash, sent_code_type })
+    if flags & (1 << 1) != 0 {
+        skip_code_type(&mut r)?;
+    }
+    if flags & (1 << 2) != 0 {
+        let _ = r.read_i32()?;
+    }
+    Ok(AuthSentCodeInfo {
+        phone_code_hash,
+        sent_code_type,
+    })
 }
 
 /// Parse/skip an `auth.SentCodeType` object, returning its constructor ID.
 /// The caller can match it against the `SENT_CODE_TYPE_*` constants.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error`] if the constructor is unknown or its body
+/// cannot be read.
 pub(crate) fn read_sent_code_type(r: &mut TLReader) -> Result<u32> {
     let ctor = r.read_u32()?;
     match ctor {
         // sentCodeTypeApp#3dbb5986 length:int | sentCodeTypeSms#c000bba2 length:int
-        // | sentCodeTypeCall#5353e5a7 length:int
-        types::AUTH_SENT_CODE_TYPE_APP | types::AUTH_SENT_CODE_TYPE_SMS | SENT_CODE_TYPE_CALL => {
-            let _length = r.read_i32()?;
+        // | sentCodeTypeCall#5353e5a7 length:int | sentCodeTypeSetUpEmailRequired#a5491dea
+        // flags:# apple_signin_allowed:flags.0?true google_signin_allowed:flags.1?true
+        // — a single leading int in every shape; skip it uniformly.
+        types::AUTH_SENT_CODE_TYPE_APP
+        | types::AUTH_SENT_CODE_TYPE_SMS
+        | SENT_CODE_TYPE_CALL
+        | SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED => {
+            let _head_int = r.read_i32()?;
         }
         // sentCodeTypeFlashCall#ab03c6d9 pattern:string
         SENT_CODE_TYPE_FLASH_CALL => {
             let _pattern = r.read_bytes()?;
         }
         // sentCodeTypeMissedCall#82006484 prefix:string length:int
-        SENT_CODE_TYPE_MISSED_CALL => {
+        // sentCodeTypeFragmentSms#d9565c39 url:string length:int
+        // — both are string followed by int.
+        SENT_CODE_TYPE_MISSED_CALL | SENT_CODE_TYPE_FRAGMENT_SMS => {
             let _prefix = r.read_bytes()?;
             let _length = r.read_i32()?;
         }
@@ -766,39 +916,43 @@ pub(crate) fn read_sent_code_type(r: &mut TLReader) -> Result<u32> {
             let flags = r.read_i32()?;
             let _email_pattern = r.read_bytes()?;
             let _length = r.read_i32()?;
-            if flags & (1 << 3) != 0 { let _ = r.read_i32()?; }
-            if flags & (1 << 4) != 0 { let _ = r.read_i32()?; }
-        }
-        // sentCodeTypeSetUpEmailRequired#a5491dea flags:# apple_signin_allowed:flags.0?true
-        //   google_signin_allowed:flags.1?true
-        SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED => {
-            let _flags = r.read_i32()?;
-        }
-        // sentCodeTypeFragmentSms#d9565c39 url:string length:int
-        SENT_CODE_TYPE_FRAGMENT_SMS => {
-            let _url = r.read_bytes()?;
-            let _length = r.read_i32()?;
+            if flags & (1 << 3) != 0 {
+                let _ = r.read_i32()?;
+            }
+            if flags & (1 << 4) != 0 {
+                let _ = r.read_i32()?;
+            }
         }
         // sentCodeTypeFirebaseSms#9fd736 flags:# nonce:flags.0?bytes
         //   play_integrity_project_id:flags.2?long play_integrity_nonce:flags.2?bytes
         //   receipt:flags.1?string push_timeout:flags.1?int length:int
         SENT_CODE_TYPE_FIREBASE_SMS => {
             let flags = r.read_i32()?;
-            if flags & (1 << 0) != 0 { let _ = r.read_bytes()?; }
-            if flags & (1 << 1) != 0 { let _ = r.read_bytes()?; let _ = r.read_i32()?; }
-            if flags & (1 << 2) != 0 { let _ = r.read_i64()?; let _ = r.read_bytes()?; }
+            if flags & (1 << 0) != 0 {
+                let _ = r.read_bytes()?;
+            }
+            if flags & (1 << 1) != 0 {
+                let _ = r.read_bytes()?;
+                let _ = r.read_i32()?;
+            }
+            if flags & (1 << 2) != 0 {
+                let _ = r.read_i64()?;
+                let _ = r.read_bytes()?;
+            }
             let _length = r.read_i32()?;
         }
         // sentCodeTypeSmsWord#a416ac81 flags:# beginning:flags.0?string
         // sentCodeTypeSmsPhrase#b37794af flags:# beginning:flags.0?string
         SENT_CODE_TYPE_SMS_WORD | SENT_CODE_TYPE_SMS_PHRASE => {
             let flags = r.read_i32()?;
-            if flags & (1 << 0) != 0 { let _ = r.read_bytes()?; }
+            if flags & (1 << 0) != 0 {
+                let _ = r.read_bytes()?;
+            }
         }
         other => {
             return Err(Error::Serialization(format!(
                 "unknown auth.SentCodeType constructor {other:#x}"
-            )))
+            )));
         }
     }
     Ok(ctor)
@@ -824,37 +978,35 @@ pub struct AuthSentCodeInfo {
 }
 
 /// Sent code type constants.
-pub const SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
-pub const SENT_CODE_TYPE_SMS: u32 = 0xc000bba2;
-pub const SENT_CODE_TYPE_CALL: u32 = 0x5353e5a7;
-pub const SENT_CODE_TYPE_FLASH_CALL: u32 = 0xab03c6d9;
-pub const SENT_CODE_TYPE_MISSED_CALL: u32 = 0x82006484;
-pub const SENT_CODE_TYPE_EMAIL_CODE: u32 = 0xf450f59b;
-pub const SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED: u32 = 0xa5491dea;
-pub const SENT_CODE_TYPE_FRAGMENT_SMS: u32 = 0xd9565c39;
-pub const SENT_CODE_TYPE_FIREBASE_SMS: u32 = 0x9fd736;
-pub const SENT_CODE_TYPE_SMS_WORD: u32 = 0xa416ac81;
-pub const SENT_CODE_TYPE_SMS_PHRASE: u32 = 0xb37794af;
-
+pub const SENT_CODE_TYPE_APP: u32 = 0x3dbb_5986;
+pub const SENT_CODE_TYPE_SMS: u32 = 0xc000_bba2;
+pub const SENT_CODE_TYPE_CALL: u32 = 0x5353_e5a7;
+pub const SENT_CODE_TYPE_FLASH_CALL: u32 = 0xab03_c6d9;
+pub const SENT_CODE_TYPE_MISSED_CALL: u32 = 0x8200_6484;
+pub const SENT_CODE_TYPE_EMAIL_CODE: u32 = 0xf450_f59b;
+pub const SENT_CODE_TYPE_SET_UP_EMAIL_REQUIRED: u32 = 0xa549_1dea;
+pub const SENT_CODE_TYPE_FRAGMENT_SMS: u32 = 0xd956_5c39;
+pub const SENT_CODE_TYPE_FIREBASE_SMS: u32 = 0x09fd_0736;
+pub const SENT_CODE_TYPE_SMS_WORD: u32 = 0xa416_ac81;
+pub const SENT_CODE_TYPE_SMS_PHRASE: u32 = 0xb377_94af;
 
 /// Result of an `auth.exportLoginToken` / `auth.importLoginToken` call.
 #[derive(Debug, Clone)]
 pub enum AuthLoginToken {
     /// Token active — poll again or render the QR code.
-    Token {
-        expires: i32,
-        token: Vec<u8>,
-    },
+    Token { expires: i32, token: Vec<u8> },
     /// Login must continue on another DC.
-    MigrateTo {
-        dc_id: i32,
-        token: Vec<u8>,
-    },
+    MigrateTo { dc_id: i32, token: Vec<u8> },
     /// The other device approved the login.
     Success,
 }
 
 /// Parse a `auth.LoginToken` response.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error`] if the constructor is not a login token
+/// variant or an RPC error is present.
 pub(crate) fn parse_login_token_response(plaintext: &[u8]) -> Result<AuthLoginToken> {
     let mut r = TLReader::new(plaintext);
     let constructor = r.read_u32()?;
@@ -876,8 +1028,7 @@ pub(crate) fn parse_login_token_response(plaintext: &[u8]) -> Result<AuthLoginTo
             Err(crate::error::classify_rpc_error(code, &msg))
         }
         _ => Err(Error::UnexpectedResponse(format!(
-            "unexpected constructor {:#x} in login token response",
-            constructor
+            "unexpected constructor {constructor:#x} in login token response",
         ))),
     }
 }
@@ -957,11 +1108,23 @@ fn parse_account_password(plaintext: &[u8]) -> Result<AccountPasswordChallenge> 
     } else {
         None
     };
-    let srp_b = if has_password { r.read_bytes()? } else { Vec::new() };
+    let srp_b = if has_password {
+        r.read_bytes()?
+    } else {
+        Vec::new()
+    };
     let srp_id = if has_password { r.read_i64()? } else { 0 };
-    let hint = if flags & (1 << 3) != 0 { r.read_bytes()? } else { Vec::new() };
+    let hint = if flags & (1 << 3) != 0 {
+        r.read_bytes()?
+    } else {
+        Vec::new()
+    };
     let _ = hint;
-    let email = if flags & (1 << 4) != 0 { r.read_bytes()? } else { Vec::new() };
+    let email = if flags & (1 << 4) != 0 {
+        r.read_bytes()?
+    } else {
+        Vec::new()
+    };
     let _ = email;
     // new_algo:PasswordKdfAlgo — consume the full object
     let new_algo_ctor = r.read_u32()?;
@@ -973,11 +1136,11 @@ fn parse_account_password(plaintext: &[u8]) -> Result<AccountPasswordChallenge> 
     }
     // new_secure_algo:SecurePasswordKdfAlgo — consume per ctor
     let secure_ctor = r.read_u32()?;
-    match secure_ctor {
-        types::SECURE_PASSWORD_KDF_ALGO_PBKDF2 | types::SECURE_PASSWORD_KDF_ALGO_SHA512 => {
-            let _salt = r.read_bytes()?;
-        }
-        _ => {}
+    if matches!(
+        secure_ctor,
+        types::SECURE_PASSWORD_KDF_ALGO_PBKDF2 | types::SECURE_PASSWORD_KDF_ALGO_SHA512
+    ) {
+        let _salt = r.read_bytes()?;
     }
     let _secure_random = r.read_bytes()?;
     if flags & (1 << 5) != 0 {
@@ -999,6 +1162,7 @@ fn parse_account_password(plaintext: &[u8]) -> Result<AccountPasswordChallenge> 
 // ---------------------------------------------------------------------------
 
 /// Serialize a `string` TL value from a Rust string.
+#[must_use]
 pub fn serialize_string(s: &str) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_bytes(s.as_bytes());
@@ -1006,13 +1170,19 @@ pub fn serialize_string(s: &str) -> Vec<u8> {
 }
 
 /// Deserialize a `string` TL value into a Rust string.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Serialization`] if the bytes are not a
+/// valid TL string or not valid UTF-8.
 pub fn deserialize_string(data: &[u8]) -> Result<String> {
     let mut r = TLReader::new(data);
     let bytes = r.read_bytes()?;
     String::from_utf8(bytes).map_err(|e| Error::Serialization(e.to_string()))
 }
 
-/// Serialize an `InputPeerUser` from user_id and access_hash.
+/// Serialize an `InputPeerUser` from `user_id` and `access_hash`.
+#[must_use]
 pub fn serialize_input_peer_user(user_id: i64, access_hash: i64) -> Vec<u8> {
     let mut w = TLWriter::new();
     w.write_u32(types::INPUT_PEER_USER);
@@ -1025,6 +1195,8 @@ pub fn serialize_input_peer_user(user_id: i64, access_hash: i64) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    // Test code: unwrap/expect/panic are the idiomatic failure modes here.
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     #[test]
     fn test_serialize_string() {
         let s = "hello";
@@ -1034,6 +1206,7 @@ mod tests {
         assert_eq!(String::from_utf8(back).unwrap(), s);
     }
 
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     #[test]
     fn test_serialize_input_peer_user() {
         let data = serialize_input_peer_user(12345, 67890);
@@ -1050,6 +1223,7 @@ mod tests {
         assert_eq!(client.dc_id, 2);
     }
 
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     #[test]
     fn test_parse_login_token_response_variants() {
         // auth.loginToken#629f1980 expires:int token:bytes
@@ -1087,6 +1261,7 @@ mod tests {
         ));
     }
 
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     #[test]
     fn test_parse_account_password_roundtrip() {
         // Build account.password#5188ee1b with has_password + no optional extras.
@@ -1118,8 +1293,9 @@ mod tests {
 
     #[test]
     fn test_srp_check_password_is_deterministic_shape() {
-        // SRP mixes a random a, so M1 differs run to run — but the answer
-        // must always be well-formed: A padded to 255 bytes, M1 = 32 bytes.
+        // SRP mixes a random `a`, so `M1` differs run to run — but the
+        // answer must always be well-formed: `A` padded to 255 bytes,
+        // `M1` = 32 bytes.
         let params = crate::crypto::SrpParams {
             salt1: vec![1, 2, 3],
             salt2: vec![4, 5, 6],

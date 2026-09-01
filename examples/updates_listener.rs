@@ -12,8 +12,8 @@
 //!   cargo run --example updates_listener -- 123456:BOT_TOKEN
 //! ```
 
-use mtprsto::types::Update;
 use mtprsto::Client;
+use mtprsto::types::Update;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,9 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start the pump; poll server state every 15 s. Returns None if the
     // pump is already running or the client is not connected.
-    let mut rx = client
-        .updates(15)
-        .expect("updates pump did not start");
+    let mut rx = client.updates(15).expect("updates pump did not start");
 
     while let Some(update) = rx.recv().await {
         match update {

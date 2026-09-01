@@ -1,13 +1,27 @@
-//! TCP transport layer with Obfuscated2 for MTProto.
+//! TCP transport layer with Obfuscated2 for `MTProto`.
 //!
-//! Obfuscated2 wraps the MTProto protocol in an obfuscated stream that
+//! Obfuscated2 wraps the `MTProto` protocol in an obfuscated stream that
 //! is indistinguishable from random data, allowing it to bypass DPI
 //! (Deep Packet Inspection). See:
 //! <https://core.telegram.org/mtproto/mtproto-transports#transport-obfuscation>
 
+// Wire-format engine: byte wrangling is this module's job — TL field
+// order, int32 wire ids, offset arithmetic over length-checked
+// buffers. The cast/index/arithmetic classes are inherent to that
+// job; they are relaxed once here, invariants held by hand. Every
+// other lint still applies.
+#![allow(clippy::as_conversions, clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::string_slice
+)]
+#![allow(clippy::unreadable_literal)] // ids/hex quoted verbatim from the TL schema
+
 use crate::error::{Error, Result};
 use crate::mtproto::MtProtoSession;
-use rand::{rng, Rng};
+use rand::{Rng, rng};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -20,6 +34,10 @@ pub const DC_4: i32 = 4; // Amsterdam, Netherlands
 pub const DC_5: i32 = 5; // Singapore
 
 /// Returns the (ip, port) for a Telegram DC in Abridged mode.
+///
+/// # Errors
+///
+/// Returns a transport error for a DC id outside the production/test table.
 pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
     let (ip, port) = match dc_id.abs() {
         1 => ("149.154.175.50", 443),
@@ -30,7 +48,8 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
         201 => ("91.108.56.4", 443), // test DC (SPEC §1)
         _ => return Err(Error::Transport(format!("unknown DC ID: {dc_id}"))),
     };
-    let ip = ip.parse::<std::net::IpAddr>()
+    let ip = ip
+        .parse::<std::net::IpAddr>()
         .map_err(|e| Error::Transport(e.to_string()))?;
     Ok(SocketAddr::new(ip, port))
 }
@@ -42,10 +61,10 @@ pub fn dc_address(dc_id: i32) -> Result<SocketAddr> {
 /// Obfuscated2 codec: AES-256-CTR streams over a byte stream (TCP or,
 /// with feature `ws`, a WebSocket pipe).
 ///
-/// Key/IV derivation (https://corefork.telegram.org/mtproto/mtproto-transports):
+/// Key/IV derivation (<https://corefork.telegram.org/mtproto/mtproto-transports>):
 /// - init: 64 random bytes (protocol tag at 56..60)
-/// - enc_key = init[8..40], enc_iv = init[40..56]
-/// - init_rev = reversed(init); dec_key = init_rev[8..40], dec_iv = init_rev[40..56]
+/// - `enc_key = init[8..40]`, `enc_iv = init[40..56]`
+/// - `init_rev = reversed(init)`; `dec_key = init_rev[8..40]`, `dec_iv = init_rev[40..56]`
 /// - init[56..64] is replaced with its CTR-encrypted form before sending.
 /// - CTR counters persist across frames until the connection closes.
 pub(crate) struct AesCtr {
@@ -54,6 +73,9 @@ pub(crate) struct AesCtr {
 }
 
 impl AesCtr {
+    // `key`/`iv` are fixed 32/16-byte slices carved from the 64-byte
+    // obfuscated2 init, so the length conversions cannot fail.
+    #[allow(clippy::expect_used)]
     fn new(key: &[u8], iv: &[u8]) -> Self {
         use aes::cipher::KeyInit;
         Self {
@@ -108,7 +130,10 @@ impl FrameStream for TcpStream {
     }
     async fn fs_read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         use tokio::io::AsyncReadExt;
-        self.read_exact(buf).await.map(|_| ()).map_err(Error::Network)
+        self.read_exact(buf)
+            .await
+            .map(|_| ())
+            .map_err(Error::Network)
     }
 }
 
@@ -116,26 +141,37 @@ impl<S> Obfuscated2Transport<S> {
     /// Wrap an already-connected stream with the given CTR pair (used by
     /// the WS path, which sends the init itself).
     #[allow(dead_code)] // used by the ws feature path and live probes
-    pub(crate) fn new(stream: S, enc: AesCtr, dec: AesCtr) -> Self {
+    pub(crate) const fn new(stream: S, enc: AesCtr, dec: AesCtr) -> Self {
         Self { stream, enc, dec }
     }
 }
 
 impl<S: FrameStream> Obfuscated2Transport<S> {
     /// Send one Intermediate frame (4-byte LE length + payload), encrypted.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors when the payload exceeds `u32::MAX` bytes
+    /// or the socket write fails.
     pub async fn send_frame(&mut self, payload: &[u8]) -> Result<()> {
-        let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
+        let mut frame = u32::try_from(payload.len())
+            .map_err(|_| Error::Transport("frame over u32::MAX bytes".into()))?
+            .to_le_bytes()
+            .to_vec();
         frame.extend_from_slice(payload);
         self.stream.fs_write_all(&frame).await?;
         Ok(())
     }
 
-    /// Maximum plaintext frame we accept (2 MiB — MTProto hard limit is
+    /// Maximum plaintext frame we accept (2 MiB — `MTProto` hard limit is
     /// 1 MiB per message + padding/headers slack).
     pub const MAX_FRAME: usize = 2 * 1024 * 1024;
 
-
     /// Receive one Intermediate frame, decrypted.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors on socket failure or oversized frames.
     pub async fn recv_frame(&mut self) -> Result<Vec<u8>> {
         let mut hdr = [0u8; 4];
         self.stream.fs_read_exact(&mut hdr).await?;
@@ -158,6 +194,7 @@ impl<S: FrameStream> Obfuscated2Transport<S> {
 ///
 /// The first 56 bytes are random. The 57th and 58th bytes encode the protocol tag.
 /// The 60th-63rd bytes are the DC ID.
+#[must_use]
 pub fn generate_obfuscated2_init(protocol: TransportProtocol, dc_id: i32) -> [u8; 64] {
     let mut rng = rng();
     let mut data = [0u8; 64];
@@ -207,6 +244,10 @@ pub fn generate_obfuscated2_init(protocol: TransportProtocol, dc_id: i32) -> [u8
 ///
 /// Opens a raw TCP connection (NO init written), generates the init, sends
 /// it, and returns the codec for subsequent framed I/O.
+///
+/// # Errors
+///
+/// Returns transport errors when the TCP connect or the init write fails.
 pub async fn connect_obfuscated2(
     dc_id: i32,
     protocol: TransportProtocol,
@@ -215,7 +256,11 @@ pub async fn connect_obfuscated2(
     let (enc, dec, init_copy) = obfuscated2_keys(protocol, dc_id);
     let mut s = stream;
     s.fs_write_all(&init_copy).await?;
-    Ok(Obfuscated2Transport { stream: s, enc, dec })
+    Ok(Obfuscated2Transport {
+        stream: s,
+        enc,
+        dec,
+    })
 }
 
 /// Derive the Obfuscated2 CTR pair and the ready-to-send init payload.
@@ -265,11 +310,17 @@ pub struct AbridgedTransport {
 }
 
 impl AbridgedTransport {
-    pub fn new(stream: TcpStream) -> Self {
+    /// Wrap an already-connected TCP stream.
+    #[must_use]
+    pub const fn new(stream: TcpStream) -> Self {
         Self { stream }
     }
 
     /// Send raw data over the abridged transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors when the socket write fails.
     pub async fn send(&mut self, data: &[u8]) -> Result<()> {
         let len = data.len() / 4; // Length in 4-byte words
         if len < 127 {
@@ -285,6 +336,11 @@ impl AbridgedTransport {
     }
 
     /// Receive raw data from the abridged transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors on socket failure and a classified
+    /// error for the server's 4-byte transport-error frame.
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
         let mut first = [0u8; 1];
         self.stream.read_exact(&mut first).await?;
@@ -301,7 +357,15 @@ impl AbridgedTransport {
         let mut data = vec![0u8; len];
         self.stream.read_exact(&mut data).await?;
         if len == 4 {
-            let code = i32::from_le_bytes(data.as_slice().try_into().unwrap());
+            let code = match <[u8; 4]>::try_from(data.as_slice()) {
+                Ok(b) => i32::from_le_bytes(b),
+                // unreachable: `len == 4` was just checked
+                Err(_) => {
+                    return Err(Error::Transport(
+                        "truncated server transport-error frame".into(),
+                    ));
+                }
+            };
             return Err(Error::Transport(format!(
                 "server transport error {code} (-404 = bad request/auth, -429 = flood)"
             )));
@@ -309,6 +373,7 @@ impl AbridgedTransport {
         Ok(data)
     }
 
+    #[must_use]
     pub fn into_inner(self) -> TcpStream {
         self.stream
     }
@@ -324,30 +389,44 @@ pub struct IntermediateTransport {
 }
 
 impl IntermediateTransport {
-    /// Maximum plaintext frame we accept (2 MiB — MTProto hard limit is
+    /// Maximum plaintext frame we accept (2 MiB — `MTProto` hard limit is
     /// 1 MiB per message + padding/headers slack).
     pub const MAX_FRAME: usize = 2 * 1024 * 1024;
 
-    pub fn new(stream: TcpStream) -> Self {
+    /// Wrap an already-connected TCP stream.
+    #[must_use]
+    pub const fn new(stream: TcpStream) -> Self {
         Self { stream }
     }
 
+    /// Send raw data over the Intermediate transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors when the socket write fails.
     pub async fn send(&mut self, data: &[u8]) -> Result<()> {
-        let len = (data.len() as u32).to_le_bytes();
+        let len = u32::try_from(data.len())
+            .map_err(|_| Error::Transport("payload over u32::MAX bytes".into()))?
+            .to_le_bytes();
         self.stream.write_all(&len).await?;
         self.stream.write_all(data).await?;
         self.stream.flush().await?;
         Ok(())
     }
 
+    /// Receive raw data from the Intermediate transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns transport errors on socket failure or oversized frames.
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
         let mut len_buf = [0u8; 4];
         self.stream.read_exact(&mut len_buf).await?;
         let len = u32::from_le_bytes(len_buf) as usize;
-        if len > IntermediateTransport::MAX_FRAME {
+        if len > Self::MAX_FRAME {
             return Err(Error::Transport(format!(
                 "frame too large: {len} bytes (cap {})",
-                IntermediateTransport::MAX_FRAME
+                Self::MAX_FRAME
             )));
         }
         let mut data = vec![0u8; len];
@@ -355,6 +434,7 @@ impl IntermediateTransport {
         Ok(data)
     }
 
+    #[must_use]
     pub fn into_inner(self) -> TcpStream {
         self.stream
     }
@@ -364,7 +444,7 @@ impl IntermediateTransport {
 // Higher-level: connect and send encrypted messages
 // ---------------------------------------------------------------------------
 
-/// Connect to a Telegram DC for PLAIN Intermediate (unencrypted MTProto)
+/// Connect to a Telegram DC for PLAIN Intermediate (unencrypted `MTProto`)
 /// flows: the auth-key DH handshake.
 ///
 /// Verified against production DCs (2026-08): the server accepts a 4-byte
@@ -372,6 +452,10 @@ impl IntermediateTransport {
 /// frames, and resets connections that skip the tag. Full Obfuscated2
 /// (init + CTR) is available via `connect_obfuscated2` for the encrypted
 /// RPC path.
+///
+/// # Errors
+///
+/// Returns transport errors when the TCP connect or tag write fails.
 pub async fn connect(dc_id: i32) -> Result<TcpStream> {
     let addr = dc_address(dc_id)?;
     let mut stream = TcpStream::connect(addr).await?;
@@ -380,15 +464,16 @@ pub async fn connect(dc_id: i32) -> Result<TcpStream> {
     Ok(stream)
 }
 
-
 /// Send a raw (unencrypted) message over Intermediate transport.
-pub async fn send_unencrypted(
-    stream: &mut TcpStream,
-    msg_id: u64,
-    payload: &[u8],
-) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns transport errors when the socket write fails.
+pub async fn send_unencrypted(stream: &mut TcpStream, msg_id: u64, payload: &[u8]) -> Result<()> {
     let data = MtProtoSession::build_unencrypted(msg_id, payload);
-    let len = (data.len() as u32).to_le_bytes();
+    let len = u32::try_from(data.len())
+        .map_err(|_| Error::Transport("payload over u32::MAX bytes".into()))?
+        .to_le_bytes();
     stream.write_all(&len).await?;
     stream.write_all(&data).await?;
     stream.flush().await?;
@@ -396,6 +481,11 @@ pub async fn send_unencrypted(
 }
 
 /// Receive a raw (unencrypted) message over Intermediate transport.
+///
+/// # Errors
+///
+/// Returns transport errors on socket failure or short frames, and a
+/// classified error for the server's 4-byte transport-error frame.
 pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
@@ -405,9 +495,17 @@ pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> 
     stream.read_exact(&mut data).await?;
 
     // Transport-level error: a 4-byte signed LE code with no envelope
-    // (https://corefork.telegram.org/mtproto/mtproto-transports#transport-errors).
+    // (<https://corefork.telegram.org/mtproto/mtproto-transports#transport-errors>).
     if len == 4 {
-        let code = i32::from_le_bytes(data.clone().try_into().unwrap());
+        let code = match <[u8; 4]>::try_from(data.as_slice()) {
+            Ok(b) => i32::from_le_bytes(b),
+            // unreachable: `len == 4` was just checked
+            Err(_) => {
+                return Err(Error::Transport(
+                    "truncated server transport-error frame".into(),
+                ));
+            }
+        };
         return Err(Error::Transport(format!(
             "server transport error {code} (-404 = bad request/auth, -429 = flood)"
         )));
@@ -417,21 +515,37 @@ pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> 
         return Err(Error::Transport("message too short".into()));
     }
 
-    let auth_key_id = u64::from_be_bytes(data[0..8].try_into().unwrap());
+    let auth_key_id = match <[u8; 8]>::try_from(&data[0..8]) {
+        Ok(b) => u64::from_be_bytes(b),
+        // unreachable: `data.len() >= 20` was just checked
+        Err(_) => return Err(Error::Transport("message too short".into())),
+    };
     if auth_key_id != 0 {
         return Err(Error::Transport(
             "expected unencrypted message (auth_key_id=0)".into(),
         ));
     }
 
-    let msg_id = u64::from_be_bytes(data[8..16].try_into().unwrap());
-    let _msg_len = u32::from_be_bytes(data[16..20].try_into().unwrap());
+    let msg_id = match <[u8; 8]>::try_from(&data[8..16]) {
+        Ok(b) => u64::from_be_bytes(b),
+        // unreachable: `data.len() >= 20` was just checked
+        Err(_) => return Err(Error::Transport("message too short".into())),
+    };
+    let _msg_len = match <[u8; 4]>::try_from(&data[16..20]) {
+        Ok(b) => u32::from_be_bytes(b),
+        // unreachable: `data.len() >= 20` was just checked
+        Err(_) => return Err(Error::Transport("message too short".into())),
+    };
     let payload = data[20..].to_vec();
 
     Ok((msg_id, payload))
 }
 
 /// Send an encrypted message using Intermediate transport.
+///
+/// # Errors
+///
+/// Returns transport errors when the socket write fails.
 pub async fn send_encrypted(
     stream: &mut TcpStream,
     session: &MtProtoSession,
@@ -440,7 +554,9 @@ pub async fn send_encrypted(
     seq_no: i32,
 ) -> Result<()> {
     let data = session.encrypt_message(payload, msg_id, seq_no);
-    let len = (data.len() as u32).to_le_bytes();
+    let len = u32::try_from(data.len())
+        .map_err(|_| Error::Transport("payload over u32::MAX bytes".into()))?
+        .to_le_bytes();
     stream.write_all(&len).await?;
     stream.write_all(&data).await?;
     stream.flush().await?;
@@ -448,6 +564,11 @@ pub async fn send_encrypted(
 }
 
 /// Receive an encrypted message using Intermediate transport.
+///
+/// # Errors
+///
+/// Returns transport errors on socket failure or short/oversized frames,
+/// and a classified error for the server's 4-byte transport-error frame.
 pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
@@ -458,7 +579,15 @@ pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
 
     // Transport-level error: a 4-byte signed LE code with no envelope
     if len == 4 {
-        let code = i32::from_le_bytes(data.clone().try_into().unwrap());
+        let code = match <[u8; 4]>::try_from(data.as_slice()) {
+            Ok(b) => i32::from_le_bytes(b),
+            // unreachable: `len == 4` was just checked
+            Err(_) => {
+                return Err(Error::Transport(
+                    "truncated server transport-error frame".into(),
+                ));
+            }
+        };
         return Err(Error::Transport(format!(
             "server transport error {code} (-404 = bad request/auth, -429 = flood)"
         )));
@@ -474,10 +603,11 @@ pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
 }
 
 /// Convenience: connect, send unencrypted, receive response.
-pub async fn exchange_unencrypted(
-    dc_id: i32,
-    send_payload: &[u8],
-) -> Result<(u64, Vec<u8>)> {
+///
+/// # Errors
+///
+/// Returns transport errors from the connect/send/receive chain.
+pub async fn exchange_unencrypted(dc_id: i32, send_payload: &[u8]) -> Result<(u64, Vec<u8>)> {
     let mut stream = connect(dc_id).await?;
     let msg_id = 0xdeadbeef; // Can be anything for unencrypted
     send_unencrypted(&mut stream, msg_id, send_payload).await?;
@@ -486,6 +616,12 @@ pub async fn exchange_unencrypted(
 
 #[cfg(test)]
 mod obf_probe {
+    // Probe/test code: unwrap/expect are the idiomatic failure modes.
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::items_after_statements
+    )]
     use super::*;
 
     /// Live-server probe (ignored; run with
@@ -515,7 +651,9 @@ mod obf_probe {
         }
 
         // gotd-wire obfuscated2 ping
-        let mut codec = connect_obfuscated2(2, TransportProtocol::Intermediate).await.unwrap();
+        let mut codec = connect_obfuscated2(2, TransportProtocol::Intermediate)
+            .await
+            .unwrap();
         codec.send_frame(&encrypted).await.unwrap();
         match codec.recv_frame().await {
             Ok(resp) => {
@@ -553,12 +691,16 @@ mod obf_probe {
         want_header.extend_from_slice(&[0x33, 0xbd, 0x94, 0x84, 0xf1, 0xfb, 0x4e, 0x3a]);
         assert_eq!(header, want_header, "header mismatch vs Go reference");
 
-        let frame = [0x00, 0x00, 0x00, 0x10, 0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44];
+        let frame = [
+            0x00, 0x00, 0x00, 0x10, 0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44,
+        ];
         let mut out = frame;
         enc.crypt(&mut out);
         assert_eq!(
             out,
-            [0xdd, 0x00, 0x4d, 0x3a, 0x37, 0xf1, 0x22, 0x01, 0x2d, 0xbb, 0xdc, 0xbe],
+            [
+                0xdd, 0x00, 0x4d, 0x3a, 0x37, 0xf1, 0x22, 0x01, 0x2d, 0xbb, 0xdc, 0xbe
+            ],
         );
 
         let mut dec_init = [0u8; 48];
@@ -569,13 +711,17 @@ mod obf_probe {
         dec.crypt(&mut reply);
         assert_eq!(
             reply,
-            [0xf8, 0x8d, 0x18, 0x7a, 0xea, 0x16, 0xc7, 0x4f, 0x41, 0x86, 0x06, 0x52],
+            [
+                0xf8, 0x8d, 0x18, 0x7a, 0xea, 0x16, 0xc7, 0x4f, 0x41, 0x86, 0x06, 0x52
+            ],
         );
     }
 }
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap is the idiomatic failure mode here.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]

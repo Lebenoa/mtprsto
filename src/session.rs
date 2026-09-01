@@ -1,4 +1,4 @@
-//! Session persistence for MTProto connections.
+//! Session persistence for `MTProto` connections.
 //!
 //! Saves and loads `auth_key`, `server_salt`, `session_id`, and
 //! `server_time_offset` to/from disk. Format is a simple JSON file
@@ -70,9 +70,12 @@ pub struct CachedAuthKey {
     pub server_salt: u64,
 }
 
-fn default_version() -> i32 {
+#[must_use]
+const fn default_version() -> i32 {
     1
 }
+
+const DEFAULT_VERSION: i32 = 1;
 
 /// Storage backend for persisted [`SessionData`].
 ///
@@ -110,12 +113,24 @@ fn default_version() -> i32 {
 /// ```
 pub trait SessionStorage: Send + Sync {
     /// Load the persisted session. Returns `Ok(None)` when nothing is stored.
+    ///
+    /// # Errors
+    ///
+    /// Propagates backend failures (I/O or decode errors) from the store.
     fn load(&mut self) -> Result<Option<SessionData>>;
 
     /// Persist (create or overwrite) the session.
+    ///
+    /// # Errors
+    ///
+    /// Propagates backend failures (I/O or encode errors) from the store.
     fn save(&mut self, data: &SessionData) -> Result<()>;
 
     /// Remove the persisted session. No-op when nothing is stored.
+    ///
+    /// # Errors
+    ///
+    /// Propagates backend failures (I/O errors) from the store.
     fn delete(&mut self) -> Result<()>;
 
     /// Human-readable backend description for logs (e.g. the file path
@@ -151,6 +166,7 @@ pub struct SessionStore {
 
 impl SessionStore {
     /// Create a new session store. Does not load from disk yet.
+    #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
@@ -159,16 +175,19 @@ impl SessionStore {
     }
 
     /// Get the current session data, if loaded.
-    pub fn data(&self) -> Option<&SessionData> {
+    #[must_use]
+    pub const fn data(&self) -> Option<&SessionData> {
         self.data.as_ref()
     }
 
     /// Check if a session file exists on disk.
+    #[must_use]
     pub fn exists(&self) -> bool {
         self.path.exists()
     }
 
     /// Get the path to the session file.
+    #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -181,15 +200,19 @@ impl SessionStorage for SessionStore {
             return Ok(None);
         }
 
-        let content = std::fs::read_to_string(&self.path)
-            .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                "failed to read session file {}: {e}", self.path.display()
-            ))))?;
+        let content = std::fs::read_to_string(&self.path).map_err(|e| {
+            Error::Network(std::io::Error::new(
+                e.kind(),
+                format!("failed to read session file {}: {e}", self.path.display()),
+            ))
+        })?;
 
-        let data: SessionData = serde_json::from_str(&content)
-            .map_err(|e| Error::Serialization(format!(
-                "failed to parse session file {}: {e}", self.path.display()
-            )))?;
+        let data: SessionData = serde_json::from_str(&content).map_err(|e| {
+            Error::Serialization(format!(
+                "failed to parse session file {}: {e}",
+                self.path.display()
+            ))
+        })?;
 
         let result = data.clone();
         self.data = Some(data);
@@ -197,15 +220,26 @@ impl SessionStorage for SessionStore {
     }
 
     /// Save session to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Network`] on I/O failures (directory creation,
+    /// temp-file write, rename) and [`Error::Serialization`] when the
+    /// session cannot be encoded.
     fn save(&mut self, data: &SessionData) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = self.path.parent()
             && !parent.exists()
         {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                    "failed to create session directory {}: {e}", parent.display()
-                ))))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                Error::Network(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "failed to create session directory {}: {e}",
+                        parent.display()
+                    ),
+                ))
+            })?;
         }
 
         let content = serde_json::to_string_pretty(data)
@@ -215,19 +249,31 @@ impl SessionStorage for SessionStore {
         // rename. The PID suffix prevents two processes sharing a session
         // directory from clobbering each other's temp file; sync_all makes
         // the rename durable against power loss (not just process crash).
-        let tmp_path = self.path.with_extension(format!("json.tmp{}", std::process::id()));
-        std::fs::write(&tmp_path, &content)
-            .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                "failed to write session tmp file {}: {e}", tmp_path.display()
-            ))))?;
+        let tmp_path = self
+            .path
+            .with_extension(format!("json.tmp{}", std::process::id()));
+        std::fs::write(&tmp_path, &content).map_err(|e| {
+            Error::Network(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "failed to write session tmp file {}: {e}",
+                    tmp_path.display()
+                ),
+            ))
+        })?;
         if let Ok(handle) = std::fs::File::open(&tmp_path) {
             let _ = handle.sync_all(); // best-effort durability
         }
-        std::fs::rename(&tmp_path, &self.path)
-            .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                "failed to rename session file {} -> {}: {e}",
-                tmp_path.display(), self.path.display()
-            ))))?;
+        std::fs::rename(&tmp_path, &self.path).map_err(|e| {
+            Error::Network(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "failed to rename session file {} -> {}: {e}",
+                    tmp_path.display(),
+                    self.path.display()
+                ),
+            ))
+        })?;
 
         self.data = Some(data.clone());
         Ok(())
@@ -236,10 +282,12 @@ impl SessionStorage for SessionStore {
     /// Delete the session file from disk.
     fn delete(&mut self) -> Result<()> {
         if self.path.exists() {
-            std::fs::remove_file(&self.path)
-                .map_err(|e| Error::Network(std::io::Error::new(e.kind(), format!(
-                    "failed to delete session file {}: {e}", self.path.display()
-                ))))?;
+            std::fs::remove_file(&self.path).map_err(|e| {
+                Error::Network(std::io::Error::new(
+                    e.kind(),
+                    format!("failed to delete session file {}: {e}", self.path.display()),
+                ))
+            })?;
         }
         self.data = None;
         Ok(())
@@ -252,6 +300,7 @@ impl SessionStorage for SessionStore {
 
 impl SessionData {
     /// Create a new session from raw auth key bytes.
+    #[must_use]
     pub fn from_auth_key(auth_key: &[u8], server_salt: u64, dc_id: i32) -> Self {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(auth_key);
@@ -264,12 +313,15 @@ impl SessionData {
             user_id: 0,
             api_layer: super::api::API_LAYER,
             peer_cache: std::collections::HashMap::new(),
-            version: 1,
+            version: DEFAULT_VERSION,
             keys: {
                 let mut m = std::collections::HashMap::new();
                 m.insert(
                     dc_id,
-                    CachedAuthKey { auth_key: encoded.clone(), server_salt },
+                    CachedAuthKey {
+                        auth_key: encoded,
+                        server_salt,
+                    },
                 );
                 m
             },
@@ -281,15 +333,27 @@ impl SessionData {
     pub fn cache_key(&mut self, dc_id: i32, auth_key: &[u8], server_salt: u64) {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(auth_key);
-        self.keys.insert(dc_id, CachedAuthKey { auth_key: encoded, server_salt });
+        self.keys.insert(
+            dc_id,
+            CachedAuthKey {
+                auth_key: encoded,
+                server_salt,
+            },
+        );
     }
 
     /// Look up a cached key for `dc_id`.
+    #[must_use]
     pub fn cached_key(&self, dc_id: i32) -> Option<CachedAuthKey> {
         self.keys.get(&dc_id).cloned()
     }
 
     /// Decode a cached key blob back to raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when the cached blob is not valid
+    /// base64.
     pub fn decode_cached_key(&self, cached: &CachedAuthKey) -> Result<Vec<u8>> {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD
@@ -298,6 +362,11 @@ impl SessionData {
     }
 
     /// Decode the auth key back to raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when the stored auth key is not
+    /// valid base64.
     pub fn decode_auth_key(&self) -> Result<Vec<u8>> {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD
@@ -308,6 +377,14 @@ impl SessionData {
 
 #[cfg(test)]
 mod tests {
+    // Test code: unwrap/expect/index are the idiomatic failure modes here,
+    // and timestamps are quoted as raw epoch values.
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::unreadable_literal,
+        clippy::indexing_slicing
+    )]
     use super::*;
     use std::fs;
 
@@ -341,7 +418,12 @@ mod tests {
         // connect() seeds the cache for old files like this:
         let key = parsed.decode_auth_key().unwrap();
         parsed.cache_key(parsed.dc_id, &key, parsed.server_salt);
-        assert_eq!(parsed.decode_cached_key(&parsed.cached_key(2).unwrap()).unwrap(), key);
+        assert_eq!(
+            parsed
+                .decode_cached_key(&parsed.cached_key(2).unwrap())
+                .unwrap(),
+            key
+        );
     }
 
     #[test]

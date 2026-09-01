@@ -9,15 +9,17 @@
 //!   cargo run --example bot_send -- 123456:BOT_TOKEN @someuser "hello"
 //! ```
 
-use mtprsto::error::Error;
 use mtprsto::Client;
+use mtprsto::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let mut args = std::env::args().skip(1);
-    let bot_token = args.next().expect("usage: bot_send <BOT_TOKEN> <PEER> [TEXT]");
+    let bot_token = args
+        .next()
+        .expect("usage: bot_send <BOT_TOKEN> <PEER> [TEXT]");
     let peer = args.next().expect("missing <PEER>");
     let text = args.next().unwrap_or_else(|| "Hello from mtprsto!".into());
 

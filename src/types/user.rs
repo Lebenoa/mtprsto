@@ -6,41 +6,45 @@ use super::user_gen::User;
 
 impl User {
     /// Identity shortcut: works across `User`/`Empty` variants.
-    pub fn id(&self) -> UserId {
+    #[must_use]
+    pub const fn id(&self) -> UserId {
         match self {
-            User::User { id, .. } => *id,
-            User::Empty { id } => *id,
+            Self::User { id, .. } | Self::Empty { id } => *id,
         }
     }
 
-    pub fn access_hash(&self) -> Option<AccessHash> {
+    #[must_use]
+    pub const fn access_hash(&self) -> Option<AccessHash> {
         match self {
-            User::User { access_hash, .. } => *access_hash,
-            User::Empty { .. } => None,
+            Self::User { access_hash, .. } => *access_hash,
+            Self::Empty { .. } => None,
         }
     }
 
+    #[must_use]
     pub fn username(&self) -> Option<&str> {
         match self {
-            User::User { username, .. } => username.as_deref(),
-            User::Empty { .. } => None,
+            Self::User { username, .. } => username.as_deref(),
+            Self::Empty { .. } => None,
         }
     }
 
+    #[must_use]
     pub fn first_name(&self) -> Option<&str> {
         match self {
-            User::User { first_name, .. } => first_name.as_deref(),
-            User::Empty { .. } => None,
+            Self::User { first_name, .. } => first_name.as_deref(),
+            Self::Empty { .. } => None,
         }
     }
 
     /// Display name: first and last name joined by a space, either half
     /// optional (grammers' `full_name` semantics).
+    #[must_use]
     pub fn full_name(&self) -> String {
         let first = self.first_name().unwrap_or("");
         let last = match self {
-            User::User { last_name, .. } => last_name.as_deref().unwrap_or(""),
-            User::Empty { .. } => "",
+            Self::User { last_name, .. } => last_name.as_deref().unwrap_or(""),
+            Self::Empty { .. } => "",
         };
         match (first, last) {
             ("", "") => String::new(),
@@ -50,17 +54,19 @@ impl User {
         }
     }
 
+    #[must_use]
     pub fn phone(&self) -> Option<&str> {
         match self {
-            User::User { phone, .. } => phone.as_deref(),
-            User::Empty { .. } => None,
+            Self::User { phone, .. } => phone.as_deref(),
+            Self::Empty { .. } => None,
         }
     }
 
-    pub fn is_bot(&self) -> bool {
+    #[must_use]
+    pub const fn is_bot(&self) -> bool {
         match self {
-            User::User { bot, .. } => *bot,
-            _ => false,
+            Self::User { bot, .. } => *bot,
+            Self::Empty { .. } => false,
         }
     }
 }

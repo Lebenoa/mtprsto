@@ -1,6 +1,9 @@
 //! Dialog, Messages, Dialogs, State.
 
-use super::*;
+use super::{
+    Chat, MESSAGES_DIALOGS, MESSAGES_DIALOGS_NOT_MODIFIED, MESSAGES_DIALOGS_SLICE, Message, MsgId,
+    Peer, User,
+};
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 #[allow(unused_imports)]
@@ -41,16 +44,21 @@ impl Dialog {
     /// unread_reactions_count:int notify_settings:PeerNotifySettings
     /// pts:flags.0?int draft:flags.1?DraftMessage folder_id:flags.4?int
     /// ttl_period:flags.5?int` (the published layer-223 shape — no
-    /// unread_poll_votes_count; that field exists only from layer 225).
+    /// `unread_poll_votes_count`; that field exists only from layer 225).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when any field of the dialog
+    /// payload fails to decode.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         // consume the constructor before the flags word (its omission
         // misaligned the whole parse).
         let _ctor = r.read_u32()?;
         let flags = r.read_i32()?;
         let peer = Peer::read_from(r)?;
-        let top_message = MsgId(r.read_i32()? as i64);
-        let read_inbox_max_id = MsgId(r.read_i32()? as i64);
-        let read_outbox_max_id = MsgId(r.read_i32()? as i64);
+        let top_message = MsgId(i64::from(r.read_i32()?));
+        let read_inbox_max_id = MsgId(i64::from(r.read_i32()?));
+        let read_outbox_max_id = MsgId(i64::from(r.read_i32()?));
         let unread_count = r.read_i32()?;
         let _unread_mentions = r.read_i32()?;
         let _unread_reactions = r.read_i32()?;
@@ -77,7 +85,7 @@ impl Dialog {
         }
         let pinned = flags & (1 << 2) != 0;
         let unread_mark = flags & (1 << 3) != 0;
-        Ok(Dialog {
+        Ok(Self {
             peer,
             top_message,
             top_message_date: 0,
@@ -100,8 +108,11 @@ pub struct Messages {
 }
 
 impl Messages {
-    pub fn empty() -> Self {
-        Self { messages: Vec::new() }
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            messages: Vec::new(),
+        }
     }
 }
 
@@ -119,6 +130,12 @@ impl Dialogs {
     /// answer (constructor included): dialogs first, then messages, chats,
     /// users; the slice variant carries a leading `count:int`.
     /// `messages.dialogsNotModified#f0e3e596` decodes to an empty list.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] for an unexpected constructor or a
+    /// nested dialog/message/chat/user payload that fails to decode.
+    #[allow(clippy::cast_sign_loss, clippy::as_conversions)] // TL vector header: length-prefixed i32 count, non-negative on well-formed frames
     pub fn parse(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
@@ -172,6 +189,11 @@ pub struct State {
 impl State {
     /// Decode `updates.state#a56c2a3e pts:int qts:int date:int seq:int
     /// unread_count:int`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when the constructor is not
+    /// `updates.state` or a field fails to decode.
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         if ctor != crate::types::UPDATES_STATE {

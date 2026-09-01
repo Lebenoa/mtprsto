@@ -8,8 +8,8 @@
 //! dispatcher's `Update` surface).
 
 mod builders;
-mod compat_impls;
 mod chat_gen;
+mod compat_impls;
 mod constructors;
 mod dialog;
 mod dialog_gen;
@@ -20,8 +20,8 @@ mod message_gen;
 mod peer_gen;
 mod photo;
 mod photo_gen;
-mod reply_markup_gen;
 mod replies;
+mod reply_markup_gen;
 mod reply_types;
 mod updates;
 mod updates_gen;
@@ -32,33 +32,35 @@ mod user_gen;
 /// tests against the handwritten rpc.rs builders.
 pub mod gen_fns;
 
-pub use input_gen::*;
-pub use peer_gen::*;
-pub use user_gen::*;
-pub use chat_gen::{Chat, ChatFull, ChatAdminRights, ChatBannedRights,
-                   ChatParticipant, ChatParticipants, ExportedChatInvite, WebPage};
-pub use dialog_gen::*;
-pub use photo_gen::*;
-pub use reply_markup_gen::*;
 pub use builders::*;
+pub use chat_gen::{
+    Chat, ChatAdminRights, ChatBannedRights, ChatFull, ChatParticipant, ChatParticipants,
+    ExportedChatInvite, WebPage,
+};
 pub use constructors::*;
+pub use dialog_gen::*;
 pub use ids::*;
+pub use input_gen::*;
 pub use message::*;
+pub use peer_gen::*;
+pub use photo_gen::*;
 pub use replies::*;
+pub use reply_markup_gen::*;
 pub use reply_types::*;
+pub use user_gen::*;
 
 // Curated names owned by the private impl modules — the gen modules do
 // not define these.
-pub use photo::{FileLocation, stripped_thumb_jpeg};
+pub use dialog::{Dialog, Dialogs, Messages, State};
 pub use message_gen::{
     DraftMessage, FactCheck, MessageFwdHeader, MessageReactions, MessageReplies,
     MessagesInvitedUsers, SuggestedPost,
 };
-pub use updates_gen::Updates as GenUpdates;
-pub use dialog::{Dialog, Dialogs, State, Messages};
-pub use updates::{Difference, ChannelDifference, Updates, Update};
+pub use photo::{FileLocation, stripped_thumb_jpeg};
 pub use updates::skip_peer_notify_settings_public;
+pub use updates::{ChannelDifference, Difference, Update, Updates};
 pub use updates::{read_chat_vector_public, read_user_vector_public};
+pub use updates_gen::Updates as GenUpdates;
 
 #[cfg(test)]
 mod tests;
@@ -68,11 +70,11 @@ mod tests;
 #[cfg(test)]
 pub(crate) fn gen_const(name: &str) -> Option<u32> {
     use chat_gen as c;
+    use dialog_gen as d;
     use input_gen as i;
     use message_gen as m;
-    use user_gen as u;
-    use dialog_gen as d;
     use reply_markup_gen as rm;
+    use user_gen as u;
     Some(match name {
         "USER" => u::USER_ID,
         "USER_EMPTY" => u::USER_EMPTY_ID,

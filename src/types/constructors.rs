@@ -1,5 +1,10 @@
 //! TL constructor ID constants (Layer 223).
 
+// Every id is quoted verbatim from the TL schema (tl223.json / the
+// published schema): underscores would break grep against docs and
+// wire captures.
+#![allow(clippy::unreadable_literal)]
+
 #[allow(unused_imports)]
 use std::fmt;
 
@@ -34,7 +39,9 @@ pub const INPUT_FILE_STORY_DOCUMENT: u32 = 0x62dc8b48;
 // --- Input document (Layer 223) ---
 pub const INPUT_DOCUMENT: u32 = 0x1abfb575;
 pub const INPUT_DOCUMENT_EMPTY: u32 = 0x72f0eaae; // inputDocumentEmpty
-/// `document#8fd4c4d8 flags:# id:long access_hash:long file_reference:bytes
+/// `document#8fd4c4d8` (Layer 223).
+///
+/// `flags:# id:long access_hash:long file_reference:bytes
 ///  date:int mime_type:string size:long thumbs:flags.0?Vector<PhotoSize>
 ///  video_thumbs:flags.1?Vector<VideoSize> dc_id:int
 ///  attributes:Vector<DocumentAttribute>`
@@ -242,7 +249,9 @@ pub const UPDATE_READ_MESSAGES: u32 = 0xf8227181;
 pub const UPDATE_WEB_PAGE: u32 = 0x7f891213;
 /// replyKeyboardMarkup#350284c2
 pub const REPLY_KEYBOARD_MARKUP: u32 = 0x85dd99d1;
-pub mod inline_keyboard_markup { pub const CONSTRUCTOR_ID: u32 = 0x48a30254; }
+pub mod inline_keyboard_markup {
+    pub const CONSTRUCTOR_ID: u32 = 0x48a30254;
+}
 
 // --- Keyboard buttons ---
 pub const KEYBOARD_BUTTON: u32 = 0x7d170cff;
@@ -357,6 +366,66 @@ pub const MESSAGES_DELETE_MESSAGES: u32 = 0xe58e95d2;
 pub const MESSAGES_DELETE_HISTORY: u32 = 0xb08f922a;
 pub const MESSAGES_EDIT_MESSAGE: u32 = 0x51e842e1;
 pub const MESSAGES_READ_HISTORY: u32 = 0x0e306d3a;
+/// `messages.forwardMessages#13704a7c` (Layer 223).
+///
+/// `flags:# silent:flags.5?true
+///  background:flags.6?true with_my_score:flags.8?true drop_author:flags.11?true
+///  drop_media_captions:flags.12?true noforwards:flags.14?true
+///  from_peer:InputPeer id:Vector<int> random_id:Vector<long>
+///  to_peer:InputPeer top_msg_id:flags.9?int schedule_date:flags.10?int
+///  = Updates;`
+pub const MESSAGES_FORWARD_MESSAGES: u32 = 0x13704a7c;
+/// `messages.setTyping#58943ee2 flags:# peer:InputPeer top_msg_id:flags.0?int
+///  action:SendMessageAction = Bool;` (Layer 223)
+pub const MESSAGES_SET_TYPING: u32 = 0x58943ee2;
+/// `messages.updatePinnedMessage#d2aaf7ec flags:# silent:flags.0?true
+///  unpin:flags.1?true pm_oneside:flags.2?true peer:InputPeer id:int
+///  = Updates;` (Layer 223)
+pub const MESSAGES_UPDATE_PINNED_MESSAGE: u32 = 0xd2aaf7ec;
+/// `channels.joinChannel#7f6a1e22 channel:InputChannel
+///  = messages.ChatInviteJoinResult;` (Layer 223)
+pub const CHANNELS_JOIN_CHANNEL: u32 = 0x7f6a1e22;
+/// `messages.importChatInvite#de91436e hash:string
+///  = messages.ChatInviteJoinResult;` (Layer 223)
+pub const MESSAGES_IMPORT_CHAT_INVITE: u32 = 0xde91436e;
+/// `messages.chatInviteJoinResultOk#445663a7 updates:Updates
+///  = messages.ChatInviteJoinResult;`
+pub const MESSAGES_CHAT_INVITE_JOIN_RESULT_OK: u32 = 0x445663a7;
+/// `messages.chatInviteJoinResultWebView#61ca29d3 bot_id:long query_id:long
+///  users:Vector<User> = messages.ChatInviteJoinResult;`
+pub const MESSAGES_CHAT_INVITE_JOIN_RESULT_WEB_VIEW: u32 = 0x61ca29d3;
+/// `sendMessageTypingAction#16bf744e = SendMessageAction;`
+pub const SEND_MESSAGE_TYPING_ACTION: u32 = 0x16bf744e;
+/// `sendMessageCancelAction#fd5ec8f5 = SendMessageAction;`
+pub const SEND_MESSAGE_CANCEL_ACTION: u32 = 0xfd5ec8f5;
+/// `sendMessageRecordVideoAction#a187d66f = SendMessageAction;`
+pub const SEND_MESSAGE_RECORD_VIDEO_ACTION: u32 = 0xa187d66f;
+/// `sendMessageRecordAudioAction#d52f73f7 = SendMessageAction;`
+pub const SEND_MESSAGE_RECORD_AUDIO_ACTION: u32 = 0xd52f73f7;
+/// `sendMessageRecordRoundAction#88f27fbc = SendMessageAction;`
+pub const SEND_MESSAGE_RECORD_ROUND_ACTION: u32 = 0x88f27fbc;
+/// `sendMessageUploadRoundAction#243e1c66 progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_UPLOAD_ROUND_ACTION: u32 = 0x243e1c66;
+/// `sendMessageUploadVideoAction#e9763aec progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_UPLOAD_VIDEO_ACTION: u32 = 0xe9763aec;
+/// `sendMessageUploadAudioAction#f351d7ab progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_UPLOAD_AUDIO_ACTION: u32 = 0xf351d7ab;
+/// `sendMessageUploadPhotoAction#d1d34a26 progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_UPLOAD_PHOTO_ACTION: u32 = 0xd1d34a26;
+/// `sendMessageUploadDocumentAction#aa0cd9e4 progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION: u32 = 0xaa0cd9e4;
+/// `sendMessageGeoLocationAction#176f8ba1 = SendMessageAction;`
+pub const SEND_MESSAGE_GEO_LOCATION_ACTION: u32 = 0x176f8ba1;
+/// `sendMessageChooseContactAction#628cbc6f = SendMessageAction;`
+pub const SEND_MESSAGE_CHOOSE_CONTACT_ACTION: u32 = 0x628cbc6f;
+/// `sendMessageGamePlayAction#dd6a8f48 = SendMessageAction;`
+pub const SEND_MESSAGE_GAME_PLAY_ACTION: u32 = 0xdd6a8f48;
+/// `speakingInGroupCallAction#d92c2285 = SendMessageAction;`
+pub const SPEAKING_IN_GROUP_CALL_ACTION: u32 = 0xd92c2285;
+/// `sendMessageChooseStickerAction#b05ac6b1 = SendMessageAction;`
+pub const SEND_MESSAGE_CHOOSE_STICKER_ACTION: u32 = 0xb05ac6b1;
+/// `sendMessageHistoryImportAction#dbda9246 progress:int = SendMessageAction;`
+pub const SEND_MESSAGE_HISTORY_IMPORT_ACTION: u32 = 0xdbda9246;
 pub const MESSAGES_SEARCH: u32 = 0x29ee847a;
 /// `messages.affectedHistory#b45c69d1 pts:int pts_count:int offset:int`
 pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
@@ -364,9 +433,9 @@ pub const MESSAGES_AFFECTED_HISTORY: u32 = 0xb45c69d1;
 // --- Users ---
 pub const USERS_GET_FULL_USER: u32 = 0xb60f5918;
 pub const USERS_GET_USERS: u32 = 0x0d91a548;
-/// users.userFull#d69e83e0 full_user:UserFull chats:Vector<Chat> users:Vector<User>
+/// `users.userFull#d69e83e0 full_user:UserFull chats:Vector<Chat> users:Vector<User>`
 pub const USERS_USER_FULL: u32 = 0x3b6d152e;
-/// contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> chats:Vector<Chat> users:Vector<User>
+/// `contacts.found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> chats:Vector<Chat> users:Vector<User>`
 pub const CONTACTS_FOUND: u32 = 0xb3134d9d;
 /// `contacts.resolvePhone#8af94344 phone:string = contacts.ResolvedPeer;`
 pub const CONTACTS_RESOLVE_PHONE: u32 = 0x8af94344;
@@ -387,16 +456,19 @@ pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
 /// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
 pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
 pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa95;
-/// Legacy-layer `channels.getMessages#e5906e3f channel:InputChannel
-/// id:Vector<int>` (Vector<int>, not the modern Vector<InputMessage>
-/// of `#ad8c9a23`). The server still serves the legacy constructor, and
-/// plain `messages.getMessages` refuses channel peers (`CHANNEL_INVALID`),
-/// so channel messages must go through this method.
+/// Legacy-layer `channels.getMessages#e5906e3f`.
+///
+/// `channel:InputChannel id:Vector<int>` (Vector<int>, not the modern
+/// `Vector<InputMessage>` of `#ad8c9a23`). The server still serves the
+/// legacy constructor, and plain `messages.getMessages` refuses channel
+/// peers (`CHANNEL_INVALID`), so channel messages must go through this
+/// method.
 pub const CHANNELS_GET_MESSAGES: u32 = 0xe5906e3f;
-/// Legacy-layer `channels.deleteMessages#84c1f4e6 channel:InputChannel
-/// id:Vector<int>` — predates the `flags:#` word the modern ctor carries,
-/// so no flags are serialized. `messages.deleteMessages` is refused on
-/// channel peers.
+/// Legacy-layer `channels.deleteMessages#84c1f4e6`.
+///
+/// `channel:InputChannel id:Vector<int>` — predates the `flags:#` word
+/// the modern ctor carries, so no flags are serialized.
+/// `messages.deleteMessages` is refused on channel peers.
 pub const CHANNELS_DELETE_MESSAGES: u32 = 0x84c1f4e6;
 /// `channels.channelParticipants#9ab0feaf count:int participants:...`
 pub const CHANNELS_CHANNEL_PARTICIPANTS: u32 = 0x9ab0feaf;
@@ -411,13 +483,13 @@ pub const UPDATES_STATE: u32 = 0xa56c2a3e;
 pub const UPDATES_GET_STATE: u32 = 0xedd4882a;
 pub const UPDATES_GET_DIFFERENCE: u32 = 0x19c2f763;
 pub const UPDATES_GET_CHANNEL_DIFFERENCE: u32 = 0x3173d78;
-/// updates.differenceEmpty#a9eca690 date:int seq:int pts:int pts_count:int
+/// `updates.differenceEmpty#a9eca690 date:int seq:int pts:int pts_count:int`
 pub const DIFFERENCE_EMPTY: u32 = 0x5d75a138;
-/// updates.difference#f46ca0 seq:int new_messages:Vector<Message>
-///   other_updates:Vector<Update> chats:Vector<Chat> users:Vector<User>
+/// `updates.difference#f46ca0 seq:int new_messages:Vector<Message>
+///   other_updates:Vector<Update> chats:Vector<Chat> users:Vector<User>`
 pub const DIFFERENCE: u32 = 0xf49ca0;
-/// updates.differenceSlice#a004db6 new_messages:... other_updates:...
-///   chats:... users:... intermediate_state:State
+/// `updates.differenceSlice#a004db6 new_messages:... other_updates:...
+///   chats:... users:... intermediate_state:State`
 pub const DIFFERENCE_SLICE: u32 = 0xa8fb1981;
 /// updates.differenceTooLong#4afe8f6d pts:int
 pub const DIFFERENCE_TOO_LONG: u32 = 0x4afe8f6d;
@@ -457,7 +529,9 @@ pub const INPUT_WEB_FILE_LOCATION: u32 = 0xc239d686;
 /// `photos.updateProfilePhoto#9e82039 flags:# fallback:flags.0?true
 ///  bot:flags.1?InputUser id:InputPhoto = photos.Photo;`
 pub const PHOTOS_UPDATE_PROFILE_PHOTO: u32 = 0x09e82039;
-/// `photos.uploadProfilePhoto#388a3b5 flags:# fallback:flags.3?true
+/// `photos.uploadProfilePhoto#388a3b5` (Layer 223).
+///
+/// `flags:# fallback:flags.3?true
 ///  bot:flags.5?InputUser file:flags.0?InputFile video:flags.1?InputFile
 ///  video_start_ts:flags.2?double video_emoji_markup:flags.4?VideoSize`
 pub const PHOTOS_UPLOAD_PROFILE_PHOTO: u32 = 0x388a3b5;
@@ -474,13 +548,19 @@ pub const INPUT_PHOTO: u32 = 0x3bb3b94a;
 pub const INPUT_PHOTO_EMPTY: u32 = 0x1cd7bf0d;
 /// `inputMediaEmpty#9664f57f`
 pub const INPUT_MEDIA_EMPTY: u32 = 0x9664f57f;
+/// `inputMediaUploadedPhoto#7d8375da` (Layer 223).
+///
+/// `flags:# spoiler:flags.2?true
+///  live_photo:flags.3?true file:InputFile stickers:flags.0?Vector<InputDocument>
+///  ttl_seconds:flags.1?int video:flags.3?InputDocument`
+pub const INPUT_MEDIA_UPLOADED_PHOTO: u32 = 0x7d8375da;
 /// `inputMediaUploadedDocument#37c9330` (layer 223)
 pub const INPUT_MEDIA_UPLOADED_DOCUMENT: u32 = 0x37c9330;
 /// `inputMediaContact#f8ab7dfb phone_number:string first_name:string
 ///  last_name:string vcard:string`
 pub const INPUT_MEDIA_CONTACT: u32 = 0xf8ab7dfb;
 /// `inputMediaGeoPoint#f9c44144 flags:# lat:double long:double
-///  accuracy_radius:flags.0?int` — wraps an InputGeoPoint.
+///  accuracy_radius:flags.0?int` — wraps an `InputGeoPoint`.
 pub const INPUT_MEDIA_GEO_POINT: u32 = 0xf9c44144;
 pub const INPUT_GEO_POINT: u32 = 0x48222faf;
 pub const INPUT_GEO_POINT_EMPTY: u32 = 0xe4c123d6;
@@ -504,7 +584,6 @@ pub const NEAREST_DC: u32 = 0x8e1a1775;
 pub const CONFIG: u32 = 0xcc1a241e;
 // dcOption#18b7a10d — one entry of config.dc_options
 pub const DC_OPTION: u32 = 0x18b7a10d;
-
 
 // --- Bool ---
 pub const BOOL_TRUE: u32 = 0x997275b5;

@@ -92,11 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let hash_ok = access_hash.is_some();
                 println!(
                     "channel send_id={:<16} title={:<25?} username={:<20?} megagroup={} hash_persisted={}",
-                    send_id,
-                    title,
-                    username,
-                    megagroup,
-                    hash_ok
+                    send_id, title, username, megagroup, hash_ok
                 );
             }
             mtprsto::types::Chat::Chat {

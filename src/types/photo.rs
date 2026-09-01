@@ -1,6 +1,6 @@
-//! FileLocation — the synthesized download-location union. Schema-shaped
-//! photo types (Photo, PhotoSize, Document, WebDocument, GeoPoint) live
-//! in `photo_gen.rs`.
+//! `FileLocation` — the synthesized download-location union. Schema-shaped
+//! photo types (`Photo`, `PhotoSize`, `Document`, `WebDocument`, `GeoPoint`)
+//! live in `photo_gen.rs`.
 
 use super::photo_gen::{Document, PhotoSize};
 
@@ -8,20 +8,40 @@ use super::photo_gen::{Document, PhotoSize};
 /// synthesis — not a TL union on the wire).
 #[derive(Debug, Clone)]
 pub enum FileLocation {
-    VolumeId { volume_id: i64, local_id: i32, secret: i64, reference: Vec<u8>, dc_id: i32 },
+    VolumeId {
+        volume_id: i64,
+        local_id: i32,
+        secret: i64,
+        reference: Vec<u8>,
+        dc_id: i32,
+    },
     /// `inputDocumentFileLocation#bad07584` — documents/files. Empty
     /// `thumb_size` downloads the full file; "m" fetches a thumbnail.
-    Document { id: i64, access_hash: i64, reference: Vec<u8>, thumb_size: String, dc_id: i32 },
-    Web { dc_id: i32, url: String, size: i32 },
-    EmojiStickerSet { version: i32, set_id: i64 },
+    Document {
+        id: i64,
+        access_hash: i64,
+        reference: Vec<u8>,
+        thumb_size: String,
+        dc_id: i32,
+    },
+    Web {
+        dc_id: i32,
+        url: String,
+        size: i32,
+    },
+    EmojiStickerSet {
+        version: i32,
+        set_id: i64,
+    },
     Unknown,
 }
 
 impl Document {
     /// Telegram's stripped thumbnail of this document as displayable
     /// JPEG bytes — `None` when the document carries no stripped size.
+    #[must_use]
     pub fn stripped_thumb_jpeg(&self) -> Option<Vec<u8>> {
-        if let Document::Document {
+        if let Self::Document {
             thumbs: Some(thumbs),
             ..
         } = self
@@ -39,10 +59,13 @@ impl Document {
     }
 }
 
-/// Rebuilds a displayable JPEG from Telegram's stripped thumbnail bytes
-/// <https://core.tlgr.org/api/files#stripped-thumbnails>. Same header,
-/// dimensions from bytes[1..3], scan data from bytes[3..], JPEG EOI footer.
+/// Rebuilds a displayable JPEG from Telegram's stripped thumbnail bytes.
+///
+/// Reference: <https://core.tlgr.org/api/files#stripped-thumbnails>. Same
+/// header, dimensions from bytes[1..3], scan data from bytes[3..], JPEG EOI
+/// footer.
 #[allow(clippy::indexing_slicing)] // guarded by the `len() < 4` return; out[] indices are within the fixed 623-byte HEADER
+#[must_use]
 pub fn stripped_thumb_jpeg(bytes: &[u8]) -> Vec<u8> {
     const HEADER: [u8; 623] = [
         0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
@@ -101,6 +124,9 @@ pub fn stripped_thumb_jpeg(bytes: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    // Test code: empty-slice probes and fixed-offset indexing against
+    // hand-built fixtures cannot panic here.
+    #![allow(clippy::indexing_slicing, clippy::assert_is_empty)]
     use super::*;
 
     #[test]

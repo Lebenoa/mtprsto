@@ -1,4 +1,5 @@
-//! Newtype ID wrappers (UserId, ChatId, ChannelId, AccessHash, MsgId, ...).
+//! Newtype ID wrappers (`UserId`, `ChatId`, `ChannelId`, `AccessHash`,
+//! `MsgId`, ...).
 
 use std::fmt;
 
@@ -28,7 +29,7 @@ macro_rules! define_id {
 }
 
 define_id!(
-    /// Telegram user ID. Distinct from ChannelId even though both wrap i64.
+    /// Telegram user ID. Distinct from `ChannelId` even though both wrap `i64`.
     UserId
 );
 define_id!(
