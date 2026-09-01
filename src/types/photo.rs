@@ -25,8 +25,8 @@ pub enum FileLocation {
         dc_id: i32,
     },
     /// Photo download location, synthesized from a `photo#fb197a65`
-    /// (`inputFileLocation#dfdaabe1` on the wire): `thumb_size` selects
-    /// the size variant, `size` is the expected byte length.
+    /// (`inputPhotoFileLocation#40181ffe` on the wire): `thumb_size`
+    /// selects the size variant, `size` is the expected byte length.
     Photo {
         id: i64,
         access_hash: i64,

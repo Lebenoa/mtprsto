@@ -528,12 +528,12 @@ pub fn build_get_file(location: &FileLocation, offset: i64, limit: i32) -> Vec<u
             dc_id: _,
             size: _,
         } => {
-            // inputFileLocation#dfdaabe1 — same wire shape as the
-            // VolumeId variant, with the photo's size selector string
-            // (""/"m"/"x"/…) as the final field.
-            w.write_u32(0xdfda_abe1); // inputFileLocation
+            // inputPhotoFileLocation#40181ffe id:long access_hash:long
+            // file_reference:bytes thumb_size:string — the volume-shaped
+            // inputFileLocation#dfdaabe1 has no photo variant and the
+            // server rejects it with INPUT_CONSTRUCTOR_INVALID.
+            w.write_u32(0x4018_1ffe);
             w.write_i64(*id);
-            w.write_i32(0); // volume local_id — unused for photo refs
             w.write_i64(*access_hash);
             w.write_bytes(reference);
             w.write_bytes(thumb_size.as_bytes());
@@ -2014,11 +2014,10 @@ mod tests {
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), UPLOAD_GET_FILE);
         assert_eq!(r.read_i32().unwrap(), 0); // flags
-        // inputFileLocation#dfdaabe1: id, volume_local_id, access_hash,
+        // inputPhotoFileLocation#40181ffe: id, access_hash,
         // file_reference, thumb_size
-        assert_eq!(r.read_u32().unwrap(), 0xdfda_abe1);
+        assert_eq!(r.read_u32().unwrap(), 0x4018_1ffe);
         assert_eq!(r.read_i64().unwrap(), 555);
-        assert_eq!(r.read_i32().unwrap(), 0); // local_id placeholder
         assert_eq!(r.read_i64().unwrap(), 666);
         assert_eq!(r.read_bytes().unwrap(), vec![7, 8]);
         assert_eq!(String::from_utf8(r.read_bytes().unwrap()).unwrap(), "x");
