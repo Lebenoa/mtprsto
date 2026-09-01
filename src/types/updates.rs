@@ -6,10 +6,10 @@ use super::constructors::{
     NOTIFICATION_SOUND_LOCAL, NOTIFICATION_SOUND_NONE, NOTIFICATION_SOUND_RINGTONE,
     PEER_NOTIFY_SETTINGS, UPDATE_CHANNEL, UPDATE_CHANNEL_TOO_LONG, UPDATE_DELETE_CHANNEL_MESSAGES,
     UPDATE_DELETE_MESSAGES, UPDATE_EDIT_CHANNEL_MESSAGE, UPDATE_EDIT_MESSAGE, UPDATE_MESSAGE_ID,
-    UPDATE_NEW_CHANNEL_MESSAGE, UPDATE_NEW_MESSAGE, UPDATE_READ_CHANNEL_INBOX,
-    UPDATE_READ_CHANNEL_OUTBOX, UPDATE_READ_HISTORY_INBOX, UPDATE_READ_HISTORY_OUTBOX,
-    UPDATE_READ_MESSAGES, UPDATE_SHORT, UPDATE_SHORT_SENT_MESSAGE, UPDATE_WEB_PAGE, UPDATES,
-    UPDATES_COMBINED,
+    UPDATE_NEW_CHANNEL_MESSAGE, UPDATE_NEW_MESSAGE, UPDATE_PINNED_CHANNEL_MESSAGES,
+    UPDATE_READ_CHANNEL_INBOX, UPDATE_READ_CHANNEL_OUTBOX, UPDATE_READ_HISTORY_INBOX,
+    UPDATE_READ_HISTORY_OUTBOX, UPDATE_READ_MESSAGES, UPDATE_SHORT, UPDATE_SHORT_SENT_MESSAGE,
+    UPDATE_WEB_PAGE, UPDATES, UPDATES_COMBINED,
 };
 use super::{ChannelId, Chat, Document, Message, MessageMedia, MsgId, Peer, State, User, WebPage};
 use crate::error::{Error, Result};
@@ -440,6 +440,28 @@ impl Update {
             UPDATE_DELETE_CHANNEL_MESSAGES => {
                 // updateDeleteChannelMessages#c32d5b12 channel_id:long
                 //   messages:Vector<int> pts:int pts_count:int
+                let channel_id = ChannelId(r.read_i64()?);
+                let n = r.read_vector_header()?;
+                let mut messages = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    messages.push(MsgId(i64::from(r.read_i32()?)));
+                }
+                let pts = r.read_i32()?;
+                let pts_count = r.read_i32()?;
+                Ok(Self::DeleteChannelMessages {
+                    channel_id,
+                    messages,
+                    pts,
+                    pts_count,
+                })
+            }
+            UPDATE_PINNED_CHANNEL_MESSAGES => {
+                // updatePinnedChannelMessages#5bb98608 flags:# pinned:flags.0?true
+                //   channel_id:long messages:Vector<int> pts:int pts_count:int
+                // (falling through to `Other` here would leave its fields
+                // unread and desync every later update in the container —
+                // the live sweep caught exactly that on pin_message)
+                let _flags = r.read_i32()?;
                 let channel_id = ChannelId(r.read_i64()?);
                 let n = r.read_vector_header()?;
                 let mut messages = Vec::with_capacity(n as usize);

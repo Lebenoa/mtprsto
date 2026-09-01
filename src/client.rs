@@ -1332,6 +1332,13 @@ impl Client {
     // narrative (cache → bootstrap → cache-again).
     #[allow(clippy::too_many_lines)]
     pub async fn resolve_peer(&self, peer: &str) -> Result<InputPeer> {
+        // "me" (and "self") address the signed-in account directly; the
+        // server takes inputPeerSelf with no access hash, so no round
+        // trip — and definitely no USERNAME_INVALID from treating the
+        // word as a username.
+        if peer.eq_ignore_ascii_case("me") || peer.eq_ignore_ascii_case("self") {
+            return Ok(InputPeer::Self_);
+        }
         if let Ok(id) = peer.parse::<i64>() {
             // `id == i64::MIN` is rejected below before any negation, so
             // all sign flips in this branch are overflow-free.

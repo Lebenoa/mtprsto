@@ -280,9 +280,12 @@ impl Client {
         Ok(())
     }
 
-    /// Delete the entire chat history with `peer`.
+    /// Delete the chat history with `peer`.
     ///
-    /// Returns `pts`/`pts_count` so callers can advance update state.
+    /// Channel peers route to `channels.deleteHistory` (the plain
+    /// `messages.deleteHistory` refuses channels with `PEER_ID_INVALID`);
+    /// `revoke` maps to its `for_everyone` flag. Returns `pts`/`pts_count`
+    /// so callers can advance update state.
     ///
     /// # Errors
     ///
@@ -296,10 +299,37 @@ impl Client {
         revoke: bool,
     ) -> Result<AffectedMessages> {
         let input_peer = self.resolve_peer(peer).await?;
-        let payload = rpc::build_delete_history(&input_peer, max_id, just_clear, revoke);
-        let result = self.invoke_raw(payload).await?;
+        let result = match &input_peer {
+            InputPeer::Channel {
+                channel_id: ChannelId(cid),
+                access_hash: AccessHash(hash),
+            } => {
+                let channel = InputChannel::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: AccessHash(*hash),
+                };
+                // channels.deleteHistory answers Updates (pts hides in the
+                // update list); just_clear has no channel equivalent, so
+                // for channels the wipe is always for-everyone.
+                let _ = just_clear;
+                self.invoke_raw(rpc::build_channels_delete_history(&channel, max_id, revoke))
+                    .await?
+            }
+            _ => {
+                self.invoke_raw(rpc::build_delete_history(
+                    &input_peer,
+                    max_id,
+                    just_clear,
+                    revoke,
+                ))
+                .await?
+            }
+        };
         // messages.deleteHistory answers messages.affectedHistory (pts,
-        // pts_count, offset) — map it onto the shared shape.
+        // pts_count, offset). The channels variant answers Updates whose
+        // pts advance hides inside update entries — not worth a full
+        // Updates walk here, so the channel path reports pts as 0 and
+        // callers relying on pts should get_state/get_channel_difference.
         let mut r = TLReader::new(&result);
         let ctor = r.read_u32()?;
         match ctor {
@@ -307,6 +337,10 @@ impl Client {
             MESSAGES_AFFECTED_HISTORY | MESSAGES_AFFECTED_MESSAGES => Ok(AffectedMessages {
                 pts: r.read_i32()?,
                 pts_count: r.read_i32()?,
+            }),
+            crate::types::UPDATES => Ok(AffectedMessages {
+                pts: 0,
+                pts_count: 0,
             }),
             other => Err(Error::Protocol(format!(
                 "expected messages.affectedHistory, got {other:#x}"
@@ -316,15 +350,51 @@ impl Client {
 
     /// Mark history with `peer` as read up to `max_id`.
     ///
+    /// Channel peers route to `channels.readHistory` (answers Bool —
+    /// there is no pts payload, so `pts_count` is reported as 0).
+    ///
     /// # Errors
     ///
     /// Transport or RPC failure.
     #[tracing::instrument(name = "mtprsto::read_history", skip(self), err)]
     pub async fn read_history(&self, peer: &str, max_id: i32) -> Result<AffectedMessages> {
         let input_peer = self.resolve_peer(peer).await?;
-        let payload = rpc::build_read_history(&input_peer, max_id);
-        let result = self.invoke_raw(payload).await?;
-        AffectedMessages::parse(&result)
+        match &input_peer {
+            InputPeer::Channel {
+                channel_id: ChannelId(cid),
+                access_hash: AccessHash(hash),
+            } => {
+                let channel = InputChannel::Channel {
+                    channel_id: ChannelId(*cid),
+                    access_hash: AccessHash(*hash),
+                };
+                let result = self
+                    .invoke_raw(rpc::build_channels_read_history(&channel, max_id))
+                    .await?;
+                // channels.readHistory = Bool; false is a valid answer
+                // (nothing to mark read, e.g. max_id below the channel's
+                // read watermark) — only a foreign constructor is an error.
+                let ctor = u32::from_le_bytes(
+                    result[..4]
+                        .try_into()
+                        .map_err(|_| Error::Protocol("readHistory answer truncated".into()))?,
+                );
+                if ctor != crate::types::BOOL_TRUE && ctor != crate::types::BOOL_FALSE {
+                    return Err(Error::Protocol(format!(
+                        "expected Bool from channels.readHistory, got {ctor:#x}"
+                    )));
+                }
+                Ok(AffectedMessages {
+                    pts: 0,
+                    pts_count: 0,
+                })
+            }
+            _ => {
+                let payload = rpc::build_read_history(&input_peer, max_id);
+                let result = self.invoke_raw(payload).await?;
+                AffectedMessages::parse(&result)
+            }
+        }
     }
 
     /// Search messages in `peer` matching `query`.

@@ -283,6 +283,20 @@ pub fn build_read_history(peer: &InputPeer, max_id: i32) -> Vec<u8> {
     w.into_bytes()
 }
 
+/// Build `channels.readHistory` payload.
+///
+/// `channels.readHistory#cc104937 channel:InputChannel max_id:int = Bool;`
+/// — the plain `messages.readHistory` refuses channel peers with
+/// `PEER_ID_INVALID`, so channel marks must route here.
+#[must_use]
+pub fn build_channels_read_history(channel: &InputChannel, max_id: i32) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(0xcc10_4937);
+    channel.write_to(&mut w);
+    w.write_i32(max_id);
+    w.into_bytes()
+}
+
 /// Build `messages.search` payload.
 #[must_use]
 pub fn build_search(peer: &InputPeer, query: &str, limit: i32) -> Vec<u8> {
@@ -798,6 +812,26 @@ pub fn build_delete_history(
     w.write_u32(MESSAGES_DELETE_HISTORY);
     w.write_i32(flags);
     peer.write_to(&mut w);
+    w.write_i32(max_id);
+    w.into_bytes()
+}
+
+/// Build `channels.deleteHistory` payload.
+///
+/// `channels.deleteHistory#9baa9647 flags:# for_everyone:flags.0?true
+/// channel:InputChannel max_id:int = Updates;` — the channel twin of
+/// `messages.deleteHistory`, which refuses channel peers with
+/// `PEER_ID_INVALID`. Answers an `Updates` carrying the pts advance.
+#[must_use]
+pub fn build_channels_delete_history(
+    channel: &InputChannel,
+    max_id: i32,
+    for_everyone: bool,
+) -> Vec<u8> {
+    let mut w = TLWriter::new();
+    w.write_u32(0x9baa_9647);
+    w.write_i32(if for_everyone { 1 << 0 } else { 0 });
+    channel.write_to(&mut w);
     w.write_i32(max_id);
     w.into_bytes()
 }

@@ -95,6 +95,9 @@ pub const UPDATE_EDIT_CHANNEL_MESSAGE: u32 = 0x1b3f4df7;
 /// `updateDeleteChannelMessages#c32d5b12 channel_id:long messages:Vector<int>
 ///   pts:int pts_count:int`
 pub const UPDATE_DELETE_CHANNEL_MESSAGES: u32 = 0xc32d5b12;
+/// `updatePinnedChannelMessages#5bb98608 flags:# pinned:flags.0?true
+///   channel_id:long messages:Vector<int> pts:int pts_count:int`
+pub const UPDATE_PINNED_CHANNEL_MESSAGES: u32 = 0x5bb98608;
 /// `updateReadChannelOutbox#b75f99a9 channel_id:long max_id:int`
 pub const UPDATE_READ_CHANNEL_OUTBOX: u32 = 0xb75f99a9;
 pub const CHANNEL_FORBIDDEN: u32 = 0x17d493d5;

@@ -98,11 +98,6 @@ fn peer_kind(p: &InputPeer) -> &'static str {
     }
 }
 
-/// `channels.deleteMessages` answers `messages.affectedMessages#84c1f4e6`
-/// — the response ctor is exactly the hex the old request constant was
-/// confused with.
-const AFFECTED_MESSAGES: u32 = 0x84c1_f4e6;
-
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "live network sweep — set MTPRSTO_LIVE=1 and provide credentials"]
 async fn live_sweep() {
@@ -514,11 +509,35 @@ async fn live_sweep() {
         }
 
         if let Some(id) = text_id {
-            let pinned = client.pin_message(&chan_str, id, true, false).await;
+            // Raw invocation with a byte-level diagnostic: the library's
+            // pin wrapper failed here once with a vector-parse error, and
+            // the sweep should show the actual answer constructor when
+            // that happens again.
+            let pinned = async {
+                let input_peer = client.resolve_peer(&chan_str).await?;
+                let payload = rpc::build_update_pinned_message(&input_peer, id, true, false, false);
+                let raw = client.invoke_raw(payload).await?;
+                let head: [u8; 4] = raw[..4]
+                    .try_into()
+                    .map_err(|_| Error::Protocol("pin answer shorter than a constructor".into()))?;
+                match mtprsto::types::Updates::parse(&raw) {
+                    Ok(u) => Ok(format!(
+                        "ctor {:#x}, parsed, message_id {:?}",
+                        u32::from_le_bytes(head),
+                        u.message_id()
+                    )),
+                    Err(e) => Err(Error::Protocol(format!(
+                        "answer ctor {:#x} ({} bytes): {e}; head[4..28]={:02x?}",
+                        u32::from_le_bytes(head),
+                        raw.len(),
+                        &raw[4..raw.len().min(28)]
+                    ))),
+                }
+            };
             let _ = step(
                 "pin_message (messages.updatePinnedMessage)",
-                |m: &Option<MsgId>| m.map(|i| format!("id {}", i.0)).unwrap_or_default(),
-                pinned,
+                |s: &String| s.clone(),
+                pinned.await,
             );
             let unpinned = client.pin_message(&chan_str, id, true, true).await;
             let _ = step(
@@ -544,26 +563,20 @@ async fn live_sweep() {
             parts,
         );
 
-        // Delete everything the sweep put in the channel. THIS is the
-        // first live exercise of channels.deleteMessages#84c1fd4e, whose
-        // constant shipped with transposed hex digits. There is no Client
-        // wrapper yet — the public builder through invoke_raw is the
-        // honest path, and it is what ii-drive's delete flow needs next.
+        // Delete everything the sweep put in the channel. First live
+        // exercise of channels.deleteMessages#84c1fd4e, whose constant
+        // shipped with transposed hex digits. There is no Client wrapper
+        // yet — the public builder through invoke_raw is the honest path,
+        // and it is what ii-drive's delete flow needs next.
         let doomed: Vec<MsgId> = fetch_ids.clone();
         let deleted = async {
             let payload = rpc::build_channels_delete_messages(channel, &doomed);
             let raw = client.invoke_raw(payload).await?;
-            let ctor =
-                u32::from_le_bytes(raw[..4].try_into().map_err(|_| {
-                    Error::Protocol("delete answer shorter than a constructor".into())
-                })?);
-            if ctor == AFFECTED_MESSAGES {
-                Ok("affectedMessages back".to_string())
-            } else {
-                Err(Error::Protocol(format!(
-                    "expected messages.affectedMessages, got {ctor:#x}"
-                )))
-            }
+            // The server answers messages.affectedMessages#84d19185 here
+            // (NOT #84c1f4e6 — that hex belongs to no constructor at all,
+            // which is exactly how the request constant got corrupted).
+            mtprsto::client_wrappers::AffectedMessages::parse(&raw)
+                .map(|a| format!("pts {}, count {}", a.pts, a.pts_count))
         };
         let _ = step(
             "delete channel messages (channels.deleteMessages#84c1fd4e)",
