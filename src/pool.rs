@@ -522,25 +522,15 @@ impl SenderPool {
         // every attempt of this exchange (including service-state
         // re-sends) so a concurrent caller can never interleave frames
         // on the same socket — answers correlate strictly by msg_id.
-        let _permit = conn.rpc_permit.lock().await;
-        let first_use = !conn
-            .initialized
-            .swap(true, std::sync::atomic::Ordering::Relaxed);
-        let full_payload = if first_use {
-            crate::mtproto::build_invoke_with_layer(
-                crate::api::API_LAYER,
-                &crate::mtproto::build_init_connection(
-                    self.api_id,
-                    "mtprsto",
-                    "unknown",
-                    env!("CARGO_PKG_VERSION"),
-                    "en",
-                    method_bytes,
-                ),
-            )
-        } else {
-            crate::mtproto::build_invoke_with_layer(crate::api::API_LAYER, method_bytes)
-        };
+        // Bounded acquisition: a permit wedged by a dying task must not
+        // hang this caller forever.
+        let _permit = tokio::time::timeout(READ_TIMEOUT, conn.rpc_permit.lock())
+            .await
+            .map_err(|_| {
+                Error::Transport(format!(
+                    "connection {idx} busy for over {READ_TIMEOUT:?}; rotating"
+                ))
+            })?;
         // The scoped session/codec guards below drop at their last use —
         // clippy's drop-point model cannot see that through the async
         // block (significant_drop_tightening / _in_scrutinee).
@@ -549,6 +539,27 @@ impl SenderPool {
             clippy::significant_drop_in_scrutinee
         )]
         'outer: for attempt in 0..4u32 {
+            // Built per attempt: a CONNECTION_NOT_INITED retry clears the
+            // connection's initialized flag, and the re-send must actually
+            // carry the init wrapper this time.
+            let first_use = !conn
+                .initialized
+                .swap(true, std::sync::atomic::Ordering::Relaxed);
+            let full_payload = if first_use {
+                crate::mtproto::build_invoke_with_layer(
+                    crate::api::API_LAYER,
+                    &crate::mtproto::build_init_connection(
+                        self.api_id,
+                        "mtprsto",
+                        "unknown",
+                        env!("CARGO_PKG_VERSION"),
+                        "en",
+                        method_bytes,
+                    ),
+                )
+            } else {
+                crate::mtproto::build_invoke_with_layer(crate::api::API_LAYER, method_bytes)
+            };
             let (msg_id, mut response) = match async {
                 let (msg_id, encrypted) = {
                     let mut session = self.session.write().await;
@@ -638,6 +649,35 @@ impl SenderPool {
                         crate::serialize::BAD_MSG_NOTIFICATION => {
                             let (bad_msg_id, _seqno, code) =
                                 crate::mtproto::parse_bad_msg_notification(item)?;
+                            // Codes 16/17 ("msg_id too low/high") mean our
+                            // clock drifted out of the server's ±300s
+                            // window. The bad_msg_id IS a server-side
+                            // msg_id derived from server time — derive the
+                            // clock correction from it, adopt, and retry
+                            // (the re-encrypted request gets a fresh,
+                            // corrected msg_id).
+                            if (code == 16 || code == 17) && attempt < 3 {
+                                let server_now =
+                                    i64::try_from(bad_msg_id >> 32).unwrap_or(i64::MAX);
+                                let local_now = i64::try_from(
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map_or(0, |d| d.as_secs()),
+                                )
+                                .unwrap_or(0);
+                                let wanted_offset = server_now - local_now;
+                                {
+                                    let mut session = self.session.write().await;
+                                    if wanted_offset != session.server_time_offset {
+                                        tracing::warn!(
+                                            "server clock offset corrected to \
+                                             {wanted_offset}s (bad_msg {code})"
+                                        );
+                                        session.server_time_offset = wanted_offset;
+                                    }
+                                }
+                                continue 'outer;
+                            }
                             return Err(classify_bad_msg(code, bad_msg_id));
                         }
                         crate::serialize::FUTURE_SALTS | crate::serialize::MSGS_STATE_INFO => {
@@ -743,28 +783,26 @@ impl SenderPool {
     /// Returns `true` when the caller should re-send its request.
     async fn adopt_service_state(&self, ctor: u32, item: &[u8]) -> bool {
         use crate::serialize::{BAD_SERVER_SALT, NEW_SERVER_SALT, NEW_SESSION_CREATED};
-        if item.len() < 28 {
-            return false;
-        }
-        let new_salt = match ctor {
-            // bad_server_salt#edab447b ... new_salt at [20..28]
-            // new_session_created#9ec20908 first_msg_id:long
-            // unique_id:long server_salt:long — salt at [20..28] in both
-            BAD_SERVER_SALT | NEW_SESSION_CREATED => u64::from_le_bytes(
-                // invariant: the `item.len() < 28` guard above guarantees
-                // this full 8-byte field
-                #[allow(clippy::unwrap_used)]
-                item[20..28].try_into().unwrap(),
-            ),
-            // new_server_salt#1160b89c new_server_salt:long — salt at [4..12]
-            NEW_SERVER_SALT => u64::from_le_bytes(
-                // invariant: the `item.len() < 28` guard above guarantees
-                // this full 8-byte field
-                #[allow(clippy::unwrap_used)]
-                item[4..12].try_into().unwrap(),
-            ),
+        // Per-ctor minimum lengths:
+        //   bad_server_salt#edab447b  ctor + bad_msg_id:long
+        //     + bad_msg_seqno:int + error_code:int + salt:long = 28
+        //   new_session_created#9ec20908  ctor + first_msg_id:long
+        //     + unique_id:long + salt:long = 28
+        //   new_server_salt#1160b89c  ctor + salt:long = 12
+        let (min_len, salt_at) = match ctor {
+            BAD_SERVER_SALT | NEW_SESSION_CREATED => (28usize, 20usize),
+            NEW_SERVER_SALT => (12usize, 4usize),
             _ => return false,
         };
+        if item.len() < min_len {
+            return false;
+        }
+        let new_salt = u64::from_le_bytes(
+            // invariant: the per-ctor `item.len() < min_len` guard above
+            // guarantees this full 8-byte field
+            #[allow(clippy::unwrap_used)]
+            item[salt_at..salt_at + 8].try_into().unwrap(),
+        );
         let mut session = self.session.write().await;
         if session.server_salt != new_salt {
             tracing::debug!(ctor = ctor, "adopting server-announced salt");
@@ -791,6 +829,14 @@ impl SenderPool {
         let mut r = crate::serialize::TLReader::new(data);
         let _ctor = r.read_u32()?;
         let count = r.read_i32()?;
+        // Wire-format diagnostic: msg_container is a bare ctor followed
+        // directly by the count (gotd/telethon parity). If a peer ever
+        // inserts the 0x1cb5c415 vector header here, this log makes the
+        // mismatch visible instead of desyncing the item walk.
+        tracing::debug!(
+            "msg_container: count={count}, bytes[4..12]={:02x?}",
+            data.get(4..12).unwrap_or(&[])
+        );
         let mut off = 8usize;
         let mut items = Vec::with_capacity(count.max(0) as usize);
         for _ in 0..count.max(0) {
@@ -1088,6 +1134,12 @@ impl SenderPool {
     /// a pong is silently disconnected and reconnected with the same
     /// `auth_key` (SPEC BS-1).
     pub fn spawn_keepalive(self: &Arc<Self>) {
+        /// Result of one keepalive probe. `Dead` reconnects — only ever
+        /// after the ping/pong guards have dropped (see the caller).
+        enum PingOutcome {
+            Alive,
+            Dead,
+        }
         let protocol = self.protocol.clone();
         let pool_arc = self.clone();
         for i in 0..pool_arc.connections.len() {
@@ -1102,63 +1154,80 @@ impl SenderPool {
                     // frame reads and swallow its answer as a
                     // "non-pong". A held permit means an RPC exchange is
                     // in flight and traffic itself proves liveness.
-                    let Ok(_permit) = conn.rpc_permit.try_lock() else {
-                        continue;
-                    };
-                    let Ok(mut codec) = conn.codec.try_lock() else {
-                        continue;
-                    };
-                    let ping_id = rand::random::<i64>();
-                    // gotd parity: ping_delay_disconnect makes the server reap the
-                    // connection itself if we stop pinging (delay = interval
-                    // + timeout, like gotd's pingLoop).
-                    let delay =
-                        (protocol.ping_interval.as_secs() + protocol.pong_timeout.as_secs()) as i32;
-                    let ping = crate::mtproto::build_ping_delay_disconnect(ping_id, delay);
-                    let encrypted = {
-                        let mut session = pool_arc.session.write().await;
-                        let msg_id = session.next_msg_id();
-                        let seq_no = session.next_seq_no(true);
-                        session.encrypt_message(&ping, msg_id, seq_no)
-                    };
-                    if let Err(e) = codec.send_frame(&encrypted).await {
-                        tracing::debug!("keepalive ping failed: {e}");
-                        continue;
-                    }
-                    match tokio::time::timeout(protocol.pong_timeout, codec.recv_frame()).await {
-                        Ok(Ok(resp)) => {
-                            let decrypted = pool_arc.session.write().await.decrypt_message(&resp);
-                            if let Ok((_, plaintext)) = decrypted {
-                                let body = Self::unwrap_gzip(&plaintext)
-                                    .unwrap_or_else(|_| plaintext.clone());
-                                match crate::mtproto::parse_pong(&body) {
-                                    Ok(_) => {}
-                                    Err(_) => {
-                                        tracing::debug!("keepalive got non-pong frame; discarded");
+                    //
+                    // Both guards are dropped before any reconnect:
+                    // reconnect_connection re-locks the codec, and the
+                    // tokio mutex would self-deadlock against the very
+                    // guards this task still owns.
+                    let pong = {
+                        let Ok(_permit) = conn.rpc_permit.try_lock() else {
+                            continue;
+                        };
+                        let Ok(mut codec) = conn.codec.try_lock() else {
+                            continue;
+                        };
+                        let ping_id = rand::random::<i64>();
+                        // gotd parity: ping_delay_disconnect makes the server reap the
+                        // connection itself if we stop pinging (delay = interval
+                        // + timeout, like gotd's pingLoop).
+                        let delay = (protocol.ping_interval.as_secs()
+                            + protocol.pong_timeout.as_secs())
+                            as i32;
+                        let ping = crate::mtproto::build_ping_delay_disconnect(ping_id, delay);
+                        let encrypted = {
+                            let mut session = pool_arc.session.write().await;
+                            let msg_id = session.next_msg_id();
+                            let seq_no = session.next_seq_no(true);
+                            session.encrypt_message(&ping, msg_id, seq_no)
+                        };
+                        if let Err(e) = codec.send_frame(&encrypted).await {
+                            tracing::debug!("keepalive ping failed: {e}");
+                            continue;
+                        }
+                        match tokio::time::timeout(protocol.pong_timeout, codec.recv_frame()).await
+                        {
+                            Ok(Ok(resp)) => {
+                                let decrypted =
+                                    pool_arc.session.write().await.decrypt_message(&resp);
+                                match decrypted {
+                                    Ok((_, plaintext)) => {
+                                        let body = Self::unwrap_gzip(&plaintext)
+                                            .unwrap_or_else(|_| plaintext.clone());
+                                        match crate::mtproto::parse_pong(&body) {
+                                            Ok(_) => PingOutcome::Alive,
+                                            Err(_) => {
+                                                // A real answer raced the ping
+                                                // (traffic proved liveness anyway).
+                                                PingOutcome::Alive
+                                            }
+                                        }
                                     }
+                                    Err(_) => PingOutcome::Alive,
                                 }
                             }
-                        }
-                        Ok(Err(e)) => {
-                            tracing::warn!(
-                                "keepalive recv failed on DC {} conn {i}: {e}",
-                                pool_arc.dc_id
-                            );
-                            if let Err(e) = pool_arc.reconnect_connection(&conn).await {
-                                tracing::warn!("keepalive reconnect failed: {e}");
-                                break;
+                            Ok(Err(e)) => {
+                                tracing::warn!(
+                                    "keepalive recv failed on DC {} conn {i}: {e}",
+                                    pool_arc.dc_id
+                                );
+                                PingOutcome::Dead
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    "no pong within {:?} on DC {} conn {i} — reconnecting",
+                                    protocol.pong_timeout,
+                                    pool_arc.dc_id
+                                );
+                                PingOutcome::Dead
                             }
                         }
-                        Err(_) => {
-                            tracing::warn!(
-                                "no pong within {:?} on DC {} conn {i} — reconnecting",
-                                protocol.pong_timeout,
-                                pool_arc.dc_id
-                            );
-                            if let Err(e) = pool_arc.reconnect_connection(&conn).await {
-                                tracing::warn!("keepalive reconnect failed: {e}");
-                                break;
-                            }
+                        // codec + permit guards drop here, before reconnect.
+                    };
+                    if matches!(pong, PingOutcome::Dead) {
+                        if let Err(e) = pool_arc.reconnect_connection(&conn).await {
+                            tracing::warn!("keepalive reconnect failed: {e}");
+                            // Back off so a dead DC doesn't spin this task hot.
+                            tokio::time::sleep(protocol.pong_timeout).await;
                         }
                     }
                 }
@@ -1323,6 +1392,11 @@ impl SenderPool {
                         let mut locked = conn.codec.lock().await;
                         *locked = codec;
                     }
+                    // A fresh socket has no client context: the next RPC
+                    // must carry initConnection again (the context binds
+                    // per auth key + connection).
+                    conn.initialized
+                        .store(false, std::sync::atomic::Ordering::Relaxed);
                     return Ok(());
                 }
                 Err(e) => {
@@ -1593,6 +1667,36 @@ mod tests {
             TransportPolicy::TcpOnly
         );
         assert_eq!(TransportPolicy::default(), TransportPolicy::TcpOnly);
+    }
+
+    #[test]
+    fn test_adopt_new_server_salt_twelve_byte_frame() {
+        // Regression: the old `len() < 28` guard rejected the 12-byte
+        // new_server_salt#1160b89c before its own arm could read the
+        // salt at [4..12].
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let session = MtProtoSession::new(vec![0u8; 256], 2);
+            let pool = SenderPool::new(
+                2,
+                0,
+                session,
+                PoolConfig::default(),
+                ProtocolConfig::default(),
+            );
+            let mut item = crate::serialize::TLWriter::new();
+            item.write_u32(crate::serialize::NEW_SERVER_SALT);
+            item.write_u64(0xDEADBEEFCAFE);
+            let adopted = pool
+                .adopt_service_state(crate::serialize::NEW_SERVER_SALT, &item.into_bytes())
+                .await;
+            assert!(adopted);
+            let session = pool.session().await;
+            assert_eq!(session.server_salt, 0xDEADBEEFCAFE);
+        });
     }
 }
 
