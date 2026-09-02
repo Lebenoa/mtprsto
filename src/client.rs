@@ -922,7 +922,12 @@ impl Client {
                 // Skip the embedded UserFull field-by-field (see
                 // skip_user_full) so the chats/users vectors align.
                 let _fu_ctor = r.read_u32()?;
-                Self::skip_user_full(&mut r)?;
+                Self::skip_user_full(&mut r).map_err(|e| {
+                    // A skip mismatch here desyncs every later field, so
+                    // the payload (bounded) is the useful diagnostic.
+                    let head = data.get(..96).unwrap_or(data);
+                    Error::Protocol(format!("{e}; userFull head {}", bytes_to_hex(head)))
+                })?;
                 let chat_count = r.read_vector_header()?;
                 for _ in 0..chat_count {
                     let _ = types::Chat::read_from(&mut r)?;
@@ -1938,6 +1943,16 @@ fn peer_debug(peer: &InputPeer) -> String {
         InputPeer::Channel { channel_id, .. } => format!("channel:{}", channel_id.0),
         other => format!("{other:?}"),
     }
+}
+
+/// Lowercase hex of up to 96 bytes — for wire-diagnostic error context.
+fn bytes_to_hex(data: &[u8]) -> String {
+    let mut s = String::with_capacity(data.len().saturating_mul(2));
+    for b in data {
+        use std::fmt::Write as _;
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 /// Extract the `messages` vector from a `messages.Messages*` response.
