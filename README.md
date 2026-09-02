@@ -67,21 +67,21 @@ grammers.
 
 ## Branches & API layers
 
-The MTProto layer is negotiated per connection (`invokeWithLayer`), and each
-branch pins one wire dialect:
+All branches share one wire dialect and one codebase. `docs-layer` is the
+development trunk (layer 223, the published schema — live-verified); the
+other branches exist as stable snapshots of it:
 
-| Branch | `API_LAYER` | Wire dialect | Notes |
-|---|---|---|---|
-| `master` | 225 | production default | generated 229 parsers + `CTOR_ALIASES` bridging the 225 ctor re-issues; live-verified |
-| `dev-layer` | 229 | tdlib master / tdesktop dev | canonical ctor ids = wire ids (no aliases); live-verified |
-| `docs-layer` | 223 | published schema (core.telegram.org) | 223 ids aliased; curated parsers match the 223 shapes; live-verified |
+| Branch | `API_LAYER` | Role |
+|---|---|---|
+| `docs-layer` | 223 | development trunk; all wire fixes and the live sweep land here first |
+| `main` | 223 | release snapshot — tracks docs-layer, adopts a new published layer only after a live-sweep pass proves it |
+| `dev-layer` | 223 | playground snapshot — schema-draft experiments start here; a dialect change is promoted to docs-layer only after live verification |
 
-All three share one generated parser set (`tools/schema.tl`, the 229 schema);
-`CTOR_ALIASES` in `tools/gentl.py` bakes the per-branch dialect differences in
-at generation time. The published docs currently lag production (they document
-layer 223) — `tools/schema.meta.json` records the last fetch and its layer.
-Regenerate after a fetch with `gentl --all` / `--domain <name>`, then run the
-captured-payload regression tests before switching dialects.
+The old per-branch dialect experiment (layer 229 / 225 forks) was retired:
+those layers are not documented anywhere official, and the drift they
+carried caused real parse bugs. `tools/schema.tl` remains the 229 dev
+schema for reference, and `CTOR_ALIASES` in `tools/gentl.py` holds the
+223-alias table that keeps docs-layer's parsers aligned with production.
 
 ## Installation
 
