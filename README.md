@@ -67,21 +67,25 @@ grammers.
 
 ## Branches & API layers
 
-The MTProto layer is negotiated per connection (`invokeWithLayer`), and each
-branch pins one wire dialect:
+All branches share one wire dialect and one codebase. `docs-layer` is the
+development trunk; the other branches are stable snapshots of it:
 
-| Branch | `API_LAYER` | Wire dialect | Notes |
-|---|---|---|---|
-| `master` | 225 | production default | generated 229 parsers + `CTOR_ALIASES` bridging the 225 ctor re-issues; live-verified |
-| `dev-layer` | 229 | tdlib master / tdesktop dev | canonical ctor ids = wire ids (no aliases); live-verified |
-| `docs-layer` | 223 | published schema (core.telegram.org) | 223 ids aliased; curated parsers match the 223 shapes; live-verified |
+| Branch | `API_LAYER` | Role |
+|---|---|---|
+| `docs-layer` | 223 | development trunk; all wire fixes and the live sweep land here first |
+| `main` | 223 | release snapshot — tracks docs-layer; adopts a newer published layer only after a live-sweep pass proves it |
+| `dev-layer` | 223 | playground snapshot — schema-draft experiments start here; a dialect change is promoted to docs-layer only after live verification |
 
-All three share one generated parser set (`tools/schema.tl`, the 229 schema);
-`CTOR_ALIASES` in `tools/gentl.py` bakes the per-branch dialect differences in
-at generation time. The published docs currently lag production (they document
-layer 223) — `tools/schema.meta.json` records the last fetch and its layer.
-Regenerate after a fetch with `gentl --all` / `--domain <name>`, then run the
-captured-payload regression tests before switching dialects.
+Layer adoption path: the [layer changelog](https://core.telegram.org/api/layers)
+publishes an entry per layer, and **layer 225 is the current documentation
+release** (permalink `/schema?layer=225`; 224 has an entry too, and most of
+the ctor re-issues this codebase aliases happened there). Layers beyond the
+latest changelog entry exist only as drafts (tdlib master) — the retired
+per-branch dialect forks targeted one of those drafts, and the undocumented
+drift caused real parse bugs. To adopt 225 on `main`: fetch
+`/schema?layer=225`, regenerate with `gentl --all` / `--domain <name>`, seed
+`CTOR_ALIASES` with the 223→225 re-issues from the changelog diffs, and run
+the live sweep before promoting.
 
 ## Installation
 
