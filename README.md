@@ -68,20 +68,24 @@ grammers.
 ## Branches & API layers
 
 All branches share one wire dialect and one codebase. `docs-layer` is the
-development trunk (layer 223, the published schema — live-verified); the
-other branches exist as stable snapshots of it:
+development trunk; the other branches are stable snapshots of it:
 
 | Branch | `API_LAYER` | Role |
 |---|---|---|
 | `docs-layer` | 223 | development trunk; all wire fixes and the live sweep land here first |
-| `main` | 223 | release snapshot — tracks docs-layer, adopts a new published layer only after a live-sweep pass proves it |
+| `main` | 223 | release snapshot — tracks docs-layer; adopts a newer published layer only after a live-sweep pass proves it |
 | `dev-layer` | 223 | playground snapshot — schema-draft experiments start here; a dialect change is promoted to docs-layer only after live verification |
 
-The old per-branch dialect experiment (layer 229 / 225 forks) was retired:
-those layers are not documented anywhere official, and the drift they
-carried caused real parse bugs. `tools/schema.tl` remains the 229 dev
-schema for reference, and `CTOR_ALIASES` in `tools/gentl.py` holds the
-223-alias table that keeps docs-layer's parsers aligned with production.
+Layer adoption path: the [layer changelog](https://core.telegram.org/api/layers)
+publishes an entry per layer, and **layer 225 is the current documentation
+release** (permalink `/schema?layer=225`; 224 has an entry too, and most of
+the ctor re-issues this codebase aliases happened there). Layers beyond the
+latest changelog entry exist only as drafts (tdlib master) — the retired
+per-branch dialect forks targeted one of those drafts, and the undocumented
+drift caused real parse bugs. To adopt 225 on `main`: fetch
+`/schema?layer=225`, regenerate with `gentl --all` / `--domain <name>`, seed
+`CTOR_ALIASES` with the 223→225 re-issues from the changelog diffs, and run
+the live sweep before promoting.
 
 ## Installation
 
