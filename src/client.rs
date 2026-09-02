@@ -807,7 +807,7 @@ impl Client {
         Ok(())
     }
 
-    /// Skip one BotMenuButton payload after its ctor: two bare ctors,
+    /// Skip one `BotMenuButton` payload after its ctor: two bare ctors,
     /// or `botMenuButton#c7b57ce6 text url`.
     fn skip_menu_button_body(r: &mut TLReader, ctor: u32) -> Result<()> {
         match ctor {
