@@ -1,17 +1,29 @@
 //! Updates container and Update event types.
 
 use super::constructors::{
-    CHANNEL_DIFFERENCE, CHANNEL_DIFFERENCE_EMPTY, CHANNEL_DIFFERENCE_TOO_LONG, DIALOG, DIFFERENCE,
-    DIFFERENCE_EMPTY, DIFFERENCE_SLICE, DIFFERENCE_TOO_LONG, NOTIFICATION_SOUND_DEFAULT,
-    NOTIFICATION_SOUND_LOCAL, NOTIFICATION_SOUND_NONE, NOTIFICATION_SOUND_RINGTONE,
-    PEER_NOTIFY_SETTINGS, UPDATE_CHANNEL, UPDATE_CHANNEL_TOO_LONG, UPDATE_DELETE_CHANNEL_MESSAGES,
-    UPDATE_DELETE_MESSAGES, UPDATE_EDIT_CHANNEL_MESSAGE, UPDATE_EDIT_MESSAGE, UPDATE_MESSAGE_ID,
+    CHANNEL_DIFFERENCE, CHANNEL_DIFFERENCE_EMPTY, CHANNEL_DIFFERENCE_TOO_LONG, DIALOG, DIALOG_V223,
+    DIFFERENCE, DIFFERENCE_EMPTY, DIFFERENCE_SLICE, DIFFERENCE_TOO_LONG,
+    NOTIFICATION_SOUND_DEFAULT, NOTIFICATION_SOUND_LOCAL, NOTIFICATION_SOUND_NONE,
+    NOTIFICATION_SOUND_RINGTONE, PEER_NOTIFY_SETTINGS, SEND_MESSAGE_CANCEL_ACTION,
+    SEND_MESSAGE_CHOOSE_CONTACT_ACTION, SEND_MESSAGE_CHOOSE_STICKER_ACTION,
+    SEND_MESSAGE_GAME_PLAY_ACTION, SEND_MESSAGE_GEO_LOCATION_ACTION,
+    SEND_MESSAGE_HISTORY_IMPORT_ACTION, SEND_MESSAGE_RECORD_AUDIO_ACTION,
+    SEND_MESSAGE_RECORD_ROUND_ACTION, SEND_MESSAGE_RECORD_VIDEO_ACTION, SEND_MESSAGE_TYPING_ACTION,
+    SEND_MESSAGE_UPLOAD_AUDIO_ACTION, SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION,
+    SEND_MESSAGE_UPLOAD_PHOTO_ACTION, SEND_MESSAGE_UPLOAD_ROUND_ACTION,
+    SEND_MESSAGE_UPLOAD_VIDEO_ACTION, UPDATE_CHANNEL, UPDATE_CHANNEL_TOO_LONG,
+    UPDATE_CHAT_USER_TYPING, UPDATE_DELETE_CHANNEL_MESSAGES, UPDATE_DELETE_MESSAGES,
+    UPDATE_EDIT_CHANNEL_MESSAGE, UPDATE_EDIT_MESSAGE, UPDATE_MESSAGE_ID,
     UPDATE_NEW_CHANNEL_MESSAGE, UPDATE_NEW_MESSAGE, UPDATE_PINNED_CHANNEL_MESSAGES,
     UPDATE_READ_CHANNEL_INBOX, UPDATE_READ_CHANNEL_OUTBOX, UPDATE_READ_HISTORY_INBOX,
     UPDATE_READ_HISTORY_OUTBOX, UPDATE_READ_MESSAGES, UPDATE_SHORT, UPDATE_SHORT_SENT_MESSAGE,
-    UPDATE_WEB_PAGE, UPDATES, UPDATES_COMBINED,
+    UPDATE_USER_STATUS, UPDATE_USER_TYPING, UPDATE_WEB_PAGE, UPDATES, UPDATES_COMBINED,
+    USER_STATUS_EMPTY, USER_STATUS_LAST_MONTH, USER_STATUS_LAST_WEEK, USER_STATUS_OFFLINE,
+    USER_STATUS_ONLINE, USER_STATUS_RECENTLY,
 };
-use super::{ChannelId, Chat, Document, Message, MessageMedia, MsgId, Peer, State, User, WebPage};
+use super::{
+    ChannelId, Chat, Document, Message, MessageMedia, MsgId, Peer, State, User, UserId, WebPage,
+};
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 #[allow(unused_imports)]
@@ -483,6 +495,41 @@ impl Update {
                 let max_id = MsgId(i64::from(r.read_i32()?));
                 Ok(Self::ReadChannelOutbox { channel_id, max_id })
             }
+            UPDATE_USER_STATUS => {
+                // updateUserStatus#e5bdf8de user_id:long status:UserStatus
+                // (frequent container noise: the server answers a send
+                // with updateShort wrapping this whenever a contact's
+                // status changes; its payload must be consumed or the
+                // trailing date desyncs)
+                let _user_id = UserId(r.read_i64()?);
+                skip_user_status(r)?;
+                Ok(Self::Other {
+                    constructor: UPDATE_USER_STATUS,
+                })
+            }
+            UPDATE_USER_TYPING => {
+                // updateUserTyping#2a17bf5c flags:# user_id:long
+                //   top_msg_id:flags.0?int action:SendMessageAction
+                let flags = r.read_i32()?;
+                let _user_id = UserId(r.read_i64()?);
+                if flags & (1 << 0) != 0 {
+                    let _top_msg_id = MsgId(i64::from(r.read_i32()?));
+                }
+                skip_send_message_action(r)?;
+                Ok(Self::Other {
+                    constructor: UPDATE_USER_TYPING,
+                })
+            }
+            UPDATE_CHAT_USER_TYPING => {
+                // updateChatUserTyping#83487af0 chat_id:long from_id:Peer
+                //   action:SendMessageAction
+                let _chat_id = ChannelId(r.read_i64()?);
+                let _from = Peer::read_from(r)?;
+                skip_send_message_action(r)?;
+                Ok(Self::Other {
+                    constructor: UPDATE_CHAT_USER_TYPING,
+                })
+            }
             other => Ok(Self::Other { constructor: other }),
         }
     }
@@ -743,12 +790,69 @@ impl ChannelDifference {
         ))
     }
 }
-/// Skip a `dialog#fc89f7f3`, returning its pts (flags.0) when present.
-/// Drafts (flags.1) cannot be skipped without a full `InputMedia` parser —
+/// Skip a `UserStatus` payload (the status constructor is part of the
+/// payload and is read here).
+fn skip_user_status(r: &mut TLReader) -> Result<()> {
+    let ctor = r.read_u32()?;
+    match ctor {
+        USER_STATUS_EMPTY => Ok(()),
+        USER_STATUS_ONLINE | USER_STATUS_OFFLINE => {
+            let _ = r.read_i32()?;
+            Ok(())
+        }
+        USER_STATUS_RECENTLY | USER_STATUS_LAST_WEEK | USER_STATUS_LAST_MONTH => {
+            let _flags = r.read_i32()?;
+            Ok(())
+        }
+        other => Err(Error::Serialization(format!(
+            "unknown UserStatus constructor {other:#x}"
+        ))),
+    }
+}
+
+/// Skip a `SendMessageAction` payload (the action constructor is part
+/// of the payload and is read here).
+fn skip_send_message_action(r: &mut TLReader) -> Result<()> {
+    let ctor = r.read_u32()?;
+    match ctor {
+        // ctor-only actions
+        SEND_MESSAGE_TYPING_ACTION
+        | SEND_MESSAGE_CANCEL_ACTION
+        | SEND_MESSAGE_RECORD_VIDEO_ACTION
+        | SEND_MESSAGE_RECORD_AUDIO_ACTION
+        | SEND_MESSAGE_RECORD_ROUND_ACTION
+        | SEND_MESSAGE_GEO_LOCATION_ACTION
+        | SEND_MESSAGE_CHOOSE_CONTACT_ACTION
+        | SEND_MESSAGE_GAME_PLAY_ACTION
+        | SEND_MESSAGE_CHOOSE_STICKER_ACTION => Ok(()),
+        // actions carrying progress:int
+        SEND_MESSAGE_UPLOAD_VIDEO_ACTION
+        | SEND_MESSAGE_UPLOAD_AUDIO_ACTION
+        | SEND_MESSAGE_UPLOAD_PHOTO_ACTION
+        | SEND_MESSAGE_UPLOAD_DOCUMENT_ACTION
+        | SEND_MESSAGE_UPLOAD_ROUND_ACTION
+        | SEND_MESSAGE_HISTORY_IMPORT_ACTION => {
+            let _progress = r.read_i32()?;
+            Ok(())
+        }
+        // sendMessageTextDraftAction carries a TextWithEntities — too
+        // costly to skip blind; fail loudly rather than desync.
+        other => Err(Error::Serialization(format!(
+            "cannot skip SendMessageAction constructor {other:#x}"
+        ))),
+    }
+}
+
+/// Skip a `dialog#fc89f7f3` (layer 225) or `dialog#d58a08c6` (223),
+/// returning its pts (flags.0) when present. The 225 shape inserts
+/// `unread_poll_votes_count` after `unread_reactions_count`. Drafts
+/// (flags.1) cannot be skipped without a full `InputMedia` parser —
 /// those fail loudly rather than desync.
 fn read_dialog_skip(r: &mut TLReader) -> Result<Option<i32>> {
     let ctor = r.read_u32()?;
-    if ctor != DIALOG {
+    let is_225 = ctor == DIALOG;
+    let is_223 = ctor == DIALOG_V223;
+    if !is_225 && !is_223 {
         return Err(Error::Serialization(format!(
             "expected dialog in channelDifferenceTooLong, got {ctor:#x}"
         )));
@@ -756,8 +860,9 @@ fn read_dialog_skip(r: &mut TLReader) -> Result<Option<i32>> {
     let dflags = r.read_i32()?;
     let _peer = Peer::read_from(r)?;
     // top_message, read_inbox_max_id, read_outbox_max_id, unread_count,
-    // unread_mentions_count, unread_reactions_count, unread_poll_votes_count
-    for _ in 0..7 {
+    // unread_mentions_count, unread_reactions_count [, unread_poll_votes_count]
+    let mandatory_ints = if is_225 { 7 } else { 6 };
+    for _ in 0..mandatory_ints {
         let _ = r.read_i32()?;
     }
     skip_peer_notify_settings(r)?;

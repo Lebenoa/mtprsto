@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -37,12 +37,7 @@ pub const CHAT_PARTICIPANT_CREATOR_ID: u32 = 0xe1f867b8;
 pub const CHAT_PARTICIPANT_ID: u32 = 0x38e79fde;
 pub const CHAT_BANNED_RIGHTS_ID: u32 = 0x9f120418;
 pub const CHAT_ADMIN_RIGHTS_ID: u32 = 0x5fb224d5;
-pub const COMMUNITY_FULL_ID: u32 = 0xcbb7a507;
-pub const COMMUNITY_PEER_ID: u32 = 0x76141ebd;
-pub const VIDEO_SIZE_STICKER_MARKUP_ID: u32 = 0x0da082fe;
-pub const VIDEO_SIZE_EMOJI_MARKUP_ID: u32 = 0xf85c413c;
-pub const VIDEO_SIZE_ID: u32 = 0xde33b094;
-pub const CHANNEL_FULL_ID: u32 = 0xa04e8d3a;
+pub const CHANNEL_FULL_ID: u32 = 0xe4e0b29d;
 pub const PROFILE_TAB_GIFS_ID: u32 = 0xa2c0f695;
 pub const PROFILE_TAB_LINKS_ID: u32 = 0xd3656499;
 pub const PROFILE_TAB_VOICE_ID: u32 = 0xe477092e;
@@ -68,6 +63,9 @@ pub const DOCUMENT_ATTRIBUTE_VIDEO_ID: u32 = 0x43c57c48;
 pub const DOCUMENT_ATTRIBUTE_STICKER_ID: u32 = 0x6319d612;
 pub const DOCUMENT_ATTRIBUTE_ANIMATED_ID: u32 = 0x11b58939;
 pub const DOCUMENT_ATTRIBUTE_IMAGE_SIZE_ID: u32 = 0x6c37c15c;
+pub const VIDEO_SIZE_STICKER_MARKUP_ID: u32 = 0x0da082fe;
+pub const VIDEO_SIZE_EMOJI_MARKUP_ID: u32 = 0xf85c413c;
+pub const VIDEO_SIZE_ID: u32 = 0xde33b094;
 pub const PEER_STORIES_ID: u32 = 0x9a35e999;
 pub const STORY_ITEM_ID: u32 = 0x16a4b93c;
 pub const REACTION_PAID_ID: u32 = 0x523da4eb;
@@ -113,8 +111,8 @@ pub const INPUT_POLL_ANSWER_ID: u32 = 0x199fed96;
 pub const POLL_ANSWER_ID: u32 = 0x4b7d786a;
 pub const INPUT_MEDIA_GEO_LIVE_ID: u32 = 0x971fa843;
 pub const INPUT_MEDIA_INVOICE_ID: u32 = 0x405fef0d;
-pub const PHONE_GET_CALL_CONFIG_ID: u32 = 0x55451fa9;
 pub const BOTS_INVOKE_WEB_VIEW_CUSTOM_METHOD_ID: u32 = 0x087fc5e7;
+pub const PHONE_GET_CALL_CONFIG_ID: u32 = 0x55451fa9;
 pub const BOTS_SEND_CUSTOM_REQUEST_ID: u32 = 0xaa2769ed;
 pub const DATA_JSON_ID: u32 = 0x7d748d04;
 pub const INVOICE_ID: u32 = 0x049ee584;
@@ -170,42 +168,8 @@ pub const BASE_THEME_NIGHT_ID: u32 = 0xb7b31ea8;
 pub const BASE_THEME_DAY_ID: u32 = 0xfbd81688;
 pub const BASE_THEME_CLASSIC_ID: u32 = 0xc3a12462;
 pub const PAGE_ID: u32 = 0x98657f0d;
-pub const PAGE_BLOCK_DOCUMENT_ID: u32 = 0x38fa3ba3;
+pub const PAGE_BLOCK_MAP_ID: u32 = 0xa44f3ef6;
 pub const PAGE_CAPTION_ID: u32 = 0x6f747657;
-pub const TEXT_BUTTON_ID: u32 = 0xafc79cd6;
-pub const RICH_BUTTON_STYLE_ID: u32 = 0x03c610bd;
-pub const INLINE_BUTTON_TYPE_DISABLED_ID: u32 = 0xa438619d;
-pub const INLINE_BUTTON_TYPE_COPY_ID: u32 = 0xb41d3272;
-pub const INPUT_INLINE_BUTTON_TYPE_USER_PROFILE_ID: u32 = 0x53f3ce5a;
-pub const INLINE_BUTTON_TYPE_USER_PROFILE_ID: u32 = 0x3fa33fcf;
-pub const INLINE_BUTTON_TYPE_SWITCH_INLINE_ID: u32 = 0x93773ff5;
-pub const INLINE_QUERY_PEER_TYPE_BOT_PM_ID: u32 = 0x0e3b2d0c;
-pub const INLINE_QUERY_PEER_TYPE_BROADCAST_ID: u32 = 0x6334ee9a;
-pub const INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID: u32 = 0x5ec4be43;
-pub const INLINE_QUERY_PEER_TYPE_CHAT_ID: u32 = 0xd766c50a;
-pub const INLINE_QUERY_PEER_TYPE_PM_ID: u32 = 0x833c0fac;
-pub const INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID: u32 = 0x3081ed9d;
-pub const INLINE_BUTTON_TYPE_BUY_ID: u32 = 0x48bad7a5;
-pub const INLINE_BUTTON_TYPE_GAME_ID: u32 = 0x5cd3709d;
-pub const INLINE_BUTTON_TYPE_CALLBACK_ID: u32 = 0x2955bc38;
-pub const INLINE_BUTTON_TYPE_WEB_VIEW_ID: u32 = 0x3bcab5b4;
-pub const INPUT_INLINE_BUTTON_TYPE_URL_AUTH_ID: u32 = 0x9961bcb4;
-pub const INLINE_BUTTON_TYPE_URL_AUTH_ID: u32 = 0xbfd02da2;
-pub const INLINE_BUTTON_TYPE_URL_ID: u32 = 0xeca4f8d4;
-pub const TEXT_DIFF_ID: u32 = 0x9686cb50;
-pub const TEXT_DATE_ID: u32 = 0xa5b45e2b;
-pub const TEXT_MENTION_NAME_ID: u32 = 0x01a9fbfc;
-pub const TEXT_BANK_CARD_ID: u32 = 0xb956812d;
-pub const TEXT_AUTO_PHONE_ID: u32 = 0x24c26789;
-pub const TEXT_AUTO_EMAIL_ID: u32 = 0xc556a45d;
-pub const TEXT_AUTO_URL_ID: u32 = 0xac6a83aa;
-pub const TEXT_CASHTAG_ID: u32 = 0x7b9e1801;
-pub const TEXT_BOT_COMMAND_ID: u32 = 0x02ff29d3;
-pub const TEXT_HASHTAG_ID: u32 = 0x519524ea;
-pub const TEXT_MENTION_ID: u32 = 0xcd24cf44;
-pub const TEXT_SPOILER_ID: u32 = 0x4c2a5d62;
-pub const TEXT_CUSTOM_EMOJI_ID: u32 = 0xa26156c0;
-pub const TEXT_MATH_ID: u32 = 0x9d2eac97;
 pub const TEXT_ANCHOR_ID: u32 = 0x35553762;
 pub const TEXT_IMAGE_ID: u32 = 0x081ccf4f;
 pub const TEXT_PHONE_ID: u32 = 0x1ccb966a;
@@ -222,25 +186,12 @@ pub const TEXT_ITALIC_ID: u32 = 0xd912a59c;
 pub const TEXT_BOLD_ID: u32 = 0x6724abc4;
 pub const TEXT_PLAIN_ID: u32 = 0x744694e0;
 pub const TEXT_EMPTY_ID: u32 = 0xdc3d824f;
-pub const PAGE_BLOCK_BUTTON_ROW_ID: u32 = 0x6d640318;
-pub const PAGE_BUTTON_ID: u32 = 0x692a5488;
-pub const PAGE_BLOCK_BLOCKQUOTE_BLOCKS_ID: u32 = 0x0e6e47c4;
-pub const INPUT_PAGE_BLOCK_MAP_ID: u32 = 0x574b617f;
-pub const PAGE_BLOCK_THINKING_ID: u32 = 0x3c29a3e2;
-pub const PAGE_BLOCK_MATH_ID: u32 = 0x59080c20;
-pub const PAGE_BLOCK_HEADING6_ID: u32 = 0x682a41a9;
-pub const PAGE_BLOCK_HEADING5_ID: u32 = 0xdbbe6c6a;
-pub const PAGE_BLOCK_HEADING4_ID: u32 = 0xb532772b;
-pub const PAGE_BLOCK_HEADING3_ID: u32 = 0x67e731ad;
-pub const PAGE_BLOCK_HEADING2_ID: u32 = 0x096b2aec;
-pub const PAGE_BLOCK_HEADING1_ID: u32 = 0xbaff072f;
-pub const PAGE_BLOCK_MAP_ID: u32 = 0xa44f3ef6;
 pub const PAGE_BLOCK_RELATED_ARTICLES_ID: u32 = 0x16115a96;
 pub const PAGE_RELATED_ARTICLE_ID: u32 = 0xb390dc08;
 pub const PAGE_BLOCK_DETAILS_ID: u32 = 0x76768bed;
-pub const PAGE_BLOCK_ORDERED_LIST_ID: u32 = 0x1fd6f6c1;
-pub const PAGE_LIST_ORDERED_ITEM_BLOCKS_ID: u32 = 0x8ff2d5f0;
-pub const PAGE_LIST_ORDERED_ITEM_TEXT_ID: u32 = 0x15031189;
+pub const PAGE_BLOCK_ORDERED_LIST_ID: u32 = 0x9a8ae1e1;
+pub const PAGE_LIST_ORDERED_ITEM_BLOCKS_ID: u32 = 0x98dd8936;
+pub const PAGE_LIST_ORDERED_ITEM_TEXT_ID: u32 = 0x5e068047;
 pub const PAGE_BLOCK_TABLE_ID: u32 = 0xbf4dea82;
 pub const PAGE_TABLE_ROW_ID: u32 = 0xe0c0c5e5;
 pub const PAGE_TABLE_CELL_ID: u32 = 0x34566b6a;
@@ -255,10 +206,10 @@ pub const PAGE_BLOCK_COVER_ID: u32 = 0x39f23300;
 pub const PAGE_BLOCK_VIDEO_ID: u32 = 0x7c8fe7b6;
 pub const PAGE_BLOCK_PHOTO_ID: u32 = 0x1759c560;
 pub const PAGE_BLOCK_PULLQUOTE_ID: u32 = 0x4f4456d3;
-pub const PAGE_BLOCK_BLOCKQUOTE_ID: u32 = 0x66d1670b;
+pub const PAGE_BLOCK_BLOCKQUOTE_ID: u32 = 0x263d7c26;
 pub const PAGE_BLOCK_LIST_ID: u32 = 0xe4e88011;
-pub const PAGE_LIST_ITEM_BLOCKS_ID: u32 = 0x63ca67aa;
-pub const PAGE_LIST_ITEM_TEXT_ID: u32 = 0x2f58683c;
+pub const PAGE_LIST_ITEM_BLOCKS_ID: u32 = 0x25e073fc;
+pub const PAGE_LIST_ITEM_TEXT_ID: u32 = 0xb92fb6cd;
 pub const PAGE_BLOCK_ANCHOR_ID: u32 = 0xce0d37b0;
 pub const PAGE_BLOCK_DIVIDER_ID: u32 = 0xdb20b188;
 pub const PAGE_BLOCK_FOOTER_ID: u32 = 0x48870999;
@@ -291,10 +242,9 @@ pub const BOTS_GET_BOT_MENU_BUTTON_ID: u32 = 0x9c60eb28;
 pub const BOT_MENU_BUTTON_ID: u32 = 0xc7b57ce6;
 pub const BOT_MENU_BUTTON_COMMANDS_ID: u32 = 0x4258c205;
 pub const BOT_MENU_BUTTON_DEFAULT_ID: u32 = 0x7533a588;
-pub const BOT_COMMAND_ID: u32 = 0x9852d6d2;
+pub const BOT_COMMAND_ID: u32 = 0xc27ac8c7;
 pub const MESSAGES_EXPORT_CHAT_INVITE_ID: u32 = 0xa455de90;
 pub const ACCOUNT_GET_NOTIFY_SETTINGS_ID: u32 = 0x12b3ad31;
-pub const INPUT_NOTIFY_COMMUNITY_ID: u32 = 0x27bb1adc;
 pub const INPUT_NOTIFY_FORUM_TOPIC_ID: u32 = 0x5c467992;
 pub const INPUT_NOTIFY_BROADCASTS_ID: u32 = 0xb1db7c7e;
 pub const INPUT_NOTIFY_CHATS_ID: u32 = 0x4a95e84e;
@@ -306,12 +256,10 @@ pub const NOTIFICATION_SOUND_LOCAL_ID: u32 = 0x830b9ae4;
 pub const NOTIFICATION_SOUND_NONE_ID: u32 = 0x6f0c34df;
 pub const NOTIFICATION_SOUND_DEFAULT_ID: u32 = 0x97e8bebe;
 pub const CHAT_FULL_ID: u32 = 0x2633421b;
-pub const COMMUNITY_ID: u32 = 0x65efe954;
+pub const CHANNEL_FORBIDDEN_ID: u32 = 0x17d493d5;
+pub const CHANNEL_ID: u32 = 0x1c32b11c;
 pub const CHAT_PHOTO_ID: u32 = 0x1c6e1c11;
 pub const CHAT_PHOTO_EMPTY_ID: u32 = 0x37c1011c;
-pub const COMMUNITY_FORBIDDEN_ID: u32 = 0xfd3cdab8;
-pub const CHANNEL_FORBIDDEN_ID: u32 = 0x17d493d5;
-pub const CHANNEL_ID: u32 = 0xd49f34c6;
 pub const CHAT_FORBIDDEN_ID: u32 = 0x6592a1a7;
 pub const CHAT_ID: u32 = 0x41cbf256;
 pub const CHAT_EMPTY_ID: u32 = 0x29562865;
@@ -636,7 +584,6 @@ pub struct ChatBannedRights {
     pub send_plain: bool,
     pub edit_rank: bool,
     pub send_reactions: bool,
-    pub manage_linked_peers: bool,
     pub until_date: i32,
 }
 
@@ -671,7 +618,6 @@ impl ChatBannedRights {
         let send_plain = flags & (1 << 25) != 0;
         let edit_rank = flags & (1 << 26) != 0;
         let send_reactions = flags & (1 << 27) != 0;
-        let manage_linked_peers = flags & (1 << 28) != 0;
         let until_date = r.read_i32()?;
         Ok(ChatBannedRights {
             flags,
@@ -697,7 +643,6 @@ impl ChatBannedRights {
             send_plain,
             edit_rank,
             send_reactions,
-            manage_linked_peers,
             until_date,
         })
     }
@@ -726,8 +671,7 @@ impl ChatBannedRights {
             | if self.send_docs { 1 << 24 } else { 0 }
             | if self.send_plain { 1 << 25 } else { 0 }
             | if self.edit_rank { 1 << 26 } else { 0 }
-            | if self.send_reactions { 1 << 27 } else { 0 }
-            | if self.manage_linked_peers { 1 << 28 } else { 0 };
+            | if self.send_reactions { 1 << 27 } else { 0 };
         w.write_i32(flags);
         w.write_i32(self.until_date);
     }
@@ -754,8 +698,6 @@ pub struct ChatAdminRights {
     pub delete_stories: bool,
     pub manage_direct_messages: bool,
     pub manage_ranks: bool,
-    pub manage_linked_peers: bool,
-    pub manage_welcome_messages: bool,
 }
 
 impl ChatAdminRights {
@@ -784,8 +726,6 @@ impl ChatAdminRights {
         let delete_stories = flags & (1 << 16) != 0;
         let manage_direct_messages = flags & (1 << 17) != 0;
         let manage_ranks = flags & (1 << 18) != 0;
-        let manage_linked_peers = flags & (1 << 19) != 0;
-        let manage_welcome_messages = flags & (1 << 20) != 0;
         Ok(ChatAdminRights {
             flags,
             change_info,
@@ -805,8 +745,6 @@ impl ChatAdminRights {
             delete_stories,
             manage_direct_messages,
             manage_ranks,
-            manage_linked_peers,
-            manage_welcome_messages,
         })
     }
 
@@ -833,32 +771,15 @@ impl ChatAdminRights {
             } else {
                 0
             }
-            | if self.manage_ranks { 1 << 18 } else { 0 }
-            | if self.manage_linked_peers { 1 << 19 } else { 0 }
-            | if self.manage_welcome_messages {
-                1 << 20
-            } else {
-                0
-            };
+            | if self.manage_ranks { 1 << 18 } else { 0 };
         w.write_i32(flags);
     }
 }
 
-/// Union `ChatFull` (3 constructors).
+/// Union `ChatFull` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatFull {
-    /// `communityFull#cbb7a507`
-    CommunityFull {
-        flags: i32,
-        id: i64,
-        about: String,
-        chat_photo: Photo,
-        linked_peers: Vec<CommunityPeer>,
-        admins_count: Option<i32>,
-        kicked_count: Option<i32>,
-        peer_link_requests_pending: Option<i32>,
-    },
-    /// `channelFull#a04e8d3a`
+    /// `channelFull#e4e0b29d`
     ChannelFull {
         flags: i32,
         can_view_participants: bool,
@@ -883,7 +804,6 @@ pub enum ChatFull {
         paid_reactions_available: bool,
         stargifts_available: bool,
         paid_messages_available: bool,
-        has_welcome_messages: bool,
         id: i64,
         about: String,
         participants_count: Option<i32>,
@@ -929,7 +849,6 @@ pub enum ChatFull {
         stargifts_count: Option<i32>,
         send_paid_messages_stars: Option<i64>,
         main_tab: Option<ProfileTab>,
-        guard_bot_id: Option<i64>,
     },
     /// `chatFull#2633421b`
     ChatFull {
@@ -937,7 +856,6 @@ pub enum ChatFull {
         can_set_username: bool,
         has_scheduled: bool,
         translations_disabled: bool,
-        has_welcome_messages: bool,
         id: i64,
         about: String,
         participants: ChatParticipants,
@@ -962,45 +880,6 @@ impl ChatFull {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            COMMUNITY_FULL_ID => {
-                let flags = r.read_i32()?;
-                let id = r.read_i64()?;
-                let about = String::from_utf8(r.read_bytes()?)?;
-                let chat_photo = Photo::read_from(r)?;
-                let n = r.read_vector_header()?;
-                let mut linked_peers = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    linked_peers.push(CommunityPeer::read_from(r)?);
-                }
-                let admins_count = if flags & (1 << 1) != 0 {
-                    let admins_count = r.read_i32()?;
-                    Some(admins_count)
-                } else {
-                    None
-                };
-                let kicked_count = if flags & (1 << 2) != 0 {
-                    let kicked_count = r.read_i32()?;
-                    Some(kicked_count)
-                } else {
-                    None
-                };
-                let peer_link_requests_pending = if flags & (1 << 0) != 0 {
-                    let peer_link_requests_pending = r.read_i32()?;
-                    Some(peer_link_requests_pending)
-                } else {
-                    None
-                };
-                Ok(ChatFull::CommunityFull {
-                    flags,
-                    id,
-                    about,
-                    chat_photo,
-                    linked_peers,
-                    admins_count,
-                    kicked_count,
-                    peer_link_requests_pending,
-                })
-            }
             CHANNEL_FULL_ID => {
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
@@ -1025,7 +904,6 @@ impl ChatFull {
                 let paid_reactions_available = flags2 & (1 << 16) != 0;
                 let stargifts_available = flags2 & (1 << 19) != 0;
                 let paid_messages_available = flags2 & (1 << 20) != 0;
-                let has_welcome_messages = flags2 & (1 << 24) != 0;
                 let id = r.read_i64()?;
                 let about = String::from_utf8(r.read_bytes()?)?;
                 let participants_count = if flags & (1 << 0) != 0 {
@@ -1263,12 +1141,6 @@ impl ChatFull {
                 } else {
                     None
                 };
-                let guard_bot_id = if flags2 & (1 << 23) != 0 {
-                    let guard_bot_id = r.read_i64()?;
-                    Some(guard_bot_id)
-                } else {
-                    None
-                };
                 Ok(ChatFull::ChannelFull {
                     flags,
                     can_view_participants,
@@ -1293,7 +1165,6 @@ impl ChatFull {
                     paid_reactions_available,
                     stargifts_available,
                     paid_messages_available,
-                    has_welcome_messages,
                     id,
                     about,
                     participants_count,
@@ -1339,7 +1210,6 @@ impl ChatFull {
                     stargifts_count,
                     send_paid_messages_stars,
                     main_tab,
-                    guard_bot_id,
                 })
             }
             CHAT_FULL_ID => {
@@ -1347,7 +1217,6 @@ impl ChatFull {
                 let can_set_username = flags & (1 << 7) != 0;
                 let has_scheduled = flags & (1 << 8) != 0;
                 let translations_disabled = flags & (1 << 19) != 0;
-                let has_welcome_messages = flags & (1 << 21) != 0;
                 let id = r.read_i64()?;
                 let about = String::from_utf8(r.read_bytes()?)?;
                 let participants = ChatParticipants::read_from(r)?;
@@ -1443,7 +1312,6 @@ impl ChatFull {
                     can_set_username,
                     has_scheduled,
                     translations_disabled,
-                    has_welcome_messages,
                     id,
                     about,
                     participants,
@@ -1465,124 +1333,6 @@ impl ChatFull {
             }
             other => Err(Error::Serialization(format!(
                 "unknown ChatFull constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// `communityPeer#76141ebd = CommunityPeer`
-#[derive(Debug, Clone, PartialEq)]
-pub struct CommunityPeer {
-    pub flags: i32,
-    pub can_view_history: bool,
-    pub visible: Option<bool>,
-    pub peer: Peer,
-}
-
-impl CommunityPeer {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != COMMUNITY_PEER_ID {
-            return Err(Error::Serialization(format!(
-                "expected communityPeer, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let can_view_history = flags & (1 << 2) != 0;
-        let visible = if flags & (1 << 0) != 0 {
-            let visible = r.read_u32()? == 0x997275b5; // boolTrue
-            Some(visible)
-        } else {
-            None
-        };
-        let peer = Peer::read_from(r)?;
-        Ok(CommunityPeer {
-            flags,
-            can_view_history,
-            visible,
-            peer,
-        })
-    }
-}
-
-/// Union `VideoSize` (3 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum VideoSize {
-    /// `videoSizeStickerMarkup#0da082fe`
-    VideoSizeStickerMarkup {
-        stickerset: InputStickerSet,
-        sticker_id: i64,
-        background_colors: Vec<i32>,
-    },
-    /// `videoSizeEmojiMarkup#f85c413c`
-    VideoSizeEmojiMarkup {
-        emoji_id: i64,
-        background_colors: Vec<i32>,
-    },
-    /// `videoSize#de33b094`
-    VideoSize {
-        flags: i32,
-        r#type: String,
-        w: i32,
-        h: i32,
-        size: i32,
-        video_start_ts: Option<f64>,
-    },
-}
-
-impl VideoSize {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            VIDEO_SIZE_STICKER_MARKUP_ID => {
-                let stickerset = InputStickerSet::read_from(r)?;
-                let sticker_id = r.read_i64()?;
-                let n = r.read_vector_header()?;
-                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    background_colors.push(r.read_i32()?);
-                }
-                Ok(VideoSize::VideoSizeStickerMarkup {
-                    stickerset,
-                    sticker_id,
-                    background_colors,
-                })
-            }
-            VIDEO_SIZE_EMOJI_MARKUP_ID => {
-                let emoji_id = r.read_i64()?;
-                let n = r.read_vector_header()?;
-                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    background_colors.push(r.read_i32()?);
-                }
-                Ok(VideoSize::VideoSizeEmojiMarkup {
-                    emoji_id,
-                    background_colors,
-                })
-            }
-            VIDEO_SIZE_ID => {
-                let flags = r.read_i32()?;
-                let r#type = String::from_utf8(r.read_bytes()?)?;
-                let w = r.read_i32()?;
-                let h = r.read_i32()?;
-                let size = r.read_i32()?;
-                let video_start_ts = if flags & (1 << 0) != 0 {
-                    let video_start_ts = f64::from_bits(r.read_u64()?);
-                    Some(video_start_ts)
-                } else {
-                    None
-                };
-                Ok(VideoSize::VideoSize {
-                    flags,
-                    r#type,
-                    w,
-                    h,
-                    size,
-                    video_start_ts,
-                })
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown VideoSize constructor {other:#x}"
             ))),
         }
     }
@@ -2093,6 +1843,89 @@ impl DocumentAttribute {
             }
             other => Err(Error::Serialization(format!(
                 "unknown DocumentAttribute constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// Union `VideoSize` (3 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum VideoSize {
+    /// `videoSizeStickerMarkup#0da082fe`
+    VideoSizeStickerMarkup {
+        stickerset: InputStickerSet,
+        sticker_id: i64,
+        background_colors: Vec<i32>,
+    },
+    /// `videoSizeEmojiMarkup#f85c413c`
+    VideoSizeEmojiMarkup {
+        emoji_id: i64,
+        background_colors: Vec<i32>,
+    },
+    /// `videoSize#de33b094`
+    VideoSize {
+        flags: i32,
+        r#type: String,
+        w: i32,
+        h: i32,
+        size: i32,
+        video_start_ts: Option<f64>,
+    },
+}
+
+impl VideoSize {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            VIDEO_SIZE_STICKER_MARKUP_ID => {
+                let stickerset = InputStickerSet::read_from(r)?;
+                let sticker_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeStickerMarkup {
+                    stickerset,
+                    sticker_id,
+                    background_colors,
+                })
+            }
+            VIDEO_SIZE_EMOJI_MARKUP_ID => {
+                let emoji_id = r.read_i64()?;
+                let n = r.read_vector_header()?;
+                let mut background_colors = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    background_colors.push(r.read_i32()?);
+                }
+                Ok(VideoSize::VideoSizeEmojiMarkup {
+                    emoji_id,
+                    background_colors,
+                })
+            }
+            VIDEO_SIZE_ID => {
+                let flags = r.read_i32()?;
+                let r#type = String::from_utf8(r.read_bytes()?)?;
+                let w = r.read_i32()?;
+                let h = r.read_i32()?;
+                let size = r.read_i32()?;
+                let video_start_ts = if flags & (1 << 0) != 0 {
+                    let video_start_ts = f64::from_bits(r.read_u64()?);
+                    Some(video_start_ts)
+                } else {
+                    None
+                };
+                Ok(VideoSize::VideoSize {
+                    flags,
+                    r#type,
+                    w,
+                    h,
+                    size,
+                    video_start_ts,
+                })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown VideoSize constructor {other:#x}"
             ))),
         }
     }
@@ -3368,7 +3201,7 @@ impl InputMedia {
                 let geo_point = InputGeoPoint::read_from(r)?;
                 Ok(InputMedia::InputMediaGeoPoint { geo_point })
             }
-            INPUT_MEDIA_PHOTO_ID => {
+            0xb3ba0635 | INPUT_MEDIA_PHOTO_ID => {
                 let flags = r.read_i32()?;
                 let spoiler = flags & (1 << 1) != 0;
                 let live_photo = flags & (1 << 2) != 0;
@@ -5327,51 +5160,9 @@ impl Page {
     }
 }
 
-/// Union `PageBlock` (41 constructors).
+/// Union `PageBlock` (29 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageBlock {
-    /// `pageBlockDocument#38fa3ba3`
-    PageBlockDocument {
-        document_id: i64,
-        caption: PageCaption,
-    },
-    /// `pageBlockButtonRow#6d640318`
-    PageBlockButtonRow {
-        flags: i32,
-        align_left: bool,
-        align_center: bool,
-        align_right: bool,
-        buttons: Vec<PageButton>,
-    },
-    /// `pageBlockBlockquoteBlocks#0e6e47c4`
-    PageBlockBlockquoteBlocks {
-        blocks: Vec<PageBlock>,
-        caption: RichText,
-    },
-    /// `inputPageBlockMap#574b617f`
-    InputPageBlockMap {
-        geo: InputGeoPoint,
-        zoom: i32,
-        w: i32,
-        h: i32,
-        caption: PageCaption,
-    },
-    /// `pageBlockThinking#3c29a3e2`
-    PageBlockThinking { text: RichText },
-    /// `pageBlockMath#59080c20`
-    PageBlockMath { source: String },
-    /// `pageBlockHeading6#682a41a9`
-    PageBlockHeading6 { text: RichText },
-    /// `pageBlockHeading5#dbbe6c6a`
-    PageBlockHeading5 { text: RichText },
-    /// `pageBlockHeading4#b532772b`
-    PageBlockHeading4 { text: RichText },
-    /// `pageBlockHeading3#67e731ad`
-    PageBlockHeading3 { text: RichText },
-    /// `pageBlockHeading2#096b2aec`
-    PageBlockHeading2 { text: RichText },
-    /// `pageBlockHeading1#baff072f`
-    PageBlockHeading1 { text: RichText },
     /// `pageBlockMap#a44f3ef6`
     PageBlockMap {
         geo: GeoPoint,
@@ -5392,20 +5183,13 @@ pub enum PageBlock {
         blocks: Vec<PageBlock>,
         title: RichText,
     },
-    /// `pageBlockOrderedList#1fd6f6c1`
-    PageBlockOrderedList {
-        flags: i32,
-        reversed: bool,
-        items: Vec<PageListOrderedItem>,
-        start: Option<i32>,
-        r#type: Option<String>,
-    },
+    /// `pageBlockOrderedList#9a8ae1e1`
+    PageBlockOrderedList { items: Vec<PageListOrderedItem> },
     /// `pageBlockTable#bf4dea82`
     PageBlockTable {
         flags: i32,
         bordered: bool,
         striped: bool,
-        compact: bool,
         title: RichText,
         rows: Vec<PageTableRow>,
     },
@@ -5454,14 +5238,12 @@ pub enum PageBlock {
         flags: i32,
         autoplay: bool,
         r#loop: bool,
-        spoiler: bool,
         video_id: i64,
         caption: PageCaption,
     },
     /// `pageBlockPhoto#1759c560`
     PageBlockPhoto {
         flags: i32,
-        spoiler: bool,
         photo_id: i64,
         caption: PageCaption,
         url: Option<String>,
@@ -5469,13 +5251,8 @@ pub enum PageBlock {
     },
     /// `pageBlockPullquote#4f4456d3`
     PageBlockPullquote { text: RichText, caption: RichText },
-    /// `pageBlockBlockquote#66d1670b`
-    PageBlockBlockquote {
-        flags: i32,
-        collapsed: bool,
-        text: RichText,
-        caption: RichText,
-    },
+    /// `pageBlockBlockquote#263d7c26`
+    PageBlockBlockquote { text: RichText, caption: RichText },
     /// `pageBlockList#e4e88011`
     PageBlockList { items: Vec<PageListItem> },
     /// `pageBlockAnchor#ce0d37b0`
@@ -5509,87 +5286,6 @@ impl PageBlock {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            PAGE_BLOCK_DOCUMENT_ID => {
-                let document_id = r.read_i64()?;
-                let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::PageBlockDocument {
-                    document_id,
-                    caption,
-                })
-            }
-            PAGE_BLOCK_BUTTON_ROW_ID => {
-                let flags = r.read_i32()?;
-                let align_left = flags & (1 << 0) != 0;
-                let align_center = flags & (1 << 1) != 0;
-                let align_right = flags & (1 << 2) != 0;
-                let n = r.read_vector_header()?;
-                let mut buttons = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    buttons.push(PageButton::read_from(r)?);
-                }
-                Ok(PageBlock::PageBlockButtonRow {
-                    flags,
-                    align_left,
-                    align_center,
-                    align_right,
-                    buttons,
-                })
-            }
-            PAGE_BLOCK_BLOCKQUOTE_BLOCKS_ID => {
-                let n = r.read_vector_header()?;
-                let mut blocks = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    blocks.push(PageBlock::read_from(r)?);
-                }
-                let caption = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockBlockquoteBlocks { blocks, caption })
-            }
-            INPUT_PAGE_BLOCK_MAP_ID => {
-                let geo = InputGeoPoint::read_from(r)?;
-                let zoom = r.read_i32()?;
-                let w = r.read_i32()?;
-                let h = r.read_i32()?;
-                let caption = PageCaption::read_from(r)?;
-                Ok(PageBlock::InputPageBlockMap {
-                    geo,
-                    zoom,
-                    w,
-                    h,
-                    caption,
-                })
-            }
-            PAGE_BLOCK_THINKING_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockThinking { text })
-            }
-            PAGE_BLOCK_MATH_ID => {
-                let source = String::from_utf8(r.read_bytes()?)?;
-                Ok(PageBlock::PageBlockMath { source })
-            }
-            PAGE_BLOCK_HEADING6_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading6 { text })
-            }
-            PAGE_BLOCK_HEADING5_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading5 { text })
-            }
-            PAGE_BLOCK_HEADING4_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading4 { text })
-            }
-            PAGE_BLOCK_HEADING3_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading3 { text })
-            }
-            PAGE_BLOCK_HEADING2_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading2 { text })
-            }
-            PAGE_BLOCK_HEADING1_ID => {
-                let text = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockHeading1 { text })
-            }
             PAGE_BLOCK_MAP_ID => {
                 let geo = GeoPoint::read_from(r)?;
                 let zoom = r.read_i32()?;
@@ -5630,38 +5326,17 @@ impl PageBlock {
                 })
             }
             PAGE_BLOCK_ORDERED_LIST_ID => {
-                let flags = r.read_i32()?;
-                let reversed = flags & (1 << 2) != 0;
                 let n = r.read_vector_header()?;
                 let mut items = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
                     items.push(PageListOrderedItem::read_from(r)?);
                 }
-                let start = if flags & (1 << 0) != 0 {
-                    let start = r.read_i32()?;
-                    Some(start)
-                } else {
-                    None
-                };
-                let r#type = if flags & (1 << 1) != 0 {
-                    let r#type = String::from_utf8(r.read_bytes()?)?;
-                    Some(r#type)
-                } else {
-                    None
-                };
-                Ok(PageBlock::PageBlockOrderedList {
-                    flags,
-                    reversed,
-                    items,
-                    start,
-                    r#type,
-                })
+                Ok(PageBlock::PageBlockOrderedList { items })
             }
             PAGE_BLOCK_TABLE_ID => {
                 let flags = r.read_i32()?;
                 let bordered = flags & (1 << 0) != 0;
                 let striped = flags & (1 << 1) != 0;
-                let compact = flags & (1 << 2) != 0;
                 let title = RichText::read_from(r)?;
                 let n = r.read_vector_header()?;
                 let mut rows = Vec::with_capacity(n.max(0) as usize);
@@ -5672,7 +5347,6 @@ impl PageBlock {
                     flags,
                     bordered,
                     striped,
-                    compact,
                     title,
                     rows,
                 })
@@ -5785,21 +5459,18 @@ impl PageBlock {
                 let flags = r.read_i32()?;
                 let autoplay = flags & (1 << 0) != 0;
                 let r#loop = flags & (1 << 1) != 0;
-                let spoiler = flags & (1 << 2) != 0;
                 let video_id = r.read_i64()?;
                 let caption = PageCaption::read_from(r)?;
                 Ok(PageBlock::PageBlockVideo {
                     flags,
                     autoplay,
                     r#loop,
-                    spoiler,
                     video_id,
                     caption,
                 })
             }
             PAGE_BLOCK_PHOTO_ID => {
                 let flags = r.read_i32()?;
-                let spoiler = flags & (1 << 1) != 0;
                 let photo_id = r.read_i64()?;
                 let caption = PageCaption::read_from(r)?;
                 let url = if flags & (1 << 0) != 0 {
@@ -5816,7 +5487,6 @@ impl PageBlock {
                 };
                 Ok(PageBlock::PageBlockPhoto {
                     flags,
-                    spoiler,
                     photo_id,
                     caption,
                     url,
@@ -5829,16 +5499,9 @@ impl PageBlock {
                 Ok(PageBlock::PageBlockPullquote { text, caption })
             }
             PAGE_BLOCK_BLOCKQUOTE_ID => {
-                let flags = r.read_i32()?;
-                let collapsed = flags & (1 << 0) != 0;
                 let text = RichText::read_from(r)?;
                 let caption = RichText::read_from(r)?;
-                Ok(PageBlock::PageBlockBlockquote {
-                    flags,
-                    collapsed,
-                    text,
-                    caption,
-                })
+                Ok(PageBlock::PageBlockBlockquote { text, caption })
             }
             PAGE_BLOCK_LIST_ID => {
                 let n = r.read_vector_header()?;
@@ -5919,60 +5582,9 @@ impl PageCaption {
     }
 }
 
-/// Union `RichText` (31 constructors).
+/// Union `RichText` (16 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum RichText {
-    /// `textButton#afc79cd6`
-    TextButton {
-        flags: i32,
-        text: Box<RichText>,
-        r#type: InlineButtonType,
-        style: Option<RichButtonStyle>,
-    },
-    /// `textDiff#9686cb50`
-    TextDiff {
-        text: Box<RichText>,
-        old_text: Box<RichText>,
-    },
-    /// `textDate#a5b45e2b`
-    TextDate {
-        flags: i32,
-        relative: bool,
-        short_time: bool,
-        long_time: bool,
-        short_date: bool,
-        long_date: bool,
-        day_of_week: bool,
-        text: Box<RichText>,
-        date: i32,
-    },
-    /// `textMentionName#01a9fbfc`
-    TextMentionName {
-        text: Box<RichText>,
-        user_id: UserId,
-    },
-    /// `textBankCard#b956812d`
-    TextBankCard { text: Box<RichText> },
-    /// `textAutoPhone#24c26789`
-    TextAutoPhone { text: Box<RichText> },
-    /// `textAutoEmail#c556a45d`
-    TextAutoEmail { text: Box<RichText> },
-    /// `textAutoUrl#ac6a83aa`
-    TextAutoUrl { text: Box<RichText> },
-    /// `textCashtag#7b9e1801`
-    TextCashtag { text: Box<RichText> },
-    /// `textBotCommand#02ff29d3`
-    TextBotCommand { text: Box<RichText> },
-    /// `textHashtag#519524ea`
-    TextHashtag { text: Box<RichText> },
-    /// `textMention#cd24cf44`
-    TextMention { text: Box<RichText> },
-    /// `textSpoiler#4c2a5d62`
-    TextSpoiler { text: Box<RichText> },
-    /// `textCustomEmoji#a26156c0`
-    TextCustomEmoji { document_id: i64, alt: String },
-    /// `textMath#9d2eac97`
-    TextMath { source: String },
     /// `textAnchor#35553762`
     TextAnchor { text: Box<RichText>, name: String },
     /// `textImage#081ccf4f`
@@ -6015,101 +5627,6 @@ impl RichText {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            TEXT_BUTTON_ID => {
-                let flags = r.read_i32()?;
-                let text = Box::new(RichText::read_from(r)?);
-                let r#type = InlineButtonType::read_from(r)?;
-                let style = if flags & (1 << 0) != 0 {
-                    let style = RichButtonStyle::read_from(r)?;
-                    Some(style)
-                } else {
-                    None
-                };
-                Ok(RichText::TextButton {
-                    flags,
-                    text,
-                    r#type,
-                    style,
-                })
-            }
-            TEXT_DIFF_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                let old_text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextDiff { text, old_text })
-            }
-            TEXT_DATE_ID => {
-                let flags = r.read_i32()?;
-                let relative = flags & (1 << 0) != 0;
-                let short_time = flags & (1 << 1) != 0;
-                let long_time = flags & (1 << 2) != 0;
-                let short_date = flags & (1 << 3) != 0;
-                let long_date = flags & (1 << 4) != 0;
-                let day_of_week = flags & (1 << 5) != 0;
-                let text = Box::new(RichText::read_from(r)?);
-                let date = r.read_i32()?;
-                Ok(RichText::TextDate {
-                    flags,
-                    relative,
-                    short_time,
-                    long_time,
-                    short_date,
-                    long_date,
-                    day_of_week,
-                    text,
-                    date,
-                })
-            }
-            TEXT_MENTION_NAME_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                let user_id = r.read_i64()?;
-                let user_id = UserId(user_id);
-                Ok(RichText::TextMentionName { text, user_id })
-            }
-            TEXT_BANK_CARD_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextBankCard { text })
-            }
-            TEXT_AUTO_PHONE_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextAutoPhone { text })
-            }
-            TEXT_AUTO_EMAIL_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextAutoEmail { text })
-            }
-            TEXT_AUTO_URL_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextAutoUrl { text })
-            }
-            TEXT_CASHTAG_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextCashtag { text })
-            }
-            TEXT_BOT_COMMAND_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextBotCommand { text })
-            }
-            TEXT_HASHTAG_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextHashtag { text })
-            }
-            TEXT_MENTION_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextMention { text })
-            }
-            TEXT_SPOILER_ID => {
-                let text = Box::new(RichText::read_from(r)?);
-                Ok(RichText::TextSpoiler { text })
-            }
-            TEXT_CUSTOM_EMOJI_ID => {
-                let document_id = r.read_i64()?;
-                let alt = String::from_utf8(r.read_bytes()?)?;
-                Ok(RichText::TextCustomEmoji { document_id, alt })
-            }
-            TEXT_MATH_ID => {
-                let source = String::from_utf8(r.read_bytes()?)?;
-                Ok(RichText::TextMath { source })
-            }
             TEXT_ANCHOR_ID => {
                 let text = Box::new(RichText::read_from(r)?);
                 let name = String::from_utf8(r.read_bytes()?)?;
@@ -6190,282 +5707,6 @@ impl RichText {
                 "unknown RichText constructor {other:#x}"
             ))),
         }
-    }
-}
-
-/// `richButtonStyle#03c610bd = RichButtonStyle`
-#[derive(Debug, Clone, PartialEq)]
-pub struct RichButtonStyle {
-    pub flags: i32,
-    pub bg_primary: bool,
-    pub bg_danger: bool,
-    pub bg_success: bool,
-    pub link: bool,
-}
-
-impl RichButtonStyle {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != RICH_BUTTON_STYLE_ID {
-            return Err(Error::Serialization(format!(
-                "expected richButtonStyle, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let bg_primary = flags & (1 << 0) != 0;
-        let bg_danger = flags & (1 << 1) != 0;
-        let bg_success = flags & (1 << 2) != 0;
-        let link = flags & (1 << 3) != 0;
-        Ok(RichButtonStyle {
-            flags,
-            bg_primary,
-            bg_danger,
-            bg_success,
-            link,
-        })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(RICH_BUTTON_STYLE_ID);
-        let flags: i32 = if self.bg_primary { 1 << 0 } else { 0 }
-            | if self.bg_danger { 1 << 1 } else { 0 }
-            | if self.bg_success { 1 << 2 } else { 0 }
-            | if self.link { 1 << 3 } else { 0 };
-        w.write_i32(flags);
-    }
-}
-
-/// Union `InlineButtonType` (12 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InlineButtonType {
-    /// `inlineButtonTypeDisabled#a438619d`
-    InlineButtonTypeDisabled,
-    /// `inlineButtonTypeCopy#b41d3272`
-    InlineButtonTypeCopy { copy_text: String },
-    /// `inputInlineButtonTypeUserProfile#53f3ce5a`
-    InputInlineButtonTypeUserProfile { user_id: InputUser },
-    /// `inlineButtonTypeUserProfile#3fa33fcf`
-    InlineButtonTypeUserProfile { user_id: UserId },
-    /// `inlineButtonTypeSwitchInline#93773ff5`
-    InlineButtonTypeSwitchInline {
-        flags: i32,
-        same_peer: bool,
-        query: String,
-        peer_types: Option<Vec<InlineQueryPeerType>>,
-    },
-    /// `inlineButtonTypeBuy#48bad7a5`
-    InlineButtonTypeBuy,
-    /// `inlineButtonTypeGame#5cd3709d`
-    InlineButtonTypeGame,
-    /// `inlineButtonTypeCallback#2955bc38`
-    InlineButtonTypeCallback {
-        flags: i32,
-        requires_password: bool,
-        data: Vec<u8>,
-    },
-    /// `inlineButtonTypeWebView#3bcab5b4`
-    InlineButtonTypeWebView { url: String },
-    /// `inputInlineButtonTypeUrlAuth#9961bcb4`
-    InputInlineButtonTypeUrlAuth {
-        flags: i32,
-        request_write_access: bool,
-        fwd_text: Option<String>,
-        url: String,
-        bot: Option<InputUser>,
-    },
-    /// `inlineButtonTypeUrlAuth#bfd02da2`
-    InlineButtonTypeUrlAuth {
-        flags: i32,
-        fwd_text: Option<String>,
-        url: String,
-        button_id: i32,
-    },
-    /// `inlineButtonTypeUrl#eca4f8d4`
-    InlineButtonTypeUrl { url: String },
-}
-
-impl InlineButtonType {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INLINE_BUTTON_TYPE_DISABLED_ID => Ok(InlineButtonType::InlineButtonTypeDisabled {}),
-            INLINE_BUTTON_TYPE_COPY_ID => {
-                let copy_text = String::from_utf8(r.read_bytes()?)?;
-                Ok(InlineButtonType::InlineButtonTypeCopy { copy_text })
-            }
-            INPUT_INLINE_BUTTON_TYPE_USER_PROFILE_ID => {
-                let user_id = InputUser::read_from(r)?;
-                Ok(InlineButtonType::InputInlineButtonTypeUserProfile { user_id })
-            }
-            INLINE_BUTTON_TYPE_USER_PROFILE_ID => {
-                let user_id = r.read_i64()?;
-                let user_id = UserId(user_id);
-                Ok(InlineButtonType::InlineButtonTypeUserProfile { user_id })
-            }
-            INLINE_BUTTON_TYPE_SWITCH_INLINE_ID => {
-                let flags = r.read_i32()?;
-                let same_peer = flags & (1 << 0) != 0;
-                let query = String::from_utf8(r.read_bytes()?)?;
-                let peer_types = if flags & (1 << 1) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut peer_types = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        peer_types.push(InlineQueryPeerType::read_from(r)?);
-                    }
-                    Some(peer_types)
-                } else {
-                    None
-                };
-                Ok(InlineButtonType::InlineButtonTypeSwitchInline {
-                    flags,
-                    same_peer,
-                    query,
-                    peer_types,
-                })
-            }
-            INLINE_BUTTON_TYPE_BUY_ID => Ok(InlineButtonType::InlineButtonTypeBuy {}),
-            INLINE_BUTTON_TYPE_GAME_ID => Ok(InlineButtonType::InlineButtonTypeGame {}),
-            INLINE_BUTTON_TYPE_CALLBACK_ID => {
-                let flags = r.read_i32()?;
-                let requires_password = flags & (1 << 0) != 0;
-                let data = r.read_bytes()?;
-                Ok(InlineButtonType::InlineButtonTypeCallback {
-                    flags,
-                    requires_password,
-                    data,
-                })
-            }
-            INLINE_BUTTON_TYPE_WEB_VIEW_ID => {
-                let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(InlineButtonType::InlineButtonTypeWebView { url })
-            }
-            INPUT_INLINE_BUTTON_TYPE_URL_AUTH_ID => {
-                let flags = r.read_i32()?;
-                let request_write_access = flags & (1 << 0) != 0;
-                let fwd_text = if flags & (1 << 1) != 0 {
-                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
-                    Some(fwd_text)
-                } else {
-                    None
-                };
-                let url = String::from_utf8(r.read_bytes()?)?;
-                let bot = if flags & (1 << 2) != 0 {
-                    let bot = InputUser::read_from(r)?;
-                    Some(bot)
-                } else {
-                    None
-                };
-                Ok(InlineButtonType::InputInlineButtonTypeUrlAuth {
-                    flags,
-                    request_write_access,
-                    fwd_text,
-                    url,
-                    bot,
-                })
-            }
-            INLINE_BUTTON_TYPE_URL_AUTH_ID => {
-                let flags = r.read_i32()?;
-                let fwd_text = if flags & (1 << 0) != 0 {
-                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
-                    Some(fwd_text)
-                } else {
-                    None
-                };
-                let url = String::from_utf8(r.read_bytes()?)?;
-                let button_id = r.read_i32()?;
-                Ok(InlineButtonType::InlineButtonTypeUrlAuth {
-                    flags,
-                    fwd_text,
-                    url,
-                    button_id,
-                })
-            }
-            INLINE_BUTTON_TYPE_URL_ID => {
-                let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(InlineButtonType::InlineButtonTypeUrl { url })
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown InlineButtonType constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `InlineQueryPeerType` (6 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InlineQueryPeerType {
-    /// `inlineQueryPeerTypeBotPM#0e3b2d0c`
-    InlineQueryPeerTypeBotPM,
-    /// `inlineQueryPeerTypeBroadcast#6334ee9a`
-    InlineQueryPeerTypeBroadcast,
-    /// `inlineQueryPeerTypeMegagroup#5ec4be43`
-    InlineQueryPeerTypeMegagroup,
-    /// `inlineQueryPeerTypeChat#d766c50a`
-    InlineQueryPeerTypeChat,
-    /// `inlineQueryPeerTypePM#833c0fac`
-    InlineQueryPeerTypePM,
-    /// `inlineQueryPeerTypeSameBotPM#3081ed9d`
-    InlineQueryPeerTypeSameBotPM,
-}
-
-impl InlineQueryPeerType {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INLINE_QUERY_PEER_TYPE_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {})
-            }
-            INLINE_QUERY_PEER_TYPE_BROADCAST_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {})
-            }
-            INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {})
-            }
-            INLINE_QUERY_PEER_TYPE_CHAT_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {}),
-            INLINE_QUERY_PEER_TYPE_PM_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypePM {}),
-            INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID => {
-                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {})
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown InlineQueryPeerType constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// `pageButton#692a5488 = PageButton`
-#[derive(Debug, Clone, PartialEq)]
-pub struct PageButton {
-    pub flags: i32,
-    pub text: RichText,
-    pub r#type: InlineButtonType,
-    pub style: Option<RichButtonStyle>,
-}
-
-impl PageButton {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != PAGE_BUTTON_ID {
-            return Err(Error::Serialization(format!(
-                "expected pageButton, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let text = RichText::read_from(r)?;
-        let r#type = InlineButtonType::read_from(r)?;
-        let style = if flags & (1 << 0) != 0 {
-            let style = RichButtonStyle::read_from(r)?;
-            Some(style)
-        } else {
-            None
-        };
-        Ok(PageButton {
-            flags,
-            text,
-            r#type,
-            style,
-        })
     }
 }
 
@@ -6575,26 +5816,10 @@ impl PageRelatedArticle {
 /// Union `PageListOrderedItem` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageListOrderedItem {
-    /// `pageListOrderedItemBlocks#8ff2d5f0`
-    PageListOrderedItemBlocks {
-        flags: i32,
-        checkbox: bool,
-        checked: bool,
-        num: Option<String>,
-        blocks: Vec<PageBlock>,
-        value: Option<i32>,
-        r#type: Option<String>,
-    },
-    /// `pageListOrderedItemText#15031189`
-    PageListOrderedItemText {
-        flags: i32,
-        checkbox: bool,
-        checked: bool,
-        num: Option<String>,
-        text: RichText,
-        value: Option<i32>,
-        r#type: Option<String>,
-    },
+    /// `pageListOrderedItemBlocks#98dd8936`
+    PageListOrderedItemBlocks { num: String, blocks: Vec<PageBlock> },
+    /// `pageListOrderedItemText#5e068047`
+    PageListOrderedItemText { num: String, text: RichText },
 }
 
 impl PageListOrderedItem {
@@ -6602,74 +5827,18 @@ impl PageListOrderedItem {
         let ctor = r.read_u32()?;
         match ctor {
             PAGE_LIST_ORDERED_ITEM_BLOCKS_ID => {
-                let flags = r.read_i32()?;
-                let checkbox = flags & (1 << 0) != 0;
-                let checked = flags & (1 << 1) != 0;
-                let num = if flags & (1 << 2) != 0 {
-                    let num = String::from_utf8(r.read_bytes()?)?;
-                    Some(num)
-                } else {
-                    None
-                };
+                let num = String::from_utf8(r.read_bytes()?)?;
                 let n = r.read_vector_header()?;
                 let mut blocks = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
                     blocks.push(PageBlock::read_from(r)?);
                 }
-                let value = if flags & (1 << 3) != 0 {
-                    let value = r.read_i32()?;
-                    Some(value)
-                } else {
-                    None
-                };
-                let r#type = if flags & (1 << 4) != 0 {
-                    let r#type = String::from_utf8(r.read_bytes()?)?;
-                    Some(r#type)
-                } else {
-                    None
-                };
-                Ok(PageListOrderedItem::PageListOrderedItemBlocks {
-                    flags,
-                    checkbox,
-                    checked,
-                    num,
-                    blocks,
-                    value,
-                    r#type,
-                })
+                Ok(PageListOrderedItem::PageListOrderedItemBlocks { num, blocks })
             }
             PAGE_LIST_ORDERED_ITEM_TEXT_ID => {
-                let flags = r.read_i32()?;
-                let checkbox = flags & (1 << 0) != 0;
-                let checked = flags & (1 << 1) != 0;
-                let num = if flags & (1 << 2) != 0 {
-                    let num = String::from_utf8(r.read_bytes()?)?;
-                    Some(num)
-                } else {
-                    None
-                };
+                let num = String::from_utf8(r.read_bytes()?)?;
                 let text = RichText::read_from(r)?;
-                let value = if flags & (1 << 3) != 0 {
-                    let value = r.read_i32()?;
-                    Some(value)
-                } else {
-                    None
-                };
-                let r#type = if flags & (1 << 4) != 0 {
-                    let r#type = String::from_utf8(r.read_bytes()?)?;
-                    Some(r#type)
-                } else {
-                    None
-                };
-                Ok(PageListOrderedItem::PageListOrderedItemText {
-                    flags,
-                    checkbox,
-                    checked,
-                    num,
-                    text,
-                    value,
-                    r#type,
-                })
+                Ok(PageListOrderedItem::PageListOrderedItemText { num, text })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PageListOrderedItem constructor {other:#x}"
@@ -6764,20 +5933,10 @@ impl PageTableCell {
 /// Union `PageListItem` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageListItem {
-    /// `pageListItemBlocks#63ca67aa`
-    PageListItemBlocks {
-        flags: i32,
-        checkbox: bool,
-        checked: bool,
-        blocks: Vec<PageBlock>,
-    },
-    /// `pageListItemText#2f58683c`
-    PageListItemText {
-        flags: i32,
-        checkbox: bool,
-        checked: bool,
-        text: RichText,
-    },
+    /// `pageListItemBlocks#25e073fc`
+    PageListItemBlocks { blocks: Vec<PageBlock> },
+    /// `pageListItemText#b92fb6cd`
+    PageListItemText { text: RichText },
 }
 
 impl PageListItem {
@@ -6785,32 +5944,16 @@ impl PageListItem {
         let ctor = r.read_u32()?;
         match ctor {
             PAGE_LIST_ITEM_BLOCKS_ID => {
-                let flags = r.read_i32()?;
-                let checkbox = flags & (1 << 0) != 0;
-                let checked = flags & (1 << 1) != 0;
                 let n = r.read_vector_header()?;
                 let mut blocks = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
                     blocks.push(PageBlock::read_from(r)?);
                 }
-                Ok(PageListItem::PageListItemBlocks {
-                    flags,
-                    checkbox,
-                    checked,
-                    blocks,
-                })
+                Ok(PageListItem::PageListItemBlocks { blocks })
             }
             PAGE_LIST_ITEM_TEXT_ID => {
-                let flags = r.read_i32()?;
-                let checkbox = flags & (1 << 0) != 0;
-                let checked = flags & (1 << 1) != 0;
                 let text = RichText::read_from(r)?;
-                Ok(PageListItem::PageListItemText {
-                    flags,
-                    checkbox,
-                    checked,
-                    text,
-                })
+                Ok(PageListItem::PageListItemText { text })
             }
             other => Err(Error::Serialization(format!(
                 "unknown PageListItem constructor {other:#x}"
@@ -7366,11 +6509,9 @@ impl BotMenuButton {
     }
 }
 
-/// `botCommand#9852d6d2 = BotCommand`
+/// `botCommand#c27ac8c7 = BotCommand`
 #[derive(Debug, Clone, PartialEq)]
 pub struct BotCommand {
-    pub flags: i32,
-    pub ephemeral: bool,
     pub command: String,
     pub description: String,
 }
@@ -7383,13 +6524,9 @@ impl BotCommand {
                 "expected botCommand, got {ctor:#x}"
             )));
         }
-        let flags = r.read_i32()?;
-        let ephemeral = flags & (1 << 0) != 0;
         let command = String::from_utf8(r.read_bytes()?)?;
         let description = String::from_utf8(r.read_bytes()?)?;
         Ok(BotCommand {
-            flags,
-            ephemeral,
             command,
             description,
         })
@@ -7398,18 +6535,14 @@ impl BotCommand {
     /// Serialize in schema field order (flags auto-computed).
     pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
         w.write_u32(BOT_COMMAND_ID);
-        let flags: i32 = if self.ephemeral { 1 << 0 } else { 0 };
-        w.write_i32(flags);
         w.write_bytes(self.command.as_bytes());
         w.write_bytes(self.description.as_bytes());
     }
 }
 
-/// Union `InputNotifyPeer` (6 constructors).
+/// Union `InputNotifyPeer` (5 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputNotifyPeer {
-    /// `inputNotifyCommunity#27bb1adc`
-    InputNotifyCommunity { community: InputChannel },
     /// `inputNotifyForumTopic#5c467992`
     InputNotifyForumTopic { peer: InputPeer, top_msg_id: i32 },
     /// `inputNotifyBroadcasts#b1db7c7e`
@@ -7426,10 +6559,6 @@ impl InputNotifyPeer {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_NOTIFY_COMMUNITY_ID => {
-                let community = InputChannel::read_from(r)?;
-                Ok(InputNotifyPeer::InputNotifyCommunity { community })
-            }
             INPUT_NOTIFY_FORUM_TOPIC_ID => {
                 let peer = InputPeer::read_from(r)?;
                 let top_msg_id = r.read_i32()?;
@@ -7593,32 +6722,9 @@ impl NotificationSound {
     }
 }
 
-/// Union `Chat` (7 constructors).
+/// Union `Chat` (5 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Chat {
-    /// `community#65efe954`
-    Community {
-        flags: i32,
-        creator: bool,
-        left: bool,
-        min: bool,
-        flags2: i32,
-        collapsed_in_dialogs: bool,
-        id: ChatId,
-        access_hash: Option<AccessHash>,
-        title: String,
-        photo: ChatPhoto,
-        date: i32,
-        admin_rights: Option<ChatAdminRights>,
-        default_banned_rights: Option<ChatBannedRights>,
-    },
-    /// `communityForbidden#fd3cdab8`
-    CommunityForbidden {
-        flags: i32,
-        id: ChatId,
-        access_hash: Option<AccessHash>,
-        title: String,
-    },
     /// `channelForbidden#17d493d5`
     ChannelForbidden {
         flags: i32,
@@ -7630,7 +6736,7 @@ pub enum Chat {
         title: String,
         until_date: Option<i32>,
     },
-    /// `channel#d49f34c6`
+    /// `channel#1c32b11c`
     Channel {
         flags: i32,
         creator: bool,
@@ -7683,7 +6789,6 @@ pub enum Chat {
         bot_verification_icon: Option<i64>,
         send_paid_messages_stars: Option<i64>,
         linked_monoforum_id: Option<i64>,
-        linked_community_id: Option<i64>,
     },
     /// `chatForbidden#6592a1a7`
     Forbidden { id: ChatId, title: String },
@@ -7714,70 +6819,6 @@ impl Chat {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            COMMUNITY_ID => {
-                let flags = r.read_i32()?;
-                let flags2 = r.read_i32()?;
-                let creator = flags & (1 << 0) != 0;
-                let left = flags & (1 << 2) != 0;
-                let min = flags & (1 << 12) != 0;
-                let collapsed_in_dialogs = flags2 & (1 << 20) != 0;
-                let id = r.read_i64()?;
-                let access_hash = if flags & (1 << 13) != 0 {
-                    let access_hash = r.read_i64()?;
-                    Some(AccessHash(access_hash))
-                } else {
-                    None
-                };
-                let title = String::from_utf8(r.read_bytes()?)?;
-                let photo = ChatPhoto::read_from(r)?;
-                let date = r.read_i32()?;
-                let admin_rights = if flags & (1 << 14) != 0 {
-                    let admin_rights = ChatAdminRights::read_from(r)?;
-                    Some(admin_rights)
-                } else {
-                    None
-                };
-                let default_banned_rights = if flags & (1 << 18) != 0 {
-                    let default_banned_rights = ChatBannedRights::read_from(r)?;
-                    Some(default_banned_rights)
-                } else {
-                    None
-                };
-                let id = ChatId(id);
-                Ok(Chat::Community {
-                    flags,
-                    creator,
-                    left,
-                    min,
-                    flags2,
-                    collapsed_in_dialogs,
-                    id,
-                    access_hash,
-                    title,
-                    photo,
-                    date,
-                    admin_rights,
-                    default_banned_rights,
-                })
-            }
-            COMMUNITY_FORBIDDEN_ID => {
-                let flags = r.read_i32()?;
-                let id = r.read_i64()?;
-                let access_hash = if flags & (1 << 13) != 0 {
-                    let access_hash = r.read_i64()?;
-                    Some(AccessHash(access_hash))
-                } else {
-                    None
-                };
-                let title = String::from_utf8(r.read_bytes()?)?;
-                let id = ChatId(id);
-                Ok(Chat::CommunityForbidden {
-                    flags,
-                    id,
-                    access_hash,
-                    title,
-                })
-            }
             CHANNEL_FORBIDDEN_ID => {
                 let flags = r.read_i32()?;
                 let broadcast = flags & (1 << 5) != 0;
@@ -7805,7 +6846,7 @@ impl Chat {
                     until_date,
                 })
             }
-            0x1c32b11c | CHANNEL_ID => {
+            0xd49f34c6 | CHANNEL_ID => {
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
                 let creator = flags & (1 << 0) != 0;
@@ -7950,12 +6991,6 @@ impl Chat {
                 } else {
                     None
                 };
-                let linked_community_id = if flags2 & (1 << 20) != 0 {
-                    let linked_community_id = r.read_i64()?;
-                    Some(linked_community_id)
-                } else {
-                    None
-                };
                 let id = ChatId(id);
                 Ok(Chat::Channel {
                     flags,
@@ -8009,7 +7044,6 @@ impl Chat {
                     bot_verification_icon,
                     send_paid_messages_stars,
                     linked_monoforum_id,
-                    linked_community_id,
                 })
             }
             CHAT_FORBIDDEN_ID => {

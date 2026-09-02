@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -15,67 +15,527 @@
 #![allow(clippy::as_conversions, clippy::cast_sign_loss)]
 #![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use super::chat_gen::{ChatAdminRights, InlineButtonType, InlineQueryPeerType};
+use super::chat_gen::ChatAdminRights;
 use super::input_gen::{InputPeer, InputUser};
 use super::message_gen::{
-    ButtonType, KeyboardButtonRow, KeyboardButtonStyle, KeyboardInlineButton,
-    KeyboardInlineButtonRow, RequestPeerType,
+    InlineQueryPeerType, KeyboardButtonRow, KeyboardButtonStyle, RequestPeerType,
 };
 use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
-pub const KEYBOARD_BUTTON_ID: u32 = 0x2f67a72f;
-pub const REPLY_INLINE_MARKUP_ID: u32 = 0xb2b15770;
-pub const REPLY_KEYBOARD_MARKUP_ID: u32 = 0x85dd99d1;
+pub const KEYBOARD_BUTTON_COPY_ID: u32 = 0xbcc4af10;
+pub const INPUT_KEYBOARD_BUTTON_REQUEST_PEER_ID: u32 = 0x02b78156;
+pub const KEYBOARD_BUTTON_REQUEST_PEER_ID: u32 = 0x5b0f15f5;
+pub const KEYBOARD_BUTTON_SIMPLE_WEB_VIEW_ID: u32 = 0xe15c4370;
+pub const KEYBOARD_BUTTON_WEB_VIEW_ID: u32 = 0xe846b1a0;
+pub const KEYBOARD_BUTTON_USER_PROFILE_ID: u32 = 0xc0fd5d09;
+pub const INPUT_KEYBOARD_BUTTON_USER_PROFILE_ID: u32 = 0x7d5e07c7;
+pub const KEYBOARD_BUTTON_REQUEST_POLL_ID: u32 = 0x7a11d782;
+pub const INPUT_KEYBOARD_BUTTON_URL_AUTH_ID: u32 = 0x68013e72;
+pub const KEYBOARD_BUTTON_URL_AUTH_ID: u32 = 0xf51006f9;
+pub const KEYBOARD_BUTTON_BUY_ID: u32 = 0x3fa53905;
+pub const KEYBOARD_BUTTON_GAME_ID: u32 = 0x89c590f9;
+pub const KEYBOARD_BUTTON_SWITCH_INLINE_ID: u32 = 0x991399fc;
+pub const KEYBOARD_BUTTON_REQUEST_GEO_LOCATION_ID: u32 = 0xaa40f94d;
+pub const KEYBOARD_BUTTON_REQUEST_PHONE_ID: u32 = 0x417efd8f;
+pub const KEYBOARD_BUTTON_CALLBACK_ID: u32 = 0xe62bc960;
+pub const KEYBOARD_BUTTON_URL_ID: u32 = 0xd80c25ec;
+pub const KEYBOARD_BUTTON_ID: u32 = 0x7d170cff;
+pub const REPLY_INLINE_MARKUP_ID: u32 = 0x48a30254;
 pub const BOTS_GET_REQUESTED_WEB_VIEW_BUTTON_ID: u32 = 0xbf25b7f3;
+pub const REPLY_KEYBOARD_MARKUP_ID: u32 = 0x85dd99d1;
 pub const REPLY_KEYBOARD_FORCE_REPLY_ID: u32 = 0x86b40b08;
 pub const REPLY_KEYBOARD_HIDE_ID: u32 = 0xa03e5b85;
 
-/// `keyboardButton#2f67a72f = KeyboardButton`
+/// Union `KeyboardButton` (18 constructors).
 #[derive(Debug, Clone, PartialEq)]
-pub struct KeyboardButton {
-    pub flags: i32,
-    pub style: Option<KeyboardButtonStyle>,
-    pub text: String,
-    pub r#type: ButtonType,
+pub enum KeyboardButton {
+    /// `keyboardButtonCopy#bcc4af10`
+    KeyboardButtonCopy {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        copy_text: String,
+    },
+    /// `inputKeyboardButtonRequestPeer#02b78156`
+    InputKeyboardButtonRequestPeer {
+        flags: i32,
+        name_requested: bool,
+        username_requested: bool,
+        photo_requested: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
+    /// `keyboardButtonRequestPeer#5b0f15f5`
+    KeyboardButtonRequestPeer {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        button_id: i32,
+        peer_type: RequestPeerType,
+        max_quantity: i32,
+    },
+    /// `keyboardButtonSimpleWebView#e15c4370`
+    KeyboardButtonSimpleWebView {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
+    /// `keyboardButtonWebView#e846b1a0`
+    KeyboardButtonWebView {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
+    /// `keyboardButtonUserProfile#c0fd5d09`
+    KeyboardButtonUserProfile {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        user_id: UserId,
+    },
+    /// `inputKeyboardButtonUserProfile#7d5e07c7`
+    InputKeyboardButtonUserProfile {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        user_id: InputUser,
+    },
+    /// `keyboardButtonRequestPoll#7a11d782`
+    KeyboardButtonRequestPoll {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        quiz: Option<bool>,
+        text: String,
+    },
+    /// `inputKeyboardButtonUrlAuth#68013e72`
+    InputKeyboardButtonUrlAuth {
+        flags: i32,
+        request_write_access: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        fwd_text: Option<String>,
+        url: String,
+        bot: InputUser,
+    },
+    /// `keyboardButtonUrlAuth#f51006f9`
+    KeyboardButtonUrlAuth {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        fwd_text: Option<String>,
+        url: String,
+        button_id: i32,
+    },
+    /// `keyboardButtonBuy#3fa53905`
+    KeyboardButtonBuy {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
+    /// `keyboardButtonGame#89c590f9`
+    KeyboardButtonGame {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
+    /// `keyboardButtonSwitchInline#991399fc`
+    KeyboardButtonSwitchInline {
+        flags: i32,
+        same_peer: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        query: String,
+        peer_types: Option<Vec<InlineQueryPeerType>>,
+    },
+    /// `keyboardButtonRequestGeoLocation#aa40f94d`
+    KeyboardButtonRequestGeoLocation {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
+    /// `keyboardButtonRequestPhone#417efd8f`
+    KeyboardButtonRequestPhone {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
+    /// `keyboardButtonCallback#e62bc960`
+    Callback {
+        flags: i32,
+        requires_password: bool,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        data: Vec<u8>,
+    },
+    /// `keyboardButtonUrl#d80c25ec`
+    Url {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+        url: String,
+    },
+    /// `keyboardButton#7d170cff`
+    Text {
+        flags: i32,
+        style: Option<KeyboardButtonStyle>,
+        text: String,
+    },
 }
 
 impl KeyboardButton {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
-        if ctor != KEYBOARD_BUTTON_ID {
-            return Err(Error::Serialization(format!(
-                "expected keyboardButton, got {ctor:#x}"
-            )));
+        match ctor {
+            KEYBOARD_BUTTON_COPY_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let copy_text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonCopy {
+                    flags,
+                    style,
+                    text,
+                    copy_text,
+                })
+            }
+            INPUT_KEYBOARD_BUTTON_REQUEST_PEER_ID => {
+                let flags = r.read_i32()?;
+                let name_requested = flags & (1 << 0) != 0;
+                let username_requested = flags & (1 << 1) != 0;
+                let photo_requested = flags & (1 << 2) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(KeyboardButton::InputKeyboardButtonRequestPeer {
+                    flags,
+                    name_requested,
+                    username_requested,
+                    photo_requested,
+                    style,
+                    text,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
+            }
+            KEYBOARD_BUTTON_REQUEST_PEER_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                let peer_type = RequestPeerType::read_from(r)?;
+                let max_quantity = r.read_i32()?;
+                Ok(KeyboardButton::KeyboardButtonRequestPeer {
+                    flags,
+                    style,
+                    text,
+                    button_id,
+                    peer_type,
+                    max_quantity,
+                })
+            }
+            KEYBOARD_BUTTON_SIMPLE_WEB_VIEW_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonSimpleWebView {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
+            }
+            KEYBOARD_BUTTON_WEB_VIEW_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonWebView {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
+            }
+            KEYBOARD_BUTTON_USER_PROFILE_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let user_id = r.read_i64()?;
+                let user_id = UserId(user_id);
+                Ok(KeyboardButton::KeyboardButtonUserProfile {
+                    flags,
+                    style,
+                    text,
+                    user_id,
+                })
+            }
+            INPUT_KEYBOARD_BUTTON_USER_PROFILE_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let user_id = InputUser::read_from(r)?;
+                Ok(KeyboardButton::InputKeyboardButtonUserProfile {
+                    flags,
+                    style,
+                    text,
+                    user_id,
+                })
+            }
+            KEYBOARD_BUTTON_REQUEST_POLL_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let quiz = if flags & (1 << 0) != 0 {
+                    let quiz = r.read_u32()? == 0x997275b5; // boolTrue
+                    Some(quiz)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonRequestPoll {
+                    flags,
+                    style,
+                    quiz,
+                    text,
+                })
+            }
+            INPUT_KEYBOARD_BUTTON_URL_AUTH_ID => {
+                let flags = r.read_i32()?;
+                let request_write_access = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let fwd_text = if flags & (1 << 1) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let bot = InputUser::read_from(r)?;
+                Ok(KeyboardButton::InputKeyboardButtonUrlAuth {
+                    flags,
+                    request_write_access,
+                    style,
+                    text,
+                    fwd_text,
+                    url,
+                    bot,
+                })
+            }
+            KEYBOARD_BUTTON_URL_AUTH_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let fwd_text = if flags & (1 << 0) != 0 {
+                    let fwd_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(fwd_text)
+                } else {
+                    None
+                };
+                let url = String::from_utf8(r.read_bytes()?)?;
+                let button_id = r.read_i32()?;
+                Ok(KeyboardButton::KeyboardButtonUrlAuth {
+                    flags,
+                    style,
+                    text,
+                    fwd_text,
+                    url,
+                    button_id,
+                })
+            }
+            KEYBOARD_BUTTON_BUY_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonBuy { flags, style, text })
+            }
+            KEYBOARD_BUTTON_GAME_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonGame { flags, style, text })
+            }
+            KEYBOARD_BUTTON_SWITCH_INLINE_ID => {
+                let flags = r.read_i32()?;
+                let same_peer = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let query = String::from_utf8(r.read_bytes()?)?;
+                let peer_types = if flags & (1 << 1) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut peer_types = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        peer_types.push(InlineQueryPeerType::read_from(r)?);
+                    }
+                    Some(peer_types)
+                } else {
+                    None
+                };
+                Ok(KeyboardButton::KeyboardButtonSwitchInline {
+                    flags,
+                    same_peer,
+                    style,
+                    text,
+                    query,
+                    peer_types,
+                })
+            }
+            KEYBOARD_BUTTON_REQUEST_GEO_LOCATION_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonRequestGeoLocation { flags, style, text })
+            }
+            KEYBOARD_BUTTON_REQUEST_PHONE_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::KeyboardButtonRequestPhone { flags, style, text })
+            }
+            KEYBOARD_BUTTON_CALLBACK_ID => {
+                let flags = r.read_i32()?;
+                let requires_password = flags & (1 << 0) != 0;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let data = r.read_bytes()?;
+                Ok(KeyboardButton::Callback {
+                    flags,
+                    requires_password,
+                    style,
+                    text,
+                    data,
+                })
+            }
+            KEYBOARD_BUTTON_URL_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                let url = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::Url {
+                    flags,
+                    style,
+                    text,
+                    url,
+                })
+            }
+            KEYBOARD_BUTTON_ID => {
+                let flags = r.read_i32()?;
+                let style = if flags & (1 << 10) != 0 {
+                    let style = KeyboardButtonStyle::read_from(r)?;
+                    Some(style)
+                } else {
+                    None
+                };
+                let text = String::from_utf8(r.read_bytes()?)?;
+                Ok(KeyboardButton::Text { flags, style, text })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown KeyboardButton constructor {other:#x}"
+            ))),
         }
-        let flags = r.read_i32()?;
-        let style = if flags & (1 << 10) != 0 {
-            let style = KeyboardButtonStyle::read_from(r)?;
-            Some(style)
-        } else {
-            None
-        };
-        let text = String::from_utf8(r.read_bytes()?)?;
-        let r#type = ButtonType::read_from(r)?;
-        Ok(KeyboardButton {
-            flags,
-            style,
-            text,
-            r#type,
-        })
     }
 }
 
 /// Union `ReplyMarkup` (4 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReplyMarkup {
-    /// `replyInlineMarkup#b2b15770`
-    InlineKeyboard {
-        flags: i32,
-        force_reply: bool,
-        rows: Vec<KeyboardInlineButtonRow>,
-    },
+    /// `replyInlineMarkup#48a30254`
+    InlineKeyboard { rows: Vec<KeyboardButtonRow> },
     /// `replyKeyboardMarkup#85dd99d1`
     ReplyKeyboard {
         flags: i32,
@@ -83,7 +543,6 @@ pub enum ReplyMarkup {
         single_use: bool,
         selective: bool,
         persistent: bool,
-        force_reply: bool,
         rows: Vec<KeyboardButtonRow>,
         placeholder: Option<String>,
     },
@@ -102,19 +561,13 @@ impl ReplyMarkup {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            0x48a30254 | REPLY_INLINE_MARKUP_ID => {
-                let flags = r.read_i32()?;
-                let force_reply = flags & (1 << 5) != 0;
+            REPLY_INLINE_MARKUP_ID => {
                 let n = r.read_vector_header()?;
                 let mut rows = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
-                    rows.push(KeyboardInlineButtonRow::read_from(r)?);
+                    rows.push(KeyboardButtonRow::read_from(r)?);
                 }
-                Ok(ReplyMarkup::InlineKeyboard {
-                    flags,
-                    force_reply,
-                    rows,
-                })
+                Ok(ReplyMarkup::InlineKeyboard { rows })
             }
             REPLY_KEYBOARD_MARKUP_ID => {
                 let flags = r.read_i32()?;
@@ -122,7 +575,6 @@ impl ReplyMarkup {
                 let single_use = flags & (1 << 1) != 0;
                 let selective = flags & (1 << 2) != 0;
                 let persistent = flags & (1 << 4) != 0;
-                let force_reply = flags & (1 << 5) != 0;
                 let n = r.read_vector_header()?;
                 let mut rows = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
@@ -140,7 +592,6 @@ impl ReplyMarkup {
                     single_use,
                     selective,
                     persistent,
-                    force_reply,
                     rows,
                     placeholder,
                 })

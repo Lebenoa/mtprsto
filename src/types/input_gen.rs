@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -33,7 +33,6 @@ pub const MESSAGES_SUMMARIZE_TEXT_ID: u32 = 0xabbbd346;
 pub const TEXT_WITH_ENTITIES_ID: u32 = 0x751f3146;
 pub const INPUT_STORE_PAYMENT_GIFT_PREMIUM_ID: u32 = 0x616f7fe8;
 pub const INPUT_STORE_PAYMENT_PREMIUM_SUBSCRIPTION_ID: u32 = 0xa6751e66;
-pub const INPUT_DIALOG_PEER_COMMUNITY_ID: u32 = 0x69ef72c4;
 pub const INPUT_DIALOG_PEER_FOLDER_ID: u32 = 0x64600527;
 pub const INPUT_DIALOG_PEER_ID: u32 = 0xfcaafeb7;
 pub const INPUT_STICKER_SET_ITEM_ID: u32 = 0x32da9e9c;
@@ -485,11 +484,9 @@ impl TextWithEntities {
     }
 }
 
-/// Union `InputDialogPeer` (3 constructors).
+/// Union `InputDialogPeer` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputDialogPeer {
-    /// `inputDialogPeerCommunity#69ef72c4`
-    InputDialogPeerCommunity { community: InputChannel },
     /// `inputDialogPeerFolder#64600527`
     InputDialogPeerFolder { folder_id: i32 },
     /// `inputDialogPeer#fcaafeb7`
@@ -500,10 +497,6 @@ impl InputDialogPeer {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_DIALOG_PEER_COMMUNITY_ID => {
-                let community = InputChannel::read_from(r)?;
-                Ok(InputDialogPeer::InputDialogPeerCommunity { community })
-            }
             INPUT_DIALOG_PEER_FOLDER_ID => {
                 let folder_id = r.read_i32()?;
                 Ok(InputDialogPeer::InputDialogPeerFolder { folder_id })

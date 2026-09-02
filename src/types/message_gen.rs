@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -18,12 +18,11 @@
 use super::chat_gen::{
     BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant,
     ChatParticipants, ChatPhoto, ChatReactions, DataJSON, DocumentAttribute, ExportedChatInvite,
-    Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall,
-    InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice,
-    MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome,
-    NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem,
-    PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer,
-    PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText,
+    Game, GeoPointAddress, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper,
+    InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia,
+    MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageCaption, PageListItem,
+    PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll,
+    PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichText,
     StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
     StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings,
     TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage,
@@ -47,32 +46,13 @@ use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, Us
 
 pub const MISSING_INVITEE_ID: u32 = 0x628c9224;
 pub const MESSAGES_INVITED_USERS_ID: u32 = 0x7f5defa6;
-pub const INPUT_RICH_MESSAGE_MARKDOWN_ID: u32 = 0x004b572c;
-pub const INPUT_RICH_FILE_DOCUMENT_ID: u32 = 0x83281dbd;
-pub const INPUT_RICH_FILE_PHOTO_ID: u32 = 0x9b00622b;
-pub const INPUT_RICH_MESSAGE_HTML_ID: u32 = 0xdacb836a;
-pub const INPUT_RICH_MESSAGE_ID: u32 = 0xe4c449fc;
-pub const KEYBOARD_INLINE_BUTTON_ROW_ID: u32 = 0x19420af6;
-pub const KEYBOARD_INLINE_BUTTON_ID: u32 = 0x11c1a322;
-pub const KEYBOARD_BUTTON_STYLE_ID: u32 = 0x4fdd3430;
-pub const KEYBOARD_BUTTON_ROW_ID: u32 = 0x77608b83;
-pub const BUTTON_TYPE_SIMPLE_WEB_VIEW_ID: u32 = 0xc01a597a;
-pub const INPUT_BUTTON_TYPE_REQUEST_PEER_ID: u32 = 0x3fe268fe;
-pub const REQUEST_PEER_TYPE_CREATE_BOT_ID: u32 = 0x3e81e078;
-pub const REQUEST_PEER_TYPE_BROADCAST_ID: u32 = 0x339bef6c;
-pub const REQUEST_PEER_TYPE_CHAT_ID: u32 = 0xc9f06e1b;
-pub const REQUEST_PEER_TYPE_USER_ID: u32 = 0x5f3b8a00;
-pub const BUTTON_TYPE_REQUEST_PEER_ID: u32 = 0x4f58a237;
-pub const BUTTON_TYPE_REQUEST_POLL_ID: u32 = 0xaacfff84;
-pub const BUTTON_TYPE_REQUEST_GEO_LOCATION_ID: u32 = 0x9beee140;
-pub const BUTTON_TYPE_REQUEST_PHONE_ID: u32 = 0xdf3d36f9;
-pub const BUTTON_TYPE_DEFAULT_ID: u32 = 0xc9dd90e9;
 pub const MESSAGES_UPLOAD_IMPORTED_MEDIA_ID: u32 = 0x2a862092;
 pub const MESSAGES_UPLOAD_MEDIA_ID: u32 = 0x14967978;
-pub const INPUT_REPLY_TO_EPHEMERAL_MESSAGE_ID: u32 = 0x4119b95e;
-pub const INPUT_REPLY_TO_MONO_FORUM_ID: u32 = 0x69d66c45;
-pub const INPUT_REPLY_TO_STORY_ID: u32 = 0x5881323a;
-pub const INPUT_REPLY_TO_MESSAGE_ID: u32 = 0x3bd4b7c2;
+pub const INPUT_CHECK_PASSWORD_SRP_ID: u32 = 0xd27ff082;
+pub const INPUT_CHECK_PASSWORD_EMPTY_ID: u32 = 0x9880f658;
+pub const INPUT_SAVED_STAR_GIFT_SLUG_ID: u32 = 0x2085c238;
+pub const INPUT_SAVED_STAR_GIFT_CHAT_ID: u32 = 0xf101aa7f;
+pub const INPUT_SAVED_STAR_GIFT_USER_ID: u32 = 0x69279795;
 pub const INPUT_PRIVACY_VALUE_DISALLOW_BOTS_ID: u32 = 0xc4e57915;
 pub const INPUT_PRIVACY_VALUE_ALLOW_BOTS_ID: u32 = 0x5a4fcce5;
 pub const INPUT_PRIVACY_VALUE_ALLOW_PREMIUM_ID: u32 = 0x77cdc9f1;
@@ -85,42 +65,45 @@ pub const INPUT_PRIVACY_VALUE_DISALLOW_CONTACTS_ID: u32 = 0x0ba52007;
 pub const INPUT_PRIVACY_VALUE_ALLOW_USERS_ID: u32 = 0x131cc67f;
 pub const INPUT_PRIVACY_VALUE_ALLOW_ALL_ID: u32 = 0x184b35ce;
 pub const INPUT_PRIVACY_VALUE_ALLOW_CONTACTS_ID: u32 = 0x0d09e07b;
+pub const BIRTHDAY_ID: u32 = 0x6c8e1e06;
+pub const PAID_REACTION_PRIVACY_PEER_ID: u32 = 0xdc6cfcf0;
+pub const PAID_REACTION_PRIVACY_ANONYMOUS_ID: u32 = 0x1f0c1ad9;
+pub const PAID_REACTION_PRIVACY_DEFAULT_ID: u32 = 0x206ad49e;
+pub const INPUT_BUSINESS_BOT_RECIPIENTS_ID: u32 = 0xc4e5921e;
+pub const BUSINESS_BOT_RIGHTS_ID: u32 = 0xa0624cf7;
 pub const INPUT_CHATLIST_DIALOG_FILTER_ID: u32 = 0xf3e0da33;
+pub const INPUT_CHAT_THEME_UNIQUE_GIFT_ID: u32 = 0x87e5dfe4;
+pub const INPUT_CHAT_THEME_ID: u32 = 0xc93de95c;
+pub const INPUT_CHAT_THEME_EMPTY_ID: u32 = 0x83268483;
 pub const INPUT_FOLDER_PEER_ID: u32 = 0xfbd2c296;
+pub const INPUT_QUICK_REPLY_SHORTCUT_ID_ID: u32 = 0x01190cf1;
+pub const INPUT_QUICK_REPLY_SHORTCUT_ID: u32 = 0x24596d41;
+pub const INPUT_SINGLE_MEDIA_ID: u32 = 0x1cc6e91f;
+pub const INPUT_REPLY_TO_MONO_FORUM_ID: u32 = 0x69d66c45;
+pub const INPUT_REPLY_TO_STORY_ID: u32 = 0x5881323a;
+pub const INPUT_REPLY_TO_MESSAGE_ID: u32 = 0x3bd4b7c2;
 pub const INPUT_PHONE_CALL_ID: u32 = 0x1e36fded;
 pub const PHONE_CALL_DISCARD_REASON_MIGRATE_CONFERENCE_CALL_ID: u32 = 0x9fbbf1f7;
 pub const PHONE_CALL_DISCARD_REASON_BUSY_ID: u32 = 0xfaf7e8c9;
 pub const PHONE_CALL_DISCARD_REASON_HANGUP_ID: u32 = 0x57adc690;
 pub const PHONE_CALL_DISCARD_REASON_DISCONNECT_ID: u32 = 0xe095c1a0;
 pub const PHONE_CALL_DISCARD_REASON_MISSED_ID: u32 = 0x85e42301;
-pub const INPUT_SAVED_STAR_GIFT_SLUG_ID: u32 = 0x2085c238;
-pub const INPUT_SAVED_STAR_GIFT_CHAT_ID: u32 = 0xf101aa7f;
-pub const INPUT_SAVED_STAR_GIFT_USER_ID: u32 = 0x69279795;
+pub const KEYBOARD_BUTTON_ROW_ID: u32 = 0x77608b83;
+pub const KEYBOARD_BUTTON_STYLE_ID: u32 = 0x4fdd3430;
+pub const REQUEST_PEER_TYPE_CREATE_BOT_ID: u32 = 0x3e81e078;
+pub const REQUEST_PEER_TYPE_BROADCAST_ID: u32 = 0x339bef6c;
+pub const REQUEST_PEER_TYPE_CHAT_ID: u32 = 0xc9f06e1b;
+pub const REQUEST_PEER_TYPE_USER_ID: u32 = 0x5f3b8a00;
+pub const INLINE_QUERY_PEER_TYPE_BOT_PM_ID: u32 = 0x0e3b2d0c;
+pub const INLINE_QUERY_PEER_TYPE_BROADCAST_ID: u32 = 0x6334ee9a;
+pub const INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID: u32 = 0x5ec4be43;
+pub const INLINE_QUERY_PEER_TYPE_CHAT_ID: u32 = 0xd766c50a;
+pub const INLINE_QUERY_PEER_TYPE_PM_ID: u32 = 0x833c0fac;
+pub const INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID: u32 = 0x3081ed9d;
 pub const INPUT_CHAT_PHOTO_ID: u32 = 0x8953ad37;
 pub const INPUT_CHAT_UPLOADED_PHOTO_ID: u32 = 0xbdcdaec0;
 pub const INPUT_CHAT_PHOTO_EMPTY_ID: u32 = 0x1ca48f57;
-pub const INPUT_CHECK_PASSWORD_SRP_ID: u32 = 0xd27ff082;
-pub const INPUT_CHECK_PASSWORD_EMPTY_ID: u32 = 0x9880f658;
-pub const PAID_REACTION_PRIVACY_PEER_ID: u32 = 0xdc6cfcf0;
-pub const PAID_REACTION_PRIVACY_ANONYMOUS_ID: u32 = 0x1f0c1ad9;
-pub const PAID_REACTION_PRIVACY_DEFAULT_ID: u32 = 0x206ad49e;
-pub const INPUT_CHAT_THEME_UNIQUE_GIFT_ID: u32 = 0x87e5dfe4;
-pub const INPUT_CHAT_THEME_ID: u32 = 0xc93de95c;
-pub const INPUT_CHAT_THEME_EMPTY_ID: u32 = 0x83268483;
-pub const INPUT_QUICK_REPLY_SHORTCUT_ID_ID: u32 = 0x01190cf1;
-pub const INPUT_QUICK_REPLY_SHORTCUT_ID: u32 = 0x24596d41;
-pub const INPUT_SINGLE_MEDIA_ID: u32 = 0x1cc6e91f;
 pub const SUGGESTED_POST_ID: u32 = 0x0e8e37e5;
-pub const BIRTHDAY_ID: u32 = 0x6c8e1e06;
-pub const INPUT_BUSINESS_BOT_RECIPIENTS_ID: u32 = 0xc4e5921e;
-pub const BUSINESS_BOT_RIGHTS_ID: u32 = 0xa0624cf7;
-pub const EPHEMERAL_MESSAGE_ID: u32 = 0xdd27bee9;
-pub const RICH_MESSAGE_ID: u32 = 0xbaf39d8b;
-pub const WEB_DOMAIN_EXCEPTION_ID: u32 = 0x933ca597;
-pub const JOIN_CHAT_BOT_RESULT_WEB_VIEW_ID: u32 = 0xd6e3b813;
-pub const JOIN_CHAT_BOT_RESULT_QUEUED_ID: u32 = 0x98a3a840;
-pub const JOIN_CHAT_BOT_RESULT_DECLINED_ID: u32 = 0x0efa0194;
-pub const JOIN_CHAT_BOT_RESULT_APPROVED_ID: u32 = 0xae152a69;
 pub const MESSAGES_GET_EMOJI_GAME_INFO_ID: u32 = 0xfb7e8ca7;
 pub const MESSAGES_EMOJI_GAME_DICE_INFO_ID: u32 = 0x44e56023;
 pub const MESSAGES_EMOJI_GAME_UNAVAILABLE_ID: u32 = 0x59e65335;
@@ -132,18 +115,16 @@ pub const STAR_GIFT_AUCTION_ROUND_ID: u32 = 0x3aae0528;
 pub const AUCTION_BID_LEVEL_ID: u32 = 0x310240cc;
 pub const STAR_GIFT_AUCTION_STATE_NOT_MODIFIED_ID: u32 = 0xfe333952;
 pub const GROUP_CALL_MESSAGE_ID: u32 = 0x1a8afc7e;
+pub const AUTH_CHECK_PAID_AUTH_ID: u32 = 0x56e59f9c;
+pub const AUTH_RESET_LOGIN_EMAIL_ID: u32 = 0x7e960193;
 pub const ACCOUNT_SEND_VERIFY_PHONE_CODE_ID: u32 = 0xa5a356f9;
 pub const CODE_SETTINGS_ID: u32 = 0xad253d78;
 pub const ACCOUNT_SEND_CONFIRM_PHONE_CODE_ID: u32 = 0x1b3faa88;
-pub const ACCOUNT_SEND_CHANGE_PHONE_CODE_ID: u32 = 0x82574ae5;
-pub const AUTH_CHECK_PAID_AUTH_ID: u32 = 0x56e59f9c;
-pub const AUTH_RESET_LOGIN_EMAIL_ID: u32 = 0x7e960193;
 pub const AUTH_RESEND_CODE_ID: u32 = 0xcae47523;
+pub const ACCOUNT_SEND_CHANGE_PHONE_CODE_ID: u32 = 0x82574ae5;
 pub const AUTH_SEND_CODE_ID: u32 = 0xa677244f;
 pub const AUTH_SENT_CODE_PAYMENT_REQUIRED_ID: u32 = 0xf8827ebf;
 pub const AUTH_SENT_CODE_SUCCESS_ID: u32 = 0x2390fe44;
-pub const AUTH_FIREBASE_PNV_SIGN_UP_ID: u32 = 0x783f6b56;
-pub const AUTH_FINISH_FIREBASE_PNV_LOGIN_ID: u32 = 0x2c85094c;
 pub const AUTH_FINISH_PASSKEY_LOGIN_ID: u32 = 0x9857ad07;
 pub const INPUT_PASSKEY_CREDENTIAL_FIREBASE_PNV_ID: u32 = 0x5b1ccb28;
 pub const INPUT_PASSKEY_CREDENTIAL_PUBLIC_KEY_ID: u32 = 0x3c27b78f;
@@ -190,7 +171,6 @@ pub const AUTH_SENT_CODE_TYPE_APP_ID: u32 = 0x3dbb5986;
 pub const STARS_REVENUE_STATUS_ID: u32 = 0xfebe5491;
 pub const BOT_BUSINESS_CONNECTION_ID: u32 = 0x8f34b2f5;
 pub const QUICK_REPLY_ID: u32 = 0x0697102b;
-pub const DIALOG_PEER_COMMUNITY_ID: u32 = 0x2f65c8e4;
 pub const DIALOG_PEER_FOLDER_ID: u32 = 0x514519e2;
 pub const DIALOG_PEER_ID: u32 = 0xe56dbf05;
 pub const BOOST_ID: u32 = 0x4b3e14d6;
@@ -209,10 +189,7 @@ pub const GROUP_CALL_DISCARDED_ID: u32 = 0x7780bcb4;
 pub const GROUP_CALL_PARTICIPANT_ID: u32 = 0x2a3dc7ac;
 pub const GROUP_CALL_PARTICIPANT_VIDEO_ID: u32 = 0x67753ac8;
 pub const GROUP_CALL_PARTICIPANT_VIDEO_SOURCE_GROUP_ID: u32 = 0xdcb118b7;
-pub const SEND_MESSAGE_STOP_DRAFT_ACTION_ID: u32 = 0xfbf902b0;
-pub const SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID: u32 = 0x52564893;
-pub const INPUT_SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID: u32 = 0xa937c7be;
-pub const SEND_MESSAGE_TEXT_DRAFT_ACTION_ID: u32 = 0x3630b85a;
+pub const SEND_MESSAGE_TEXT_DRAFT_ACTION_ID: u32 = 0x376d975c;
 pub const SEND_MESSAGE_EMOJI_INTERACTION_SEEN_ID: u32 = 0xb665902e;
 pub const SEND_MESSAGE_EMOJI_INTERACTION_ID: u32 = 0x25972bcb;
 pub const SEND_MESSAGE_CHOOSE_STICKER_ACTION_ID: u32 = 0xb05ac6b1;
@@ -259,11 +236,10 @@ pub const PHONE_CALL_WAITING_ID: u32 = 0xc5226f17;
 pub const PHONE_CALL_EMPTY_ID: u32 = 0x5366c915;
 pub const PAYMENT_REQUESTED_INFO_ID: u32 = 0x909c3f94;
 pub const POST_ADDRESS_ID: u32 = 0x1e8caaeb;
-pub const DRAFT_MESSAGE_ID: u32 = 0x60fe3294;
+pub const DRAFT_MESSAGE_ID: u32 = 0x96eaa5eb;
 pub const DRAFT_MESSAGE_EMPTY_ID: u32 = 0x1b0c841a;
 pub const MESSAGES_SET_BOT_GUEST_CHAT_RESULT_ID: u32 = 0xb8f106e3;
 pub const INPUT_BOT_INLINE_RESULT_GAME_ID: u32 = 0x4fa417f2;
-pub const INPUT_BOT_INLINE_MESSAGE_RICH_MESSAGE_ID: u32 = 0xb43df56c;
 pub const INPUT_BOT_INLINE_MESSAGE_MEDIA_WEB_PAGE_ID: u32 = 0xbddcc510;
 pub const INPUT_BOT_INLINE_MESSAGE_MEDIA_INVOICE_ID: u32 = 0xd7e78225;
 pub const INPUT_BOT_INLINE_MESSAGE_GAME_ID: u32 = 0x4b425864;
@@ -304,7 +280,6 @@ pub const PRIVACY_KEY_PHONE_P2_P_ID: u32 = 0x39491cc8;
 pub const PRIVACY_KEY_PHONE_CALL_ID: u32 = 0x3d662b7b;
 pub const PRIVACY_KEY_CHAT_INVITE_ID: u32 = 0x500e6dfa;
 pub const PRIVACY_KEY_STATUS_TIMESTAMP_ID: u32 = 0xbc2eab30;
-pub const NOTIFY_COMMUNITY_ID: u32 = 0xbe376999;
 pub const NOTIFY_FORUM_TOPIC_ID: u32 = 0x226e6308;
 pub const NOTIFY_BROADCASTS_ID: u32 = 0xd612e8ef;
 pub const NOTIFY_CHATS_ID: u32 = 0xc007cec3;
@@ -379,8 +354,6 @@ pub const MESSAGE_MEDIA_CONTACT_ID: u32 = 0x70322949;
 pub const MESSAGE_MEDIA_GEO_ID: u32 = 0x56e0d474;
 pub const MESSAGE_MEDIA_PHOTO_ID: u32 = 0xe216eb63;
 pub const MESSAGE_MEDIA_EMPTY_ID: u32 = 0x3ded6320;
-pub const MESSAGE_ACTION_CHAT_JOINED_VIA_COMMUNITY_ID: u32 = 0x4a8bfe80;
-pub const MESSAGE_ACTION_CHANGE_COMMUNITY_ID: u32 = 0x5d20bae8;
 pub const MESSAGE_ACTION_MANAGED_BOT_CREATED_ID: u32 = 0x16605e3e;
 pub const MESSAGE_ACTION_POLL_DELETE_ANSWER_ID: u32 = 0x399674dc;
 pub const MESSAGE_ACTION_POLL_APPEND_ANSWER_ID: u32 = 0x9da1cd6c;
@@ -400,7 +373,7 @@ pub const MESSAGE_ACTION_TODO_COMPLETIONS_ID: u32 = 0xcc7c5c89;
 pub const MESSAGE_ACTION_CONFERENCE_CALL_ID: u32 = 0x2ffe2f7a;
 pub const MESSAGE_ACTION_PAID_MESSAGES_PRICE_ID: u32 = 0x84b88578;
 pub const MESSAGE_ACTION_PAID_MESSAGES_REFUNDED_ID: u32 = 0xac1f1fcd;
-pub const MESSAGE_ACTION_STAR_GIFT_UNIQUE_ID: u32 = 0x7e1c1187;
+pub const MESSAGE_ACTION_STAR_GIFT_UNIQUE_ID: u32 = 0xe6c31522;
 pub const MESSAGE_ACTION_STAR_GIFT_ID: u32 = 0xea2c31d3;
 pub const MESSAGE_ACTION_PRIZE_STARS_ID: u32 = 0xb00c47a2;
 pub const MESSAGE_ACTION_GIFT_STARS_ID: u32 = 0x45d5b021;
@@ -481,7 +454,7 @@ pub const MESSAGE_ACTION_CHAT_EDIT_TITLE_ID: u32 = 0xb5a1ce5a;
 pub const MESSAGE_ACTION_CHAT_CREATE_ID: u32 = 0xbd47cbad;
 pub const MESSAGE_ACTION_EMPTY_ID: u32 = 0xb6aef7b0;
 pub const MESSAGE_SERVICE_ID: u32 = 0x7a800e0a;
-pub const MESSAGE_ID: u32 = 0x7600b9d3;
+pub const MESSAGE_ID: u32 = 0x95ef6f2b;
 pub const FACT_CHECK_ID: u32 = 0xb89bfccf;
 pub const MESSAGE_REPLIES_ID: u32 = 0x83d60fc2;
 pub const MESSAGE_EMPTY_ID: u32 = 0x90a6ca84;
@@ -561,228 +534,742 @@ impl MessagesInvitedUsers {
     }
 }
 
-/// Union `InputRichMessage` (3 constructors).
+/// Union `InputCheckPasswordSRP` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
-pub enum InputRichMessage {
-    /// `inputRichMessageMarkdown#004b572c`
-    InputRichMessageMarkdown {
-        flags: i32,
-        rtl: bool,
-        noautolink: bool,
-        markdown: String,
-        files: Option<Vec<InputRichFile>>,
-    },
-    /// `inputRichMessageHTML#dacb836a`
-    InputRichMessageHTML {
-        flags: i32,
-        rtl: bool,
-        noautolink: bool,
-        html: String,
-        files: Option<Vec<InputRichFile>>,
-    },
-    /// `inputRichMessage#e4c449fc`
-    InputRichMessage {
-        flags: i32,
-        rtl: bool,
-        noautolink: bool,
-        blocks: Vec<PageBlock>,
-        photos: Option<Vec<InputPhoto>>,
-        documents: Option<Vec<InputDocument>>,
-        users: Option<Vec<InputUser>>,
-    },
+pub enum InputCheckPasswordSRP {
+    /// `inputCheckPasswordSRP#d27ff082`
+    InputCheckPasswordSRP { srp_id: i64 },
+    /// `inputCheckPasswordEmpty#9880f658`
+    InputCheckPasswordEmpty,
 }
 
-impl InputRichMessage {
+impl InputCheckPasswordSRP {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_RICH_MESSAGE_MARKDOWN_ID => {
-                let flags = r.read_i32()?;
-                let rtl = flags & (1 << 0) != 0;
-                let noautolink = flags & (1 << 1) != 0;
-                let markdown = String::from_utf8(r.read_bytes()?)?;
-                let files = if flags & (1 << 2) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut files = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        files.push(InputRichFile::read_from(r)?);
-                    }
-                    Some(files)
-                } else {
-                    None
-                };
-                Ok(InputRichMessage::InputRichMessageMarkdown {
-                    flags,
-                    rtl,
-                    noautolink,
-                    markdown,
-                    files,
-                })
+            INPUT_CHECK_PASSWORD_SRP_ID => {
+                let srp_id = r.read_i64()?;
+                Ok(InputCheckPasswordSRP::InputCheckPasswordSRP { srp_id })
             }
-            INPUT_RICH_MESSAGE_HTML_ID => {
-                let flags = r.read_i32()?;
-                let rtl = flags & (1 << 0) != 0;
-                let noautolink = flags & (1 << 1) != 0;
-                let html = String::from_utf8(r.read_bytes()?)?;
-                let files = if flags & (1 << 2) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut files = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        files.push(InputRichFile::read_from(r)?);
-                    }
-                    Some(files)
-                } else {
-                    None
-                };
-                Ok(InputRichMessage::InputRichMessageHTML {
-                    flags,
-                    rtl,
-                    noautolink,
-                    html,
-                    files,
-                })
+            INPUT_CHECK_PASSWORD_EMPTY_ID => Ok(InputCheckPasswordSRP::InputCheckPasswordEmpty {}),
+            other => Err(Error::Serialization(format!(
+                "unknown InputCheckPasswordSRP constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// Union `InputSavedStarGift` (3 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputSavedStarGift {
+    /// `inputSavedStarGiftSlug#2085c238`
+    InputSavedStarGiftSlug { slug: String },
+    /// `inputSavedStarGiftChat#f101aa7f`
+    InputSavedStarGiftChat { peer: InputPeer, saved_id: i64 },
+    /// `inputSavedStarGiftUser#69279795`
+    InputSavedStarGiftUser { msg_id: i32 },
+}
+
+impl InputSavedStarGift {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            INPUT_SAVED_STAR_GIFT_SLUG_ID => {
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputSavedStarGift::InputSavedStarGiftSlug { slug })
             }
-            INPUT_RICH_MESSAGE_ID => {
-                let flags = r.read_i32()?;
-                let rtl = flags & (1 << 0) != 0;
-                let noautolink = flags & (1 << 1) != 0;
+            INPUT_SAVED_STAR_GIFT_CHAT_ID => {
+                let peer = InputPeer::read_from(r)?;
+                let saved_id = r.read_i64()?;
+                Ok(InputSavedStarGift::InputSavedStarGiftChat { peer, saved_id })
+            }
+            INPUT_SAVED_STAR_GIFT_USER_ID => {
+                let msg_id = r.read_i32()?;
+                Ok(InputSavedStarGift::InputSavedStarGiftUser { msg_id })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown InputSavedStarGift constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// Union `InputPrivacyRule` (12 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputPrivacyRule {
+    /// `inputPrivacyValueDisallowBots#c4e57915`
+    InputPrivacyValueDisallowBots,
+    /// `inputPrivacyValueAllowBots#5a4fcce5`
+    InputPrivacyValueAllowBots,
+    /// `inputPrivacyValueAllowPremium#77cdc9f1`
+    InputPrivacyValueAllowPremium,
+    /// `inputPrivacyValueAllowCloseFriends#2f453e49`
+    InputPrivacyValueAllowCloseFriends,
+    /// `inputPrivacyValueDisallowChatParticipants#e94f0f86`
+    InputPrivacyValueDisallowChatParticipants { chats: Vec<i64> },
+    /// `inputPrivacyValueAllowChatParticipants#840649cf`
+    InputPrivacyValueAllowChatParticipants { chats: Vec<i64> },
+    /// `inputPrivacyValueDisallowUsers#90110467`
+    InputPrivacyValueDisallowUsers { users: Vec<InputUser> },
+    /// `inputPrivacyValueDisallowAll#d66b66c9`
+    InputPrivacyValueDisallowAll,
+    /// `inputPrivacyValueDisallowContacts#0ba52007`
+    InputPrivacyValueDisallowContacts,
+    /// `inputPrivacyValueAllowUsers#131cc67f`
+    InputPrivacyValueAllowUsers { users: Vec<InputUser> },
+    /// `inputPrivacyValueAllowAll#184b35ce`
+    InputPrivacyValueAllowAll,
+    /// `inputPrivacyValueAllowContacts#0d09e07b`
+    InputPrivacyValueAllowContacts,
+}
+
+impl InputPrivacyRule {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            INPUT_PRIVACY_VALUE_DISALLOW_BOTS_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowBots {})
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_BOTS_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueAllowBots {})
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_PREMIUM_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueAllowPremium {})
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_CLOSE_FRIENDS_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueAllowCloseFriends {})
+            }
+            INPUT_PRIVACY_VALUE_DISALLOW_CHAT_PARTICIPANTS_ID => {
                 let n = r.read_vector_header()?;
-                let mut blocks = Vec::with_capacity(n.max(0) as usize);
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
-                    blocks.push(PageBlock::read_from(r)?);
+                    chats.push(r.read_i64()?);
                 }
-                let photos = if flags & (1 << 2) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut photos = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        photos.push(InputPhoto::read_from(r)?);
-                    }
-                    Some(photos)
-                } else {
-                    None
-                };
-                let documents = if flags & (1 << 3) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut documents = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        documents.push(InputDocument::read_from(r)?);
-                    }
-                    Some(documents)
-                } else {
-                    None
-                };
-                let users = if flags & (1 << 4) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut users = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        users.push(InputUser::read_from(r)?);
-                    }
-                    Some(users)
-                } else {
-                    None
-                };
-                Ok(InputRichMessage::InputRichMessage {
-                    flags,
-                    rtl,
-                    noautolink,
-                    blocks,
-                    photos,
-                    documents,
-                    users,
-                })
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowChatParticipants { chats })
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_CHAT_PARTICIPANTS_ID => {
+                let n = r.read_vector_header()?;
+                let mut chats = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    chats.push(r.read_i64()?);
+                }
+                Ok(InputPrivacyRule::InputPrivacyValueAllowChatParticipants { chats })
+            }
+            INPUT_PRIVACY_VALUE_DISALLOW_USERS_ID => {
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(InputUser::read_from(r)?);
+                }
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowUsers { users })
+            }
+            INPUT_PRIVACY_VALUE_DISALLOW_ALL_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowAll {})
+            }
+            INPUT_PRIVACY_VALUE_DISALLOW_CONTACTS_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueDisallowContacts {})
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_USERS_ID => {
+                let n = r.read_vector_header()?;
+                let mut users = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    users.push(InputUser::read_from(r)?);
+                }
+                Ok(InputPrivacyRule::InputPrivacyValueAllowUsers { users })
+            }
+            INPUT_PRIVACY_VALUE_ALLOW_ALL_ID => Ok(InputPrivacyRule::InputPrivacyValueAllowAll {}),
+            INPUT_PRIVACY_VALUE_ALLOW_CONTACTS_ID => {
+                Ok(InputPrivacyRule::InputPrivacyValueAllowContacts {})
             }
             other => Err(Error::Serialization(format!(
-                "unknown InputRichMessage constructor {other:#x}"
+                "unknown InputPrivacyRule constructor {other:#x}"
             ))),
         }
     }
 }
 
-/// Union `InputRichFile` (2 constructors).
+/// `birthday#6c8e1e06 = Birthday`
 #[derive(Debug, Clone, PartialEq)]
-pub enum InputRichFile {
-    /// `inputRichFileDocument#83281dbd`
-    InputRichFileDocument { id: String, document: InputDocument },
-    /// `inputRichFilePhoto#9b00622b`
-    InputRichFilePhoto { id: String, photo: InputPhoto },
+pub struct Birthday {
+    pub flags: i32,
+    pub day: i32,
+    pub month: i32,
+    pub year: Option<i32>,
 }
 
-impl InputRichFile {
+impl Birthday {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != BIRTHDAY_ID {
+            return Err(Error::Serialization(format!(
+                "expected birthday, got {ctor:#x}"
+            )));
+        }
+        let flags = r.read_i32()?;
+        let day = r.read_i32()?;
+        let month = r.read_i32()?;
+        let year = if flags & (1 << 0) != 0 {
+            let year = r.read_i32()?;
+            Some(year)
+        } else {
+            None
+        };
+        Ok(Birthday {
+            flags,
+            day,
+            month,
+            year,
+        })
+    }
+
+    /// Serialize in schema field order (flags auto-computed).
+    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
+        w.write_u32(BIRTHDAY_ID);
+        let flags: i32 = if self.year.is_some() { 1 << 0 } else { 0 };
+        w.write_i32(flags);
+        w.write_i32(self.day);
+        w.write_i32(self.month);
+        if let Some(year) = self.year {
+            w.write_i32(year);
+        }
+    }
+}
+
+/// Union `PaidReactionPrivacy` (3 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PaidReactionPrivacy {
+    /// `paidReactionPrivacyPeer#dc6cfcf0`
+    PaidReactionPrivacyPeer { peer: InputPeer },
+    /// `paidReactionPrivacyAnonymous#1f0c1ad9`
+    PaidReactionPrivacyAnonymous,
+    /// `paidReactionPrivacyDefault#206ad49e`
+    PaidReactionPrivacyDefault,
+}
+
+impl PaidReactionPrivacy {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_RICH_FILE_DOCUMENT_ID => {
-                let id = String::from_utf8(r.read_bytes()?)?;
-                let document = InputDocument::read_from(r)?;
-                Ok(InputRichFile::InputRichFileDocument { id, document })
+            PAID_REACTION_PRIVACY_PEER_ID => {
+                let peer = InputPeer::read_from(r)?;
+                Ok(PaidReactionPrivacy::PaidReactionPrivacyPeer { peer })
             }
-            INPUT_RICH_FILE_PHOTO_ID => {
-                let id = String::from_utf8(r.read_bytes()?)?;
-                let photo = InputPhoto::read_from(r)?;
-                Ok(InputRichFile::InputRichFilePhoto { id, photo })
+            PAID_REACTION_PRIVACY_ANONYMOUS_ID => {
+                Ok(PaidReactionPrivacy::PaidReactionPrivacyAnonymous {})
+            }
+            PAID_REACTION_PRIVACY_DEFAULT_ID => {
+                Ok(PaidReactionPrivacy::PaidReactionPrivacyDefault {})
             }
             other => Err(Error::Serialization(format!(
-                "unknown InputRichFile constructor {other:#x}"
+                "unknown PaidReactionPrivacy constructor {other:#x}"
             ))),
         }
     }
 }
 
-/// `keyboardInlineButtonRow#19420af6 = KeyboardInlineButtonRow`
+/// `inputBusinessBotRecipients#c4e5921e = InputBusinessBotRecipients`
 #[derive(Debug, Clone, PartialEq)]
-pub struct KeyboardInlineButtonRow {
-    pub buttons: Vec<KeyboardInlineButton>,
+pub struct InputBusinessBotRecipients {
+    pub flags: i32,
+    pub existing_chats: bool,
+    pub new_chats: bool,
+    pub contacts: bool,
+    pub non_contacts: bool,
+    pub exclude_selected: bool,
+    pub users: Option<Vec<InputUser>>,
+    pub exclude_users: Option<Vec<InputUser>>,
 }
 
-impl KeyboardInlineButtonRow {
+impl InputBusinessBotRecipients {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
-        if ctor != KEYBOARD_INLINE_BUTTON_ROW_ID {
+        if ctor != INPUT_BUSINESS_BOT_RECIPIENTS_ID {
             return Err(Error::Serialization(format!(
-                "expected keyboardInlineButtonRow, got {ctor:#x}"
+                "expected inputBusinessBotRecipients, got {ctor:#x}"
+            )));
+        }
+        let flags = r.read_i32()?;
+        let existing_chats = flags & (1 << 0) != 0;
+        let new_chats = flags & (1 << 1) != 0;
+        let contacts = flags & (1 << 2) != 0;
+        let non_contacts = flags & (1 << 3) != 0;
+        let exclude_selected = flags & (1 << 5) != 0;
+        let users = if flags & (1 << 4) != 0 {
+            let n = r.read_vector_header()?;
+            let mut users = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                users.push(InputUser::read_from(r)?);
+            }
+            Some(users)
+        } else {
+            None
+        };
+        let exclude_users = if flags & (1 << 6) != 0 {
+            let n = r.read_vector_header()?;
+            let mut exclude_users = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                exclude_users.push(InputUser::read_from(r)?);
+            }
+            Some(exclude_users)
+        } else {
+            None
+        };
+        Ok(InputBusinessBotRecipients {
+            flags,
+            existing_chats,
+            new_chats,
+            contacts,
+            non_contacts,
+            exclude_selected,
+            users,
+            exclude_users,
+        })
+    }
+}
+
+/// `businessBotRights#a0624cf7 = BusinessBotRights`
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusinessBotRights {
+    pub flags: i32,
+    pub reply: bool,
+    pub read_messages: bool,
+    pub delete_sent_messages: bool,
+    pub delete_received_messages: bool,
+    pub edit_name: bool,
+    pub edit_bio: bool,
+    pub edit_profile_photo: bool,
+    pub edit_username: bool,
+    pub view_gifts: bool,
+    pub sell_gifts: bool,
+    pub change_gift_settings: bool,
+    pub transfer_and_upgrade_gifts: bool,
+    pub transfer_stars: bool,
+    pub manage_stories: bool,
+}
+
+impl BusinessBotRights {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != BUSINESS_BOT_RIGHTS_ID {
+            return Err(Error::Serialization(format!(
+                "expected businessBotRights, got {ctor:#x}"
+            )));
+        }
+        let flags = r.read_i32()?;
+        let reply = flags & (1 << 0) != 0;
+        let read_messages = flags & (1 << 1) != 0;
+        let delete_sent_messages = flags & (1 << 2) != 0;
+        let delete_received_messages = flags & (1 << 3) != 0;
+        let edit_name = flags & (1 << 4) != 0;
+        let edit_bio = flags & (1 << 5) != 0;
+        let edit_profile_photo = flags & (1 << 6) != 0;
+        let edit_username = flags & (1 << 7) != 0;
+        let view_gifts = flags & (1 << 8) != 0;
+        let sell_gifts = flags & (1 << 9) != 0;
+        let change_gift_settings = flags & (1 << 10) != 0;
+        let transfer_and_upgrade_gifts = flags & (1 << 11) != 0;
+        let transfer_stars = flags & (1 << 12) != 0;
+        let manage_stories = flags & (1 << 13) != 0;
+        Ok(BusinessBotRights {
+            flags,
+            reply,
+            read_messages,
+            delete_sent_messages,
+            delete_received_messages,
+            edit_name,
+            edit_bio,
+            edit_profile_photo,
+            edit_username,
+            view_gifts,
+            sell_gifts,
+            change_gift_settings,
+            transfer_and_upgrade_gifts,
+            transfer_stars,
+            manage_stories,
+        })
+    }
+
+    /// Serialize in schema field order (flags auto-computed).
+    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
+        w.write_u32(BUSINESS_BOT_RIGHTS_ID);
+        let flags: i32 = if self.reply { 1 << 0 } else { 0 }
+            | if self.read_messages { 1 << 1 } else { 0 }
+            | if self.delete_sent_messages { 1 << 2 } else { 0 }
+            | if self.delete_received_messages {
+                1 << 3
+            } else {
+                0
+            }
+            | if self.edit_name { 1 << 4 } else { 0 }
+            | if self.edit_bio { 1 << 5 } else { 0 }
+            | if self.edit_profile_photo { 1 << 6 } else { 0 }
+            | if self.edit_username { 1 << 7 } else { 0 }
+            | if self.view_gifts { 1 << 8 } else { 0 }
+            | if self.sell_gifts { 1 << 9 } else { 0 }
+            | if self.change_gift_settings {
+                1 << 10
+            } else {
+                0
+            }
+            | if self.transfer_and_upgrade_gifts {
+                1 << 11
+            } else {
+                0
+            }
+            | if self.transfer_stars { 1 << 12 } else { 0 }
+            | if self.manage_stories { 1 << 13 } else { 0 };
+        w.write_i32(flags);
+    }
+}
+
+/// `inputChatlistDialogFilter#f3e0da33 = InputChatlist`
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputChatlist {
+    pub filter_id: i32,
+}
+
+impl InputChatlist {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != INPUT_CHATLIST_DIALOG_FILTER_ID {
+            return Err(Error::Serialization(format!(
+                "expected inputChatlistDialogFilter, got {ctor:#x}"
+            )));
+        }
+        let filter_id = r.read_i32()?;
+        Ok(InputChatlist { filter_id })
+    }
+
+    /// Serialize in schema field order (flags auto-computed).
+    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
+        w.write_u32(INPUT_CHATLIST_DIALOG_FILTER_ID);
+        w.write_i32(self.filter_id);
+    }
+}
+
+/// Union `InputChatTheme` (3 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputChatTheme {
+    /// `inputChatThemeUniqueGift#87e5dfe4`
+    InputChatThemeUniqueGift { slug: String },
+    /// `inputChatTheme#c93de95c`
+    InputChatTheme { emoticon: String },
+    /// `inputChatThemeEmpty#83268483`
+    InputChatThemeEmpty,
+}
+
+impl InputChatTheme {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            INPUT_CHAT_THEME_UNIQUE_GIFT_ID => {
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputChatTheme::InputChatThemeUniqueGift { slug })
+            }
+            INPUT_CHAT_THEME_ID => {
+                let emoticon = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputChatTheme::InputChatTheme { emoticon })
+            }
+            INPUT_CHAT_THEME_EMPTY_ID => Ok(InputChatTheme::InputChatThemeEmpty {}),
+            other => Err(Error::Serialization(format!(
+                "unknown InputChatTheme constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// `inputFolderPeer#fbd2c296 = InputFolderPeer`
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputFolderPeer {
+    pub peer: InputPeer,
+    pub folder_id: i32,
+}
+
+impl InputFolderPeer {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != INPUT_FOLDER_PEER_ID {
+            return Err(Error::Serialization(format!(
+                "expected inputFolderPeer, got {ctor:#x}"
+            )));
+        }
+        let peer = InputPeer::read_from(r)?;
+        let folder_id = r.read_i32()?;
+        Ok(InputFolderPeer { peer, folder_id })
+    }
+}
+
+/// Union `InputQuickReplyShortcut` (2 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputQuickReplyShortcut {
+    /// `inputQuickReplyShortcutId#01190cf1`
+    InputQuickReplyShortcutId { shortcut_id: i32 },
+    /// `inputQuickReplyShortcut#24596d41`
+    InputQuickReplyShortcut { shortcut: String },
+}
+
+impl InputQuickReplyShortcut {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            INPUT_QUICK_REPLY_SHORTCUT_ID_ID => {
+                let shortcut_id = r.read_i32()?;
+                Ok(InputQuickReplyShortcut::InputQuickReplyShortcutId { shortcut_id })
+            }
+            INPUT_QUICK_REPLY_SHORTCUT_ID => {
+                let shortcut = String::from_utf8(r.read_bytes()?)?;
+                Ok(InputQuickReplyShortcut::InputQuickReplyShortcut { shortcut })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown InputQuickReplyShortcut constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// `inputSingleMedia#1cc6e91f = InputSingleMedia`
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputSingleMedia {
+    pub flags: i32,
+    pub media: InputMedia,
+    pub random_id: i64,
+    pub message: String,
+    pub entities: Option<Vec<MessageEntity>>,
+}
+
+impl InputSingleMedia {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != INPUT_SINGLE_MEDIA_ID {
+            return Err(Error::Serialization(format!(
+                "expected inputSingleMedia, got {ctor:#x}"
+            )));
+        }
+        let flags = r.read_i32()?;
+        let media = InputMedia::read_from(r)?;
+        let random_id = r.read_i64()?;
+        let message = String::from_utf8(r.read_bytes()?)?;
+        let entities = if flags & (1 << 0) != 0 {
+            let n = r.read_vector_header()?;
+            let mut entities = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                entities.push(MessageEntity::read_from(r)?);
+            }
+            Some(entities)
+        } else {
+            None
+        };
+        Ok(InputSingleMedia {
+            flags,
+            media,
+            random_id,
+            message,
+            entities,
+        })
+    }
+}
+
+/// Union `InputReplyTo` (3 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputReplyTo {
+    /// `inputReplyToMonoForum#69d66c45`
+    InputReplyToMonoForum { monoforum_peer_id: InputPeer },
+    /// `inputReplyToStory#5881323a`
+    InputReplyToStory { peer: InputPeer, story_id: i32 },
+    /// `inputReplyToMessage#3bd4b7c2`
+    InputReplyToMessage {
+        flags: i32,
+        reply_to_msg_id: i32,
+        top_msg_id: Option<i32>,
+        reply_to_peer_id: Option<InputPeer>,
+        quote_text: Option<String>,
+        quote_entities: Option<Vec<MessageEntity>>,
+        quote_offset: Option<i32>,
+        monoforum_peer_id: Option<InputPeer>,
+        todo_item_id: Option<i32>,
+        poll_option: Option<Vec<u8>>,
+    },
+}
+
+impl InputReplyTo {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            INPUT_REPLY_TO_MONO_FORUM_ID => {
+                let monoforum_peer_id = InputPeer::read_from(r)?;
+                Ok(InputReplyTo::InputReplyToMonoForum { monoforum_peer_id })
+            }
+            INPUT_REPLY_TO_STORY_ID => {
+                let peer = InputPeer::read_from(r)?;
+                let story_id = r.read_i32()?;
+                Ok(InputReplyTo::InputReplyToStory { peer, story_id })
+            }
+            INPUT_REPLY_TO_MESSAGE_ID => {
+                let flags = r.read_i32()?;
+                let reply_to_msg_id = r.read_i32()?;
+                let top_msg_id = if flags & (1 << 0) != 0 {
+                    let top_msg_id = r.read_i32()?;
+                    Some(top_msg_id)
+                } else {
+                    None
+                };
+                let reply_to_peer_id = if flags & (1 << 1) != 0 {
+                    let reply_to_peer_id = InputPeer::read_from(r)?;
+                    Some(reply_to_peer_id)
+                } else {
+                    None
+                };
+                let quote_text = if flags & (1 << 2) != 0 {
+                    let quote_text = String::from_utf8(r.read_bytes()?)?;
+                    Some(quote_text)
+                } else {
+                    None
+                };
+                let quote_entities = if flags & (1 << 3) != 0 {
+                    let n = r.read_vector_header()?;
+                    let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
+                    for _ in 0..n {
+                        quote_entities.push(MessageEntity::read_from(r)?);
+                    }
+                    Some(quote_entities)
+                } else {
+                    None
+                };
+                let quote_offset = if flags & (1 << 4) != 0 {
+                    let quote_offset = r.read_i32()?;
+                    Some(quote_offset)
+                } else {
+                    None
+                };
+                let monoforum_peer_id = if flags & (1 << 5) != 0 {
+                    let monoforum_peer_id = InputPeer::read_from(r)?;
+                    Some(monoforum_peer_id)
+                } else {
+                    None
+                };
+                let todo_item_id = if flags & (1 << 6) != 0 {
+                    let todo_item_id = r.read_i32()?;
+                    Some(todo_item_id)
+                } else {
+                    None
+                };
+                let poll_option = if flags & (1 << 7) != 0 {
+                    let poll_option = r.read_bytes()?;
+                    Some(poll_option)
+                } else {
+                    None
+                };
+                Ok(InputReplyTo::InputReplyToMessage {
+                    flags,
+                    reply_to_msg_id,
+                    top_msg_id,
+                    reply_to_peer_id,
+                    quote_text,
+                    quote_entities,
+                    quote_offset,
+                    monoforum_peer_id,
+                    todo_item_id,
+                    poll_option,
+                })
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown InputReplyTo constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// `inputPhoneCall#1e36fded = InputPhoneCall`
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputPhoneCall {
+    pub id: i64,
+    pub access_hash: AccessHash,
+}
+
+impl InputPhoneCall {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != INPUT_PHONE_CALL_ID {
+            return Err(Error::Serialization(format!(
+                "expected inputPhoneCall, got {ctor:#x}"
+            )));
+        }
+        let id = r.read_i64()?;
+        let access_hash = r.read_i64()?;
+        let access_hash = AccessHash(access_hash);
+        Ok(InputPhoneCall { id, access_hash })
+    }
+
+    /// Serialize in schema field order (flags auto-computed).
+    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
+        w.write_u32(INPUT_PHONE_CALL_ID);
+        w.write_i64(self.id);
+        w.write_i64(self.access_hash.0);
+    }
+}
+
+/// Union `PhoneCallDiscardReason` (5 constructors).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhoneCallDiscardReason {
+    /// `phoneCallDiscardReasonMigrateConferenceCall#9fbbf1f7`
+    PhoneCallDiscardReasonMigrateConferenceCall { slug: String },
+    /// `phoneCallDiscardReasonBusy#faf7e8c9`
+    PhoneCallDiscardReasonBusy,
+    /// `phoneCallDiscardReasonHangup#57adc690`
+    PhoneCallDiscardReasonHangup,
+    /// `phoneCallDiscardReasonDisconnect#e095c1a0`
+    PhoneCallDiscardReasonDisconnect,
+    /// `phoneCallDiscardReasonMissed#85e42301`
+    PhoneCallDiscardReasonMissed,
+}
+
+impl PhoneCallDiscardReason {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        match ctor {
+            PHONE_CALL_DISCARD_REASON_MIGRATE_CONFERENCE_CALL_ID => {
+                let slug = String::from_utf8(r.read_bytes()?)?;
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMigrateConferenceCall { slug })
+            }
+            PHONE_CALL_DISCARD_REASON_BUSY_ID => {
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonBusy {})
+            }
+            PHONE_CALL_DISCARD_REASON_HANGUP_ID => {
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonHangup {})
+            }
+            PHONE_CALL_DISCARD_REASON_DISCONNECT_ID => {
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonDisconnect {})
+            }
+            PHONE_CALL_DISCARD_REASON_MISSED_ID => {
+                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMissed {})
+            }
+            other => Err(Error::Serialization(format!(
+                "unknown PhoneCallDiscardReason constructor {other:#x}"
+            ))),
+        }
+    }
+}
+
+/// `keyboardButtonRow#77608b83 = KeyboardButtonRow`
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyboardButtonRow {
+    pub buttons: Vec<KeyboardButton>,
+}
+
+impl KeyboardButtonRow {
+    pub fn read_from(r: &mut TLReader) -> Result<Self> {
+        let ctor = r.read_u32()?;
+        if ctor != KEYBOARD_BUTTON_ROW_ID {
+            return Err(Error::Serialization(format!(
+                "expected keyboardButtonRow, got {ctor:#x}"
             )));
         }
         let n = r.read_vector_header()?;
         let mut buttons = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            buttons.push(KeyboardInlineButton::read_from(r)?);
+            buttons.push(KeyboardButton::read_from(r)?);
         }
-        Ok(KeyboardInlineButtonRow { buttons })
-    }
-}
-
-/// `keyboardInlineButton#11c1a322 = KeyboardInlineButton`
-#[derive(Debug, Clone, PartialEq)]
-pub struct KeyboardInlineButton {
-    pub flags: i32,
-    pub style: Option<KeyboardButtonStyle>,
-    pub text: String,
-    pub r#type: InlineButtonType,
-}
-
-impl KeyboardInlineButton {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != KEYBOARD_INLINE_BUTTON_ID {
-            return Err(Error::Serialization(format!(
-                "expected keyboardInlineButton, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let style = if flags & (1 << 10) != 0 {
-            let style = KeyboardButtonStyle::read_from(r)?;
-            Some(style)
-        } else {
-            None
-        };
-        let text = String::from_utf8(r.read_bytes()?)?;
-        let r#type = InlineButtonType::read_from(r)?;
-        Ok(KeyboardInlineButton {
-            flags,
-            style,
-            text,
-            r#type,
-        })
+        Ok(KeyboardButtonRow { buttons })
     }
 }
 
@@ -833,119 +1320,6 @@ impl KeyboardButtonStyle {
         w.write_i32(flags);
         if let Some(icon) = self.icon {
             w.write_i64(icon);
-        }
-    }
-}
-
-/// `keyboardButtonRow#77608b83 = KeyboardButtonRow`
-#[derive(Debug, Clone, PartialEq)]
-pub struct KeyboardButtonRow {
-    pub buttons: Vec<KeyboardButton>,
-}
-
-impl KeyboardButtonRow {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != KEYBOARD_BUTTON_ROW_ID {
-            return Err(Error::Serialization(format!(
-                "expected keyboardButtonRow, got {ctor:#x}"
-            )));
-        }
-        let n = r.read_vector_header()?;
-        let mut buttons = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            buttons.push(KeyboardButton::read_from(r)?);
-        }
-        Ok(KeyboardButtonRow { buttons })
-    }
-}
-
-/// Union `ButtonType` (7 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum ButtonType {
-    /// `buttonTypeSimpleWebView#c01a597a`
-    ButtonTypeSimpleWebView { url: String },
-    /// `inputButtonTypeRequestPeer#3fe268fe`
-    InputButtonTypeRequestPeer {
-        flags: i32,
-        name_requested: bool,
-        username_requested: bool,
-        photo_requested: bool,
-        button_id: i32,
-        peer_type: RequestPeerType,
-        max_quantity: i32,
-    },
-    /// `buttonTypeRequestPeer#4f58a237`
-    ButtonTypeRequestPeer {
-        flags: i32,
-        button_id: i32,
-        peer_type: RequestPeerType,
-        max_quantity: i32,
-    },
-    /// `buttonTypeRequestPoll#aacfff84`
-    ButtonTypeRequestPoll { flags: i32, quiz: Option<bool> },
-    /// `buttonTypeRequestGeoLocation#9beee140`
-    ButtonTypeRequestGeoLocation,
-    /// `buttonTypeRequestPhone#df3d36f9`
-    ButtonTypeRequestPhone,
-    /// `buttonTypeDefault#c9dd90e9`
-    ButtonTypeDefault,
-}
-
-impl ButtonType {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            BUTTON_TYPE_SIMPLE_WEB_VIEW_ID => {
-                let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(ButtonType::ButtonTypeSimpleWebView { url })
-            }
-            INPUT_BUTTON_TYPE_REQUEST_PEER_ID => {
-                let flags = r.read_i32()?;
-                let name_requested = flags & (1 << 0) != 0;
-                let username_requested = flags & (1 << 1) != 0;
-                let photo_requested = flags & (1 << 2) != 0;
-                let button_id = r.read_i32()?;
-                let peer_type = RequestPeerType::read_from(r)?;
-                let max_quantity = r.read_i32()?;
-                Ok(ButtonType::InputButtonTypeRequestPeer {
-                    flags,
-                    name_requested,
-                    username_requested,
-                    photo_requested,
-                    button_id,
-                    peer_type,
-                    max_quantity,
-                })
-            }
-            BUTTON_TYPE_REQUEST_PEER_ID => {
-                let flags = r.read_i32()?;
-                let button_id = r.read_i32()?;
-                let peer_type = RequestPeerType::read_from(r)?;
-                let max_quantity = r.read_i32()?;
-                Ok(ButtonType::ButtonTypeRequestPeer {
-                    flags,
-                    button_id,
-                    peer_type,
-                    max_quantity,
-                })
-            }
-            BUTTON_TYPE_REQUEST_POLL_ID => {
-                let flags = r.read_i32()?;
-                let quiz = if flags & (1 << 0) != 0 {
-                    let quiz = r.read_u32()? == 0x997275b5; // boolTrue
-                    Some(quiz)
-                } else {
-                    None
-                };
-                Ok(ButtonType::ButtonTypeRequestPoll { flags, quiz })
-            }
-            BUTTON_TYPE_REQUEST_GEO_LOCATION_ID => Ok(ButtonType::ButtonTypeRequestGeoLocation {}),
-            BUTTON_TYPE_REQUEST_PHONE_ID => Ok(ButtonType::ButtonTypeRequestPhone {}),
-            BUTTON_TYPE_DEFAULT_ID => Ok(ButtonType::ButtonTypeDefault {}),
-            other => Err(Error::Serialization(format!(
-                "unknown ButtonType constructor {other:#x}"
-            ))),
         }
     }
 }
@@ -1106,363 +1480,43 @@ impl RequestPeerType {
     }
 }
 
-/// Union `InputReplyTo` (4 constructors).
+/// Union `InlineQueryPeerType` (6 constructors).
 #[derive(Debug, Clone, PartialEq)]
-pub enum InputReplyTo {
-    /// `inputReplyToEphemeralMessage#4119b95e`
-    InputReplyToEphemeralMessage { id: i32 },
-    /// `inputReplyToMonoForum#69d66c45`
-    InputReplyToMonoForum { monoforum_peer_id: InputPeer },
-    /// `inputReplyToStory#5881323a`
-    InputReplyToStory { peer: InputPeer, story_id: i32 },
-    /// `inputReplyToMessage#3bd4b7c2`
-    InputReplyToMessage {
-        flags: i32,
-        reply_to_msg_id: i32,
-        top_msg_id: Option<i32>,
-        reply_to_peer_id: Option<InputPeer>,
-        quote_text: Option<String>,
-        quote_entities: Option<Vec<MessageEntity>>,
-        quote_offset: Option<i32>,
-        monoforum_peer_id: Option<InputPeer>,
-        todo_item_id: Option<i32>,
-        poll_option: Option<Vec<u8>>,
-    },
+pub enum InlineQueryPeerType {
+    /// `inlineQueryPeerTypeBotPM#0e3b2d0c`
+    InlineQueryPeerTypeBotPM,
+    /// `inlineQueryPeerTypeBroadcast#6334ee9a`
+    InlineQueryPeerTypeBroadcast,
+    /// `inlineQueryPeerTypeMegagroup#5ec4be43`
+    InlineQueryPeerTypeMegagroup,
+    /// `inlineQueryPeerTypeChat#d766c50a`
+    InlineQueryPeerTypeChat,
+    /// `inlineQueryPeerTypePM#833c0fac`
+    InlineQueryPeerTypePM,
+    /// `inlineQueryPeerTypeSameBotPM#3081ed9d`
+    InlineQueryPeerTypeSameBotPM,
 }
 
-impl InputReplyTo {
+impl InlineQueryPeerType {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_REPLY_TO_EPHEMERAL_MESSAGE_ID => {
-                let id = r.read_i32()?;
-                Ok(InputReplyTo::InputReplyToEphemeralMessage { id })
+            INLINE_QUERY_PEER_TYPE_BOT_PM_ID => {
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBotPM {})
             }
-            INPUT_REPLY_TO_MONO_FORUM_ID => {
-                let monoforum_peer_id = InputPeer::read_from(r)?;
-                Ok(InputReplyTo::InputReplyToMonoForum { monoforum_peer_id })
+            INLINE_QUERY_PEER_TYPE_BROADCAST_ID => {
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeBroadcast {})
             }
-            INPUT_REPLY_TO_STORY_ID => {
-                let peer = InputPeer::read_from(r)?;
-                let story_id = r.read_i32()?;
-                Ok(InputReplyTo::InputReplyToStory { peer, story_id })
+            INLINE_QUERY_PEER_TYPE_MEGAGROUP_ID => {
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeMegagroup {})
             }
-            INPUT_REPLY_TO_MESSAGE_ID => {
-                let flags = r.read_i32()?;
-                let reply_to_msg_id = r.read_i32()?;
-                let top_msg_id = if flags & (1 << 0) != 0 {
-                    let top_msg_id = r.read_i32()?;
-                    Some(top_msg_id)
-                } else {
-                    None
-                };
-                let reply_to_peer_id = if flags & (1 << 1) != 0 {
-                    let reply_to_peer_id = InputPeer::read_from(r)?;
-                    Some(reply_to_peer_id)
-                } else {
-                    None
-                };
-                let quote_text = if flags & (1 << 2) != 0 {
-                    let quote_text = String::from_utf8(r.read_bytes()?)?;
-                    Some(quote_text)
-                } else {
-                    None
-                };
-                let quote_entities = if flags & (1 << 3) != 0 {
-                    let n = r.read_vector_header()?;
-                    let mut quote_entities = Vec::with_capacity(n.max(0) as usize);
-                    for _ in 0..n {
-                        quote_entities.push(MessageEntity::read_from(r)?);
-                    }
-                    Some(quote_entities)
-                } else {
-                    None
-                };
-                let quote_offset = if flags & (1 << 4) != 0 {
-                    let quote_offset = r.read_i32()?;
-                    Some(quote_offset)
-                } else {
-                    None
-                };
-                let monoforum_peer_id = if flags & (1 << 5) != 0 {
-                    let monoforum_peer_id = InputPeer::read_from(r)?;
-                    Some(monoforum_peer_id)
-                } else {
-                    None
-                };
-                let todo_item_id = if flags & (1 << 6) != 0 {
-                    let todo_item_id = r.read_i32()?;
-                    Some(todo_item_id)
-                } else {
-                    None
-                };
-                let poll_option = if flags & (1 << 7) != 0 {
-                    let poll_option = r.read_bytes()?;
-                    Some(poll_option)
-                } else {
-                    None
-                };
-                Ok(InputReplyTo::InputReplyToMessage {
-                    flags,
-                    reply_to_msg_id,
-                    top_msg_id,
-                    reply_to_peer_id,
-                    quote_text,
-                    quote_entities,
-                    quote_offset,
-                    monoforum_peer_id,
-                    todo_item_id,
-                    poll_option,
-                })
+            INLINE_QUERY_PEER_TYPE_CHAT_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypeChat {}),
+            INLINE_QUERY_PEER_TYPE_PM_ID => Ok(InlineQueryPeerType::InlineQueryPeerTypePM {}),
+            INLINE_QUERY_PEER_TYPE_SAME_BOT_PM_ID => {
+                Ok(InlineQueryPeerType::InlineQueryPeerTypeSameBotPM {})
             }
             other => Err(Error::Serialization(format!(
-                "unknown InputReplyTo constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `InputPrivacyRule` (12 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputPrivacyRule {
-    /// `inputPrivacyValueDisallowBots#c4e57915`
-    InputPrivacyValueDisallowBots,
-    /// `inputPrivacyValueAllowBots#5a4fcce5`
-    InputPrivacyValueAllowBots,
-    /// `inputPrivacyValueAllowPremium#77cdc9f1`
-    InputPrivacyValueAllowPremium,
-    /// `inputPrivacyValueAllowCloseFriends#2f453e49`
-    InputPrivacyValueAllowCloseFriends,
-    /// `inputPrivacyValueDisallowChatParticipants#e94f0f86`
-    InputPrivacyValueDisallowChatParticipants { chats: Vec<i64> },
-    /// `inputPrivacyValueAllowChatParticipants#840649cf`
-    InputPrivacyValueAllowChatParticipants { chats: Vec<i64> },
-    /// `inputPrivacyValueDisallowUsers#90110467`
-    InputPrivacyValueDisallowUsers { users: Vec<InputUser> },
-    /// `inputPrivacyValueDisallowAll#d66b66c9`
-    InputPrivacyValueDisallowAll,
-    /// `inputPrivacyValueDisallowContacts#0ba52007`
-    InputPrivacyValueDisallowContacts,
-    /// `inputPrivacyValueAllowUsers#131cc67f`
-    InputPrivacyValueAllowUsers { users: Vec<InputUser> },
-    /// `inputPrivacyValueAllowAll#184b35ce`
-    InputPrivacyValueAllowAll,
-    /// `inputPrivacyValueAllowContacts#0d09e07b`
-    InputPrivacyValueAllowContacts,
-}
-
-impl InputPrivacyRule {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INPUT_PRIVACY_VALUE_DISALLOW_BOTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowBots {})
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_BOTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowBots {})
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_PREMIUM_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowPremium {})
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_CLOSE_FRIENDS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowCloseFriends {})
-            }
-            INPUT_PRIVACY_VALUE_DISALLOW_CHAT_PARTICIPANTS_ID => {
-                let n = r.read_vector_header()?;
-                let mut chats = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    chats.push(r.read_i64()?);
-                }
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowChatParticipants { chats })
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_CHAT_PARTICIPANTS_ID => {
-                let n = r.read_vector_header()?;
-                let mut chats = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    chats.push(r.read_i64()?);
-                }
-                Ok(InputPrivacyRule::InputPrivacyValueAllowChatParticipants { chats })
-            }
-            INPUT_PRIVACY_VALUE_DISALLOW_USERS_ID => {
-                let n = r.read_vector_header()?;
-                let mut users = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    users.push(InputUser::read_from(r)?);
-                }
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowUsers { users })
-            }
-            INPUT_PRIVACY_VALUE_DISALLOW_ALL_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowAll {})
-            }
-            INPUT_PRIVACY_VALUE_DISALLOW_CONTACTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueDisallowContacts {})
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_USERS_ID => {
-                let n = r.read_vector_header()?;
-                let mut users = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    users.push(InputUser::read_from(r)?);
-                }
-                Ok(InputPrivacyRule::InputPrivacyValueAllowUsers { users })
-            }
-            INPUT_PRIVACY_VALUE_ALLOW_ALL_ID => Ok(InputPrivacyRule::InputPrivacyValueAllowAll {}),
-            INPUT_PRIVACY_VALUE_ALLOW_CONTACTS_ID => {
-                Ok(InputPrivacyRule::InputPrivacyValueAllowContacts {})
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown InputPrivacyRule constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// `inputChatlistDialogFilter#f3e0da33 = InputChatlist`
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputChatlist {
-    pub filter_id: i32,
-}
-
-impl InputChatlist {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != INPUT_CHATLIST_DIALOG_FILTER_ID {
-            return Err(Error::Serialization(format!(
-                "expected inputChatlistDialogFilter, got {ctor:#x}"
-            )));
-        }
-        let filter_id = r.read_i32()?;
-        Ok(InputChatlist { filter_id })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(INPUT_CHATLIST_DIALOG_FILTER_ID);
-        w.write_i32(self.filter_id);
-    }
-}
-
-/// `inputFolderPeer#fbd2c296 = InputFolderPeer`
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputFolderPeer {
-    pub peer: InputPeer,
-    pub folder_id: i32,
-}
-
-impl InputFolderPeer {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != INPUT_FOLDER_PEER_ID {
-            return Err(Error::Serialization(format!(
-                "expected inputFolderPeer, got {ctor:#x}"
-            )));
-        }
-        let peer = InputPeer::read_from(r)?;
-        let folder_id = r.read_i32()?;
-        Ok(InputFolderPeer { peer, folder_id })
-    }
-}
-
-/// `inputPhoneCall#1e36fded = InputPhoneCall`
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputPhoneCall {
-    pub id: i64,
-    pub access_hash: AccessHash,
-}
-
-impl InputPhoneCall {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != INPUT_PHONE_CALL_ID {
-            return Err(Error::Serialization(format!(
-                "expected inputPhoneCall, got {ctor:#x}"
-            )));
-        }
-        let id = r.read_i64()?;
-        let access_hash = r.read_i64()?;
-        let access_hash = AccessHash(access_hash);
-        Ok(InputPhoneCall { id, access_hash })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(INPUT_PHONE_CALL_ID);
-        w.write_i64(self.id);
-        w.write_i64(self.access_hash.0);
-    }
-}
-
-/// Union `PhoneCallDiscardReason` (5 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum PhoneCallDiscardReason {
-    /// `phoneCallDiscardReasonMigrateConferenceCall#9fbbf1f7`
-    PhoneCallDiscardReasonMigrateConferenceCall { slug: String },
-    /// `phoneCallDiscardReasonBusy#faf7e8c9`
-    PhoneCallDiscardReasonBusy,
-    /// `phoneCallDiscardReasonHangup#57adc690`
-    PhoneCallDiscardReasonHangup,
-    /// `phoneCallDiscardReasonDisconnect#e095c1a0`
-    PhoneCallDiscardReasonDisconnect,
-    /// `phoneCallDiscardReasonMissed#85e42301`
-    PhoneCallDiscardReasonMissed,
-}
-
-impl PhoneCallDiscardReason {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            PHONE_CALL_DISCARD_REASON_MIGRATE_CONFERENCE_CALL_ID => {
-                let slug = String::from_utf8(r.read_bytes()?)?;
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMigrateConferenceCall { slug })
-            }
-            PHONE_CALL_DISCARD_REASON_BUSY_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonBusy {})
-            }
-            PHONE_CALL_DISCARD_REASON_HANGUP_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonHangup {})
-            }
-            PHONE_CALL_DISCARD_REASON_DISCONNECT_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonDisconnect {})
-            }
-            PHONE_CALL_DISCARD_REASON_MISSED_ID => {
-                Ok(PhoneCallDiscardReason::PhoneCallDiscardReasonMissed {})
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown PhoneCallDiscardReason constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `InputSavedStarGift` (3 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputSavedStarGift {
-    /// `inputSavedStarGiftSlug#2085c238`
-    InputSavedStarGiftSlug { slug: String },
-    /// `inputSavedStarGiftChat#f101aa7f`
-    InputSavedStarGiftChat { peer: InputPeer, saved_id: i64 },
-    /// `inputSavedStarGiftUser#69279795`
-    InputSavedStarGiftUser { msg_id: i32 },
-}
-
-impl InputSavedStarGift {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INPUT_SAVED_STAR_GIFT_SLUG_ID => {
-                let slug = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputSavedStarGift::InputSavedStarGiftSlug { slug })
-            }
-            INPUT_SAVED_STAR_GIFT_CHAT_ID => {
-                let peer = InputPeer::read_from(r)?;
-                let saved_id = r.read_i64()?;
-                Ok(InputSavedStarGift::InputSavedStarGiftChat { peer, saved_id })
-            }
-            INPUT_SAVED_STAR_GIFT_USER_ID => {
-                let msg_id = r.read_i32()?;
-                Ok(InputSavedStarGift::InputSavedStarGiftUser { msg_id })
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown InputSavedStarGift constructor {other:#x}"
+                "unknown InlineQueryPeerType constructor {other:#x}"
             ))),
         }
     }
@@ -1535,164 +1589,6 @@ impl InputChatPhoto {
     }
 }
 
-/// Union `InputCheckPasswordSRP` (2 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputCheckPasswordSRP {
-    /// `inputCheckPasswordSRP#d27ff082`
-    InputCheckPasswordSRP { srp_id: i64 },
-    /// `inputCheckPasswordEmpty#9880f658`
-    InputCheckPasswordEmpty,
-}
-
-impl InputCheckPasswordSRP {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INPUT_CHECK_PASSWORD_SRP_ID => {
-                let srp_id = r.read_i64()?;
-                Ok(InputCheckPasswordSRP::InputCheckPasswordSRP { srp_id })
-            }
-            INPUT_CHECK_PASSWORD_EMPTY_ID => Ok(InputCheckPasswordSRP::InputCheckPasswordEmpty {}),
-            other => Err(Error::Serialization(format!(
-                "unknown InputCheckPasswordSRP constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `PaidReactionPrivacy` (3 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum PaidReactionPrivacy {
-    /// `paidReactionPrivacyPeer#dc6cfcf0`
-    PaidReactionPrivacyPeer { peer: InputPeer },
-    /// `paidReactionPrivacyAnonymous#1f0c1ad9`
-    PaidReactionPrivacyAnonymous,
-    /// `paidReactionPrivacyDefault#206ad49e`
-    PaidReactionPrivacyDefault,
-}
-
-impl PaidReactionPrivacy {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            PAID_REACTION_PRIVACY_PEER_ID => {
-                let peer = InputPeer::read_from(r)?;
-                Ok(PaidReactionPrivacy::PaidReactionPrivacyPeer { peer })
-            }
-            PAID_REACTION_PRIVACY_ANONYMOUS_ID => {
-                Ok(PaidReactionPrivacy::PaidReactionPrivacyAnonymous {})
-            }
-            PAID_REACTION_PRIVACY_DEFAULT_ID => {
-                Ok(PaidReactionPrivacy::PaidReactionPrivacyDefault {})
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown PaidReactionPrivacy constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `InputChatTheme` (3 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputChatTheme {
-    /// `inputChatThemeUniqueGift#87e5dfe4`
-    InputChatThemeUniqueGift { slug: String },
-    /// `inputChatTheme#c93de95c`
-    InputChatTheme { emoticon: String },
-    /// `inputChatThemeEmpty#83268483`
-    InputChatThemeEmpty,
-}
-
-impl InputChatTheme {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INPUT_CHAT_THEME_UNIQUE_GIFT_ID => {
-                let slug = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputChatTheme::InputChatThemeUniqueGift { slug })
-            }
-            INPUT_CHAT_THEME_ID => {
-                let emoticon = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputChatTheme::InputChatTheme { emoticon })
-            }
-            INPUT_CHAT_THEME_EMPTY_ID => Ok(InputChatTheme::InputChatThemeEmpty {}),
-            other => Err(Error::Serialization(format!(
-                "unknown InputChatTheme constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// Union `InputQuickReplyShortcut` (2 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputQuickReplyShortcut {
-    /// `inputQuickReplyShortcutId#01190cf1`
-    InputQuickReplyShortcutId { shortcut_id: i32 },
-    /// `inputQuickReplyShortcut#24596d41`
-    InputQuickReplyShortcut { shortcut: String },
-}
-
-impl InputQuickReplyShortcut {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            INPUT_QUICK_REPLY_SHORTCUT_ID_ID => {
-                let shortcut_id = r.read_i32()?;
-                Ok(InputQuickReplyShortcut::InputQuickReplyShortcutId { shortcut_id })
-            }
-            INPUT_QUICK_REPLY_SHORTCUT_ID => {
-                let shortcut = String::from_utf8(r.read_bytes()?)?;
-                Ok(InputQuickReplyShortcut::InputQuickReplyShortcut { shortcut })
-            }
-            other => Err(Error::Serialization(format!(
-                "unknown InputQuickReplyShortcut constructor {other:#x}"
-            ))),
-        }
-    }
-}
-
-/// `inputSingleMedia#1cc6e91f = InputSingleMedia`
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputSingleMedia {
-    pub flags: i32,
-    pub media: InputMedia,
-    pub random_id: i64,
-    pub message: String,
-    pub entities: Option<Vec<MessageEntity>>,
-}
-
-impl InputSingleMedia {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != INPUT_SINGLE_MEDIA_ID {
-            return Err(Error::Serialization(format!(
-                "expected inputSingleMedia, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let media = InputMedia::read_from(r)?;
-        let random_id = r.read_i64()?;
-        let message = String::from_utf8(r.read_bytes()?)?;
-        let entities = if flags & (1 << 0) != 0 {
-            let n = r.read_vector_header()?;
-            let mut entities = Vec::with_capacity(n.max(0) as usize);
-            for _ in 0..n {
-                entities.push(MessageEntity::read_from(r)?);
-            }
-            Some(entities)
-        } else {
-            None
-        };
-        Ok(InputSingleMedia {
-            flags,
-            media,
-            random_id,
-            message,
-            entities,
-        })
-    }
-}
-
 /// `suggestedPost#0e8e37e5 = SuggestedPost`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuggestedPost {
@@ -1733,462 +1629,6 @@ impl SuggestedPost {
             price,
             schedule_date,
         })
-    }
-}
-
-/// `birthday#6c8e1e06 = Birthday`
-#[derive(Debug, Clone, PartialEq)]
-pub struct Birthday {
-    pub flags: i32,
-    pub day: i32,
-    pub month: i32,
-    pub year: Option<i32>,
-}
-
-impl Birthday {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != BIRTHDAY_ID {
-            return Err(Error::Serialization(format!(
-                "expected birthday, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let day = r.read_i32()?;
-        let month = r.read_i32()?;
-        let year = if flags & (1 << 0) != 0 {
-            let year = r.read_i32()?;
-            Some(year)
-        } else {
-            None
-        };
-        Ok(Birthday {
-            flags,
-            day,
-            month,
-            year,
-        })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(BIRTHDAY_ID);
-        let flags: i32 = if self.year.is_some() { 1 << 0 } else { 0 };
-        w.write_i32(flags);
-        w.write_i32(self.day);
-        w.write_i32(self.month);
-        if let Some(year) = self.year {
-            w.write_i32(year);
-        }
-    }
-}
-
-/// `inputBusinessBotRecipients#c4e5921e = InputBusinessBotRecipients`
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputBusinessBotRecipients {
-    pub flags: i32,
-    pub existing_chats: bool,
-    pub new_chats: bool,
-    pub contacts: bool,
-    pub non_contacts: bool,
-    pub exclude_selected: bool,
-    pub users: Option<Vec<InputUser>>,
-    pub exclude_users: Option<Vec<InputUser>>,
-}
-
-impl InputBusinessBotRecipients {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != INPUT_BUSINESS_BOT_RECIPIENTS_ID {
-            return Err(Error::Serialization(format!(
-                "expected inputBusinessBotRecipients, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let existing_chats = flags & (1 << 0) != 0;
-        let new_chats = flags & (1 << 1) != 0;
-        let contacts = flags & (1 << 2) != 0;
-        let non_contacts = flags & (1 << 3) != 0;
-        let exclude_selected = flags & (1 << 5) != 0;
-        let users = if flags & (1 << 4) != 0 {
-            let n = r.read_vector_header()?;
-            let mut users = Vec::with_capacity(n.max(0) as usize);
-            for _ in 0..n {
-                users.push(InputUser::read_from(r)?);
-            }
-            Some(users)
-        } else {
-            None
-        };
-        let exclude_users = if flags & (1 << 6) != 0 {
-            let n = r.read_vector_header()?;
-            let mut exclude_users = Vec::with_capacity(n.max(0) as usize);
-            for _ in 0..n {
-                exclude_users.push(InputUser::read_from(r)?);
-            }
-            Some(exclude_users)
-        } else {
-            None
-        };
-        Ok(InputBusinessBotRecipients {
-            flags,
-            existing_chats,
-            new_chats,
-            contacts,
-            non_contacts,
-            exclude_selected,
-            users,
-            exclude_users,
-        })
-    }
-}
-
-/// `businessBotRights#a0624cf7 = BusinessBotRights`
-#[derive(Debug, Clone, PartialEq)]
-pub struct BusinessBotRights {
-    pub flags: i32,
-    pub reply: bool,
-    pub read_messages: bool,
-    pub delete_sent_messages: bool,
-    pub delete_received_messages: bool,
-    pub edit_name: bool,
-    pub edit_bio: bool,
-    pub edit_profile_photo: bool,
-    pub edit_username: bool,
-    pub view_gifts: bool,
-    pub sell_gifts: bool,
-    pub change_gift_settings: bool,
-    pub transfer_and_upgrade_gifts: bool,
-    pub transfer_stars: bool,
-    pub manage_stories: bool,
-}
-
-impl BusinessBotRights {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != BUSINESS_BOT_RIGHTS_ID {
-            return Err(Error::Serialization(format!(
-                "expected businessBotRights, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let reply = flags & (1 << 0) != 0;
-        let read_messages = flags & (1 << 1) != 0;
-        let delete_sent_messages = flags & (1 << 2) != 0;
-        let delete_received_messages = flags & (1 << 3) != 0;
-        let edit_name = flags & (1 << 4) != 0;
-        let edit_bio = flags & (1 << 5) != 0;
-        let edit_profile_photo = flags & (1 << 6) != 0;
-        let edit_username = flags & (1 << 7) != 0;
-        let view_gifts = flags & (1 << 8) != 0;
-        let sell_gifts = flags & (1 << 9) != 0;
-        let change_gift_settings = flags & (1 << 10) != 0;
-        let transfer_and_upgrade_gifts = flags & (1 << 11) != 0;
-        let transfer_stars = flags & (1 << 12) != 0;
-        let manage_stories = flags & (1 << 13) != 0;
-        Ok(BusinessBotRights {
-            flags,
-            reply,
-            read_messages,
-            delete_sent_messages,
-            delete_received_messages,
-            edit_name,
-            edit_bio,
-            edit_profile_photo,
-            edit_username,
-            view_gifts,
-            sell_gifts,
-            change_gift_settings,
-            transfer_and_upgrade_gifts,
-            transfer_stars,
-            manage_stories,
-        })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(BUSINESS_BOT_RIGHTS_ID);
-        let flags: i32 = if self.reply { 1 << 0 } else { 0 }
-            | if self.read_messages { 1 << 1 } else { 0 }
-            | if self.delete_sent_messages { 1 << 2 } else { 0 }
-            | if self.delete_received_messages {
-                1 << 3
-            } else {
-                0
-            }
-            | if self.edit_name { 1 << 4 } else { 0 }
-            | if self.edit_bio { 1 << 5 } else { 0 }
-            | if self.edit_profile_photo { 1 << 6 } else { 0 }
-            | if self.edit_username { 1 << 7 } else { 0 }
-            | if self.view_gifts { 1 << 8 } else { 0 }
-            | if self.sell_gifts { 1 << 9 } else { 0 }
-            | if self.change_gift_settings {
-                1 << 10
-            } else {
-                0
-            }
-            | if self.transfer_and_upgrade_gifts {
-                1 << 11
-            } else {
-                0
-            }
-            | if self.transfer_stars { 1 << 12 } else { 0 }
-            | if self.manage_stories { 1 << 13 } else { 0 };
-        w.write_i32(flags);
-    }
-}
-
-/// `ephemeralMessage#dd27bee9 = EphemeralMessage`
-#[derive(Debug, Clone, PartialEq)]
-pub struct EphemeralMessage {
-    pub flags: i32,
-    pub out: bool,
-    pub welcome_template: bool,
-    pub invert_media: bool,
-    pub noforwards: bool,
-    pub id: i32,
-    pub from_id: Peer,
-    pub peer_id: Option<Peer>,
-    pub receiver_id: i64,
-    pub top_msg_id: Option<i32>,
-    pub date: i32,
-    pub message: String,
-    pub entities: Option<Vec<MessageEntity>>,
-    pub media: Option<MessageMedia>,
-    pub reply_markup: Option<ReplyMarkup>,
-    pub reply_to: Option<MessageReplyHeader>,
-    pub rich_message: Option<RichMessage>,
-    pub chat_instance: Option<i64>,
-    pub anchor_msg_id: Option<i32>,
-}
-
-impl EphemeralMessage {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != EPHEMERAL_MESSAGE_ID {
-            return Err(Error::Serialization(format!(
-                "expected ephemeralMessage, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let out = flags & (1 << 0) != 0;
-        let welcome_template = flags & (1 << 5) != 0;
-        let invert_media = flags & (1 << 7) != 0;
-        let noforwards = flags & (1 << 12) != 0;
-        let id = r.read_i32()?;
-        let from_id = Peer::read_from(r)?;
-        let peer_id = if flags & (1 << 9) != 0 {
-            let peer_id = Peer::read_from(r)?;
-            Some(peer_id)
-        } else {
-            None
-        };
-        let receiver_id = r.read_i64()?;
-        let top_msg_id = if flags & (1 << 1) != 0 {
-            let top_msg_id = r.read_i32()?;
-            Some(top_msg_id)
-        } else {
-            None
-        };
-        let date = r.read_i32()?;
-        let message = String::from_utf8(r.read_bytes()?)?;
-        let entities = if flags & (1 << 2) != 0 {
-            let n = r.read_vector_header()?;
-            let mut entities = Vec::with_capacity(n.max(0) as usize);
-            for _ in 0..n {
-                entities.push(MessageEntity::read_from(r)?);
-            }
-            Some(entities)
-        } else {
-            None
-        };
-        let media = if flags & (1 << 3) != 0 {
-            let media = MessageMedia::read_from(r)?;
-            Some(media)
-        } else {
-            None
-        };
-        let reply_markup = if flags & (1 << 4) != 0 {
-            let reply_markup = ReplyMarkup::read_from(r)?;
-            Some(reply_markup)
-        } else {
-            None
-        };
-        let reply_to = if flags & (1 << 6) != 0 {
-            let reply_to = MessageReplyHeader::read_from(r)?;
-            Some(reply_to)
-        } else {
-            None
-        };
-        let rich_message = if flags & (1 << 8) != 0 {
-            let rich_message = RichMessage::read_from(r)?;
-            Some(rich_message)
-        } else {
-            None
-        };
-        let chat_instance = if flags & (1 << 10) != 0 {
-            let chat_instance = r.read_i64()?;
-            Some(chat_instance)
-        } else {
-            None
-        };
-        let anchor_msg_id = if flags & (1 << 11) != 0 {
-            let anchor_msg_id = r.read_i32()?;
-            Some(anchor_msg_id)
-        } else {
-            None
-        };
-        Ok(EphemeralMessage {
-            flags,
-            out,
-            welcome_template,
-            invert_media,
-            noforwards,
-            id,
-            from_id,
-            peer_id,
-            receiver_id,
-            top_msg_id,
-            date,
-            message,
-            entities,
-            media,
-            reply_markup,
-            reply_to,
-            rich_message,
-            chat_instance,
-            anchor_msg_id,
-        })
-    }
-}
-
-/// `richMessage#baf39d8b = RichMessage`
-#[derive(Debug, Clone, PartialEq)]
-pub struct RichMessage {
-    pub flags: i32,
-    pub rtl: bool,
-    pub part: bool,
-    pub blocks: Vec<PageBlock>,
-    pub photos: Vec<Photo>,
-    pub documents: Vec<Document>,
-}
-
-impl RichMessage {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != RICH_MESSAGE_ID {
-            return Err(Error::Serialization(format!(
-                "expected richMessage, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let rtl = flags & (1 << 0) != 0;
-        let part = flags & (1 << 1) != 0;
-        let n = r.read_vector_header()?;
-        let mut blocks = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            blocks.push(PageBlock::read_from(r)?);
-        }
-        let n = r.read_vector_header()?;
-        let mut photos = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            photos.push(Photo::read_from(r)?);
-        }
-        let n = r.read_vector_header()?;
-        let mut documents = Vec::with_capacity(n.max(0) as usize);
-        for _ in 0..n {
-            documents.push(Document::read_from(r)?);
-        }
-        Ok(RichMessage {
-            flags,
-            rtl,
-            part,
-            blocks,
-            photos,
-            documents,
-        })
-    }
-}
-
-/// `webDomainException#933ca597 = WebDomainException`
-#[derive(Debug, Clone, PartialEq)]
-pub struct WebDomainException {
-    pub flags: i32,
-    pub domain: String,
-    pub url: String,
-    pub title: String,
-    pub favicon: Option<i64>,
-}
-
-impl WebDomainException {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        if ctor != WEB_DOMAIN_EXCEPTION_ID {
-            return Err(Error::Serialization(format!(
-                "expected webDomainException, got {ctor:#x}"
-            )));
-        }
-        let flags = r.read_i32()?;
-        let domain = String::from_utf8(r.read_bytes()?)?;
-        let url = String::from_utf8(r.read_bytes()?)?;
-        let title = String::from_utf8(r.read_bytes()?)?;
-        let favicon = if flags & (1 << 0) != 0 {
-            let favicon = r.read_i64()?;
-            Some(favicon)
-        } else {
-            None
-        };
-        Ok(WebDomainException {
-            flags,
-            domain,
-            url,
-            title,
-            favicon,
-        })
-    }
-
-    /// Serialize in schema field order (flags auto-computed).
-    pub fn write_to(&self, w: &mut crate::serialize::TLWriter) {
-        w.write_u32(WEB_DOMAIN_EXCEPTION_ID);
-        let flags: i32 = if self.favicon.is_some() { 1 << 0 } else { 0 };
-        w.write_i32(flags);
-        w.write_bytes(self.domain.as_bytes());
-        w.write_bytes(self.url.as_bytes());
-        w.write_bytes(self.title.as_bytes());
-        if let Some(favicon) = self.favicon {
-            w.write_i64(favicon);
-        }
-    }
-}
-
-/// Union `JoinChatBotResult` (4 constructors).
-#[derive(Debug, Clone, PartialEq)]
-pub enum JoinChatBotResult {
-    /// `joinChatBotResultWebView#d6e3b813`
-    JoinChatBotResultWebView { url: String },
-    /// `joinChatBotResultQueued#98a3a840`
-    JoinChatBotResultQueued,
-    /// `joinChatBotResultDeclined#0efa0194`
-    JoinChatBotResultDeclined,
-    /// `joinChatBotResultApproved#ae152a69`
-    JoinChatBotResultApproved,
-}
-
-impl JoinChatBotResult {
-    pub fn read_from(r: &mut TLReader) -> Result<Self> {
-        let ctor = r.read_u32()?;
-        match ctor {
-            JOIN_CHAT_BOT_RESULT_WEB_VIEW_ID => {
-                let url = String::from_utf8(r.read_bytes()?)?;
-                Ok(JoinChatBotResult::JoinChatBotResultWebView { url })
-            }
-            JOIN_CHAT_BOT_RESULT_QUEUED_ID => Ok(JoinChatBotResult::JoinChatBotResultQueued {}),
-            JOIN_CHAT_BOT_RESULT_DECLINED_ID => Ok(JoinChatBotResult::JoinChatBotResultDeclined {}),
-            JOIN_CHAT_BOT_RESULT_APPROVED_ID => Ok(JoinChatBotResult::JoinChatBotResultApproved {}),
-            other => Err(Error::Serialization(format!(
-                "unknown JoinChatBotResult constructor {other:#x}"
-            ))),
-        }
     }
 }
 
@@ -3471,11 +2911,9 @@ impl QuickReply {
     }
 }
 
-/// Union `DialogPeer` (3 constructors).
+/// Union `DialogPeer` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DialogPeer {
-    /// `dialogPeerCommunity#2f65c8e4`
-    DialogPeerCommunity { community_id: i64 },
     /// `dialogPeerFolder#514519e2`
     DialogPeerFolder { folder_id: i32 },
     /// `dialogPeer#e56dbf05`
@@ -3486,10 +2924,6 @@ impl DialogPeer {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            DIALOG_PEER_COMMUNITY_ID => {
-                let community_id = r.read_i64()?;
-                Ok(DialogPeer::DialogPeerCommunity { community_id })
-            }
             DIALOG_PEER_FOLDER_ID => {
                 let folder_id = r.read_i32()?;
                 Ok(DialogPeer::DialogPeerFolder { folder_id })
@@ -4397,32 +3831,11 @@ impl GroupCallParticipantVideoSourceGroup {
     }
 }
 
-/// Union `SendMessageAction` (22 constructors).
+/// Union `SendMessageAction` (19 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SendMessageAction {
-    /// `sendMessageStopDraftAction#fbf902b0`
-    SendMessageStopDraftAction { random_id: i64 },
-    /// `sendMessageRichMessageDraftAction#52564893`
-    SendMessageRichMessageDraftAction {
-        flags: i32,
-        can_stop: bool,
-        keep_on_stop: bool,
-        random_id: i64,
-        rich_message: RichMessage,
-    },
-    /// `inputSendMessageRichMessageDraftAction#a937c7be`
-    InputSendMessageRichMessageDraftAction {
-        flags: i32,
-        can_stop: bool,
-        keep_on_stop: bool,
-        random_id: i64,
-        rich_message: InputRichMessage,
-    },
-    /// `sendMessageTextDraftAction#3630b85a`
+    /// `sendMessageTextDraftAction#376d975c`
     SendMessageTextDraftAction {
-        flags: i32,
-        can_stop: bool,
-        keep_on_stop: bool,
         random_id: i64,
         text: TextWithEntities,
     },
@@ -4472,51 +3885,10 @@ impl SendMessageAction {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            SEND_MESSAGE_STOP_DRAFT_ACTION_ID => {
-                let random_id = r.read_i64()?;
-                Ok(SendMessageAction::SendMessageStopDraftAction { random_id })
-            }
-            SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID => {
-                let flags = r.read_i32()?;
-                let can_stop = flags & (1 << 0) != 0;
-                let keep_on_stop = flags & (1 << 1) != 0;
-                let random_id = r.read_i64()?;
-                let rich_message = RichMessage::read_from(r)?;
-                Ok(SendMessageAction::SendMessageRichMessageDraftAction {
-                    flags,
-                    can_stop,
-                    keep_on_stop,
-                    random_id,
-                    rich_message,
-                })
-            }
-            INPUT_SEND_MESSAGE_RICH_MESSAGE_DRAFT_ACTION_ID => {
-                let flags = r.read_i32()?;
-                let can_stop = flags & (1 << 0) != 0;
-                let keep_on_stop = flags & (1 << 1) != 0;
-                let random_id = r.read_i64()?;
-                let rich_message = InputRichMessage::read_from(r)?;
-                Ok(SendMessageAction::InputSendMessageRichMessageDraftAction {
-                    flags,
-                    can_stop,
-                    keep_on_stop,
-                    random_id,
-                    rich_message,
-                })
-            }
             SEND_MESSAGE_TEXT_DRAFT_ACTION_ID => {
-                let flags = r.read_i32()?;
-                let can_stop = flags & (1 << 0) != 0;
-                let keep_on_stop = flags & (1 << 1) != 0;
                 let random_id = r.read_i64()?;
                 let text = TextWithEntities::read_from(r)?;
-                Ok(SendMessageAction::SendMessageTextDraftAction {
-                    flags,
-                    can_stop,
-                    keep_on_stop,
-                    random_id,
-                    text,
-                })
+                Ok(SendMessageAction::SendMessageTextDraftAction { random_id, text })
             }
             SEND_MESSAGE_EMOJI_INTERACTION_SEEN_ID => {
                 let emoticon = String::from_utf8(r.read_bytes()?)?;
@@ -5675,7 +5047,7 @@ impl PostAddress {
 /// Union `DraftMessage` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DraftMessage {
-    /// `draftMessage#60fe3294`
+    /// `draftMessage#96eaa5eb`
     DraftMessage {
         flags: i32,
         no_webpage: bool,
@@ -5687,7 +5059,6 @@ pub enum DraftMessage {
         date: i32,
         effect: Option<i64>,
         suggested_post: Option<SuggestedPost>,
-        rich_message: Option<RichMessage>,
     },
     /// `draftMessageEmpty#1b0c841a`
     DraftMessageEmpty { flags: i32, date: Option<i32> },
@@ -5737,12 +5108,6 @@ impl DraftMessage {
                 } else {
                     None
                 };
-                let rich_message = if flags & (1 << 9) != 0 {
-                    let rich_message = RichMessage::read_from(r)?;
-                    Some(rich_message)
-                } else {
-                    None
-                };
                 Ok(DraftMessage::DraftMessage {
                     flags,
                     no_webpage,
@@ -5754,7 +5119,6 @@ impl DraftMessage {
                     date,
                     effect,
                     suggested_post,
-                    rich_message,
                 })
             }
             DRAFT_MESSAGE_EMPTY_ID => {
@@ -5922,15 +5286,9 @@ impl InputBotInlineResult {
     }
 }
 
-/// Union `InputBotInlineMessage` (9 constructors).
+/// Union `InputBotInlineMessage` (8 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputBotInlineMessage {
-    /// `inputBotInlineMessageRichMessage#b43df56c`
-    InputBotInlineMessageRichMessage {
-        flags: i32,
-        reply_markup: Option<ReplyMarkup>,
-        rich_message: InputRichMessage,
-    },
     /// `inputBotInlineMessageMediaWebPage#bddcc510`
     InputBotInlineMessageMediaWebPage {
         flags: i32,
@@ -6012,21 +5370,6 @@ impl InputBotInlineMessage {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            INPUT_BOT_INLINE_MESSAGE_RICH_MESSAGE_ID => {
-                let flags = r.read_i32()?;
-                let reply_markup = if flags & (1 << 2) != 0 {
-                    let reply_markup = ReplyMarkup::read_from(r)?;
-                    Some(reply_markup)
-                } else {
-                    None
-                };
-                let rich_message = InputRichMessage::read_from(r)?;
-                Ok(InputBotInlineMessage::InputBotInlineMessageRichMessage {
-                    flags,
-                    reply_markup,
-                    rich_message,
-                })
-            }
             INPUT_BOT_INLINE_MESSAGE_MEDIA_WEB_PAGE_ID => {
                 let flags = r.read_i32()?;
                 let invert_media = flags & (1 << 3) != 0;
@@ -6496,11 +5839,9 @@ impl PrivacyKey {
     }
 }
 
-/// Union `NotifyPeer` (6 constructors).
+/// Union `NotifyPeer` (5 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum NotifyPeer {
-    /// `notifyCommunity#be376999`
-    NotifyCommunity { community_id: i64 },
     /// `notifyForumTopic#226e6308`
     NotifyForumTopic { peer: Peer, top_msg_id: i32 },
     /// `notifyBroadcasts#d612e8ef`
@@ -6517,10 +5858,6 @@ impl NotifyPeer {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            NOTIFY_COMMUNITY_ID => {
-                let community_id = r.read_i64()?;
-                Ok(NotifyPeer::NotifyCommunity { community_id })
-            }
             NOTIFY_FORUM_TOPIC_ID => {
                 let peer = Peer::read_from(r)?;
                 let top_msg_id = r.read_i32()?;
@@ -7235,7 +6572,6 @@ pub enum MessageReplyHeader {
         reply_to_scheduled: bool,
         forum_topic: bool,
         quote: bool,
-        reply_to_ephemeral: bool,
         reply_to_msg_id: Option<i32>,
         reply_to_peer_id: Option<Peer>,
         reply_from: Option<MessageFwdHeader>,
@@ -7258,12 +6594,11 @@ impl MessageReplyHeader {
                 let story_id = r.read_i32()?;
                 Ok(MessageReplyHeader::MessageReplyStoryHeader { peer, story_id })
             }
-            0x6917560b | MESSAGE_REPLY_HEADER_ID => {
+            MESSAGE_REPLY_HEADER_ID => {
                 let flags = r.read_i32()?;
                 let reply_to_scheduled = flags & (1 << 2) != 0;
                 let forum_topic = flags & (1 << 3) != 0;
                 let quote = flags & (1 << 9) != 0;
-                let reply_to_ephemeral = flags & (1 << 13) != 0;
                 let reply_to_msg_id = if flags & (1 << 4) != 0 {
                     let reply_to_msg_id = r.read_i32()?;
                     Some(reply_to_msg_id)
@@ -7333,7 +6668,6 @@ impl MessageReplyHeader {
                     reply_to_scheduled,
                     forum_topic,
                     quote,
-                    reply_to_ephemeral,
                     reply_to_msg_id,
                     reply_to_peer_id,
                     reply_from,
@@ -7983,7 +7317,7 @@ impl MessageMedia {
                     game_outcome,
                 })
             }
-            0x4bd6e798 | MESSAGE_MEDIA_POLL_ID => {
+            MESSAGE_MEDIA_POLL_ID => {
                 let flags = r.read_i32()?;
                 let poll = Box::new(Poll::read_from(r)?);
                 let results = Box::new(PollResults::read_from(r)?);
@@ -8213,16 +7547,9 @@ impl MessageMedia {
     }
 }
 
-/// Union `MessageAction` (69 constructors).
+/// Union `MessageAction` (67 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageAction {
-    /// `messageActionChatJoinedViaCommunity#4a8bfe80`
-    ChatJoinedViaCommunity { community_id: i64 },
-    /// `messageActionChangeCommunity#5d20bae8`
-    ChangeCommunity {
-        flags: i32,
-        community_id: Option<i64>,
-    },
     /// `messageActionManagedBotCreated#16605e3e`
     ManagedBotCreated { bot_id: i64 },
     /// `messageActionPollDeleteAnswer#399674dc`
@@ -8307,7 +7634,7 @@ pub enum MessageAction {
     },
     /// `messageActionPaidMessagesRefunded#ac1f1fcd`
     PaidMessagesRefunded { count: i32, stars: i64 },
-    /// `messageActionStarGiftUnique#7e1c1187`
+    /// `messageActionStarGiftUnique#e6c31522`
     StarGiftUnique {
         flags: i32,
         upgrade: bool,
@@ -8318,7 +7645,6 @@ pub enum MessageAction {
         assigned: bool,
         from_offer: bool,
         craft: bool,
-        name_hidden: bool,
         gift: StarGift,
         can_export_at: Option<i32>,
         transfer_stars: Option<i64>,
@@ -8330,7 +7656,6 @@ pub enum MessageAction {
         can_resell_at: Option<i32>,
         drop_original_details_stars: Option<i64>,
         can_craft_at: Option<i32>,
-        message: Option<TextWithEntities>,
     },
     /// `messageActionStarGift#ea2c31d3`
     StarGift {
@@ -8576,23 +7901,6 @@ impl MessageAction {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            MESSAGE_ACTION_CHAT_JOINED_VIA_COMMUNITY_ID => {
-                let community_id = r.read_i64()?;
-                Ok(MessageAction::ChatJoinedViaCommunity { community_id })
-            }
-            MESSAGE_ACTION_CHANGE_COMMUNITY_ID => {
-                let flags = r.read_i32()?;
-                let community_id = if flags & (1 << 0) != 0 {
-                    let community_id = r.read_i64()?;
-                    Some(community_id)
-                } else {
-                    None
-                };
-                Ok(MessageAction::ChangeCommunity {
-                    flags,
-                    community_id,
-                })
-            }
             MESSAGE_ACTION_MANAGED_BOT_CREATED_ID => {
                 let bot_id = r.read_i64()?;
                 Ok(MessageAction::ManagedBotCreated { bot_id })
@@ -8810,7 +8118,6 @@ impl MessageAction {
                 let assigned = flags & (1 << 13) != 0;
                 let from_offer = flags & (1 << 14) != 0;
                 let craft = flags & (1 << 16) != 0;
-                let name_hidden = flags & (1 << 17) != 0;
                 let gift = StarGift::read_from(r)?;
                 let can_export_at = if flags & (1 << 3) != 0 {
                     let can_export_at = r.read_i32()?;
@@ -8872,12 +8179,6 @@ impl MessageAction {
                 } else {
                     None
                 };
-                let message = if flags & (1 << 18) != 0 {
-                    let message = TextWithEntities::read_from(r)?;
-                    Some(message)
-                } else {
-                    None
-                };
                 Ok(MessageAction::StarGiftUnique {
                     flags,
                     upgrade,
@@ -8888,7 +8189,6 @@ impl MessageAction {
                     assigned,
                     from_offer,
                     craft,
-                    name_hidden,
                     gift,
                     can_export_at,
                     transfer_stars,
@@ -8900,7 +8200,6 @@ impl MessageAction {
                     can_resell_at,
                     drop_original_details_stars,
                     can_craft_at,
-                    message,
                 })
             }
             MESSAGE_ACTION_STAR_GIFT_ID => {
@@ -10273,7 +9572,7 @@ pub enum Message {
         reactions: Option<MessageReactions>,
         ttl_period: Option<i32>,
     },
-    /// `message#7600b9d3`
+    /// `message#95ef6f2b`
     Message {
         flags: i32,
         out: bool,
@@ -10325,7 +9624,6 @@ pub enum Message {
         suggested_post: Option<SuggestedPost>,
         schedule_repeat_period: Option<i32>,
         summary_from_language: Option<String>,
-        rich_message: Option<RichMessage>,
     },
     /// `messageEmpty#90a6ca84`
     Empty {
@@ -10402,7 +9700,7 @@ impl Message {
                     ttl_period,
                 })
             }
-            0x95ef6f2b | MESSAGE_ID => {
+            MESSAGE_ID => {
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
                 let out = flags & (1 << 1) != 0;
@@ -10606,12 +9904,6 @@ impl Message {
                 } else {
                     None
                 };
-                let rich_message = if flags2 & (1 << 13) != 0 {
-                    let rich_message = RichMessage::read_from(r)?;
-                    Some(rich_message)
-                } else {
-                    None
-                };
                 Ok(Message::Message {
                     flags,
                     out,
@@ -10663,7 +9955,6 @@ impl Message {
                     suggested_post,
                     schedule_repeat_period,
                     summary_from_language,
-                    rich_message,
                 })
             }
             MESSAGE_EMPTY_ID => {

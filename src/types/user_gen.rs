@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -27,7 +27,7 @@ pub const USER_STATUS_RECENTLY_ID: u32 = 0x7b197dc8;
 pub const USER_STATUS_OFFLINE_ID: u32 = 0x008c703f;
 pub const USER_STATUS_ONLINE_ID: u32 = 0xedb93949;
 pub const USER_STATUS_EMPTY_ID: u32 = 0x09d05049;
-pub const USER_ID: u32 = 0xb1b8cc83;
+pub const USER_ID: u32 = 0x31774388;
 pub const INPUT_PEER_COLOR_COLLECTIBLE_ID: u32 = 0xb8ea86a9;
 pub const PEER_COLOR_COLLECTIBLE_ID: u32 = 0xb9c0639a;
 pub const PEER_COLOR_ID: u32 = 0xb54b5acf;
@@ -144,7 +144,7 @@ impl UserStatus {
 /// Union `User` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum User {
-    /// `user#b1b8cc83`
+    /// `user#31774388`
     User {
         flags: i32,
         self_: bool,
@@ -177,7 +177,6 @@ pub enum User {
         bot_forum_can_manage_topics: bool,
         bot_can_manage_bots: bool,
         bot_guestchat: bool,
-        bot_guard: bool,
         id: UserId,
         access_hash: Option<AccessHash>,
         first_name: Option<String>,
@@ -198,7 +197,6 @@ pub enum User {
         bot_active_users: Option<i32>,
         bot_verification_icon: Option<i64>,
         send_paid_messages_stars: Option<i64>,
-        linked_community_id: Option<i64>,
     },
     /// `userEmpty#d3bc4b7a`
     Empty { id: UserId },
@@ -208,7 +206,7 @@ impl User {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            0x31774388 | USER_ID => {
+            USER_ID => {
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
                 let self_ = flags & (1 << 10) != 0;
@@ -240,7 +238,6 @@ impl User {
                 let bot_forum_can_manage_topics = flags2 & (1 << 17) != 0;
                 let bot_can_manage_bots = flags2 & (1 << 18) != 0;
                 let bot_guestchat = flags2 & (1 << 19) != 0;
-                let bot_guard = flags2 & (1 << 20) != 0;
                 let id = r.read_i64()?;
                 let access_hash = if flags & (1 << 0) != 0 {
                     let access_hash = r.read_i64()?;
@@ -364,12 +361,6 @@ impl User {
                 } else {
                     None
                 };
-                let linked_community_id = if flags2 & (1 << 21) != 0 {
-                    let linked_community_id = r.read_i64()?;
-                    Some(linked_community_id)
-                } else {
-                    None
-                };
                 let id = UserId(id);
                 Ok(User::User {
                     flags,
@@ -403,7 +394,6 @@ impl User {
                     bot_forum_can_manage_topics,
                     bot_can_manage_bots,
                     bot_guestchat,
-                    bot_guard,
                     id,
                     access_hash,
                     first_name,
@@ -424,7 +414,6 @@ impl User {
                     bot_active_users,
                     bot_verification_icon,
                     send_paid_messages_stars,
-                    linked_community_id,
                 })
             }
             USER_EMPTY_ID => {

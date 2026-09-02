@@ -27,14 +27,14 @@ use tokio::io::AsyncWriteExt;
 
 /// API layer version.
 ///
-/// docs-layer branch: negotiate the PUBLISHED layer 223 (the number
-/// core.telegram.org/schema currently documents).
-///
-/// NOTE: the curated parsers in this branch still carry several
-/// 225/229-dialect field shapes (dialog `unread_poll_votes_count`,
-/// 229 inline-button structure, ...) — wire-verify and reconcile
-/// those before relying on docs-layer for production traffic.
-pub const API_LAYER: i32 = 223;
+/// Negotiate the PUBLISHED layer 225. Parsers are generated from
+/// `tools/schema_l225.tl` (the true 225 dialect: the published 223
+/// schema plus the layer 224/225 changelog dumps); `CTOR_ALIASES` in
+/// `tools/gentl.py` widens acceptance to 223-era and tdlib-draft ids
+/// for the re-issued constructors, since production DCs have been
+/// observed answering ahead of the published line (e.g.
+/// `channel#d49f34c6`).
+pub const API_LAYER: i32 = 225;
 
 // ---------------------------------------------------------------------------
 // API Client

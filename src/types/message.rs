@@ -11,7 +11,7 @@ use super::constructors::{
     MESSAGE_MEDIA_GEO, MESSAGE_MEDIA_GEO_LIVE, MESSAGE_MEDIA_GIVEAWAY,
     MESSAGE_MEDIA_GIVEAWAY_RESULTS, MESSAGE_MEDIA_INVOICE, MESSAGE_MEDIA_PAID_MEDIA,
     MESSAGE_MEDIA_PHOTO, MESSAGE_MEDIA_POLL, MESSAGE_MEDIA_STORY, MESSAGE_MEDIA_VENUE,
-    MESSAGE_MEDIA_WEB_PAGE, MESSAGE_REPLY_HEADER, MESSAGE_REPLY_HEADER_V225,
+    MESSAGE_MEDIA_WEB_PAGE, MESSAGE_REPLY_HEADER, MESSAGE_REPLY_HEADER_V223,
     MESSAGE_REPLY_STORY_HEADER, MESSAGE_SERVICE,
 };
 use super::{
@@ -386,7 +386,7 @@ impl ReplyHeader {
                 "story reply (messageReplyStoryHeader) not supported".into(),
             ));
         }
-        if ctor != MESSAGE_REPLY_HEADER && ctor != MESSAGE_REPLY_HEADER_V225 {
+        if ctor != MESSAGE_REPLY_HEADER && ctor != MESSAGE_REPLY_HEADER_V223 {
             return Err(Error::Serialization(format!(
                 "unknown MessageReplyHeader constructor {ctor:#x}"
             )));

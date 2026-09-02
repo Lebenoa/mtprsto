@@ -103,17 +103,19 @@ mod type_tests {
 
     #[test]
     fn test_keyboard_button_text_roundtrip() {
-        // keyboardButton#2f67a72f flags:# style:flags.10?KeyboardButtonStyle
-        //   text:string type:ButtonType
+        // keyboardButton#7d170cff flags:# style:flags.10?KeyboardButtonStyle
+        //   text:string
         let mut w = TLWriter::new();
         w.write_u32(crate::types::reply_markup_gen::KEYBOARD_BUTTON_ID);
         w.write_i32(0); // flags (no style)
         w.write_bytes(b"Click me");
-        w.write_u32(0xc9dd90e9); // buttonTypeDefault#c9dd90e9
         let mut r = TLReader::new(w.as_bytes());
         let btn = crate::types::reply_markup_gen::KeyboardButton::read_from(&mut r).unwrap();
-        assert_eq!(btn.text, "Click me");
-        assert!(btn.style.is_none());
+        let crate::types::reply_markup_gen::KeyboardButton::Text { style, text, .. } = btn else {
+            panic!("expected keyboardButton variant");
+        };
+        assert_eq!(text, "Click me");
+        assert!(style.is_none());
     }
 
     #[test]
@@ -577,24 +579,10 @@ mod type_tests {
 )]
 #[test]
 fn test_constructor_constants_match_generated() {
-    // Layer-223 published ids (from tl.json) for constants whose ctor
-    // was re-issued by layer 229 — the docs-layer dialect values.
-    let layer223: &[(&str, u32)] = &[
-        ("MESSAGE", 0x3AE56482),
-        ("DIALOG", 0xD58A08C6),
-        ("CHANNEL", 0x1C32B11C),
-        ("CHANNEL_FULL", 0xE4E0B29D),
-        ("MESSAGE_MEDIA_PHOTO", 0x695150D7),
-        ("MESSAGE_MEDIA_POLL", 0x4BD6E798),
-        ("MESSAGE_REPLY_HEADER", 0x6917560B),
-        ("REPLY_INLINE_MARKUP", 0x48A30254),
-        ("KEYBOARD_BUTTON", 0x7D170CFF),
-        ("INPUT_REPLY_TO_MESSAGE", 0x869FBE10),
-        ("CONTACTS_SEARCH", 0x11F812D8),
-        ("MESSAGES_SEND_MESSAGE", 0x545CD15A),
-        ("MESSAGES_EDIT_MESSAGE", 0x51E842E1),
-        ("USER", 0x31774388), // user#31774388 (223 era)
-    ];
+    // Curated constants carry the negotiated (published 225) ids, so
+    // each must equal the generated parser's canonical id. Re-issued
+    // 223-era/draft ids are accepted by the parsers through the
+    // CTOR_ALIASES arms in tools/gentl.py instead.
     let ours: Vec<(&str, u32)> = vec![
         ("USER", crate::types::USER),
         ("USER_EMPTY", crate::types::USER_EMPTY),
@@ -635,14 +623,9 @@ fn test_constructor_constants_match_generated() {
     ];
     for (name, val) in ours {
         let gen_val = crate::types::gen_const(name);
-        // The generated parsers are built from the 229 schema; a curated
-        // constant carrying the 223 id must appear in that type's alias
-        // arms (all layer223 entries above are aliased in the generated
-        // code), while unreissued ctors must match the canonical id.
-        let is_223_reissue = layer223.iter().any(|(n, id)| *n == name && *id == val);
         assert!(
-            gen_val.is_some() && (gen_val == Some(val) || is_223_reissue),
-            "constructors::{name} diverges from the published layer-223 schema"
+            gen_val == Some(val),
+            "constructors::{name} diverges from the generated layer-225 schema"
         );
     }
 }

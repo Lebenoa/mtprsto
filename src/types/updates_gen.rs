@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -18,13 +18,12 @@
 use super::chat_gen::{
     BaseTheme, BotCommand, BotMenuButton, Chat, ChatAdminRights, ChatBannedRights, ChatParticipant,
     ChatParticipants, ChatPhoto, DataJSON, DocumentAttribute, ExportedChatInvite, Game,
-    GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall, InputMedia,
-    InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice, MediaArea,
-    MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome, NotificationSound, Page,
-    PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem, PageRelatedArticle,
-    PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer, PollAnswerVoters,
-    PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText, StarGift,
-    StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
+    GeoPointAddress, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper,
+    InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia,
+    MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageCaption, PageListItem,
+    PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll,
+    PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichText,
+    StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
     StarsSubscriptionPricing, StickerSet, StoryFwdHeader, StoryItem, StoryViews, ThemeSettings,
     TodoCompletion, TodoItem, TodoList, VideoSize, WallPaper, WallPaperSettings, WebPage,
     WebPageAttribute,
@@ -36,25 +35,23 @@ use super::input_gen::{
 use super::message_gen::{
     AccountPasswordInputSettings, AuctionBidLevel, AuthAuthorization, AuthCodeType, AuthSentCode,
     AuthSentCodeType, Birthday, Boost, BotApp, BotBusinessConnection, BusinessBotRights,
-    ButtonType, ChannelParticipant, ChatTheme, CodeSettings, DcOption, DialogFilter, DialogPeer,
-    DraftMessage, EmailVerification, EncryptedChat, EncryptedFile, EncryptedMessage,
-    EphemeralMessage, FactCheck, FolderPeer, GroupCall, GroupCallMessage, GroupCallParticipant,
-    GroupCallParticipantVideo, GroupCallParticipantVideoSourceGroup, HelpTermsOfService,
+    ChannelParticipant, ChatTheme, CodeSettings, DcOption, DialogFilter, DialogPeer, DraftMessage,
+    EmailVerification, EncryptedChat, EncryptedFile, EncryptedMessage, FactCheck, FolderPeer,
+    GroupCall, GroupCallMessage, GroupCallParticipant, GroupCallParticipantVideo,
+    GroupCallParticipantVideoSourceGroup, HelpTermsOfService, InlineQueryPeerType,
     InputBotInlineMessage, InputBotInlineMessageID, InputBotInlineResult, InputCheckPasswordSRP,
     InputEncryptedChat, InputEncryptedFile, InputPasskeyCredential, InputPasskeyResponse,
-    InputReplyTo, InputRichFile, InputRichMessage, InputSecureFile, InputSecureValue, InputTheme,
-    InputThemeSettings, JoinChatBotResult, KeyboardButtonRow, KeyboardButtonStyle,
-    KeyboardInlineButton, KeyboardInlineButtonRow, LangPackDifference, LangPackString, Message,
+    InputReplyTo, InputSecureFile, InputSecureValue, InputTheme, InputThemeSettings,
+    KeyboardButtonRow, KeyboardButtonStyle, LangPackDifference, LangPackString, Message,
     MessageAction, MessageEntity, MessageFwdHeader, MessageMedia, MessagePeerReaction,
     MessageReactions, MessageReactor, MessageReplies, MessageReplyHeader, MessagesEmojiGameInfo,
     MessagesStickerSet, NotifyPeer, PaidReactionPrivacy, PasswordKdfAlgo, PaymentCharge,
     PaymentRequestedInfo, PeerLocated, PeerSettings, PhoneCall, PhoneCallDiscardReason,
     PhoneCallProtocol, PhoneConnection, PostAddress, PrivacyKey, QuickReply, RequestPeerType,
-    RequestedPeer, RichMessage, SecureCredentialsEncrypted, SecureData, SecureFile,
-    SecurePasswordKdfAlgo, SecurePlainData, SecureSecretSettings, SecureValue, SecureValueType,
-    SendMessageAction, StarGiftAuctionRound, StarGiftAuctionState, StarGiftAuctionUserState,
-    StarsRevenueStatus, StickerKeyword, StickerPack, StoriesStealthMode, SuggestedPost, Theme,
-    WebDomainException,
+    RequestedPeer, SecureCredentialsEncrypted, SecureData, SecureFile, SecurePasswordKdfAlgo,
+    SecurePlainData, SecureSecretSettings, SecureValue, SecureValueType, SendMessageAction,
+    StarGiftAuctionRound, StarGiftAuctionState, StarGiftAuctionUserState, StarsRevenueStatus,
+    StickerKeyword, StickerPack, StoriesStealthMode, SuggestedPost, Theme,
 };
 use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
@@ -67,15 +64,6 @@ use crate::error::{Error, Result};
 use crate::serialize::TLReader;
 use crate::types::{AccessHash, ChannelId, ChatId, DocumentId, MsgId, PhotoId, UserId};
 
-pub const UPDATE_BOT_STARS_SUBSCRIPTION_ID: u32 = 0x6c0d8e23;
-pub const UPDATE_EPHEMERAL_BOT_CALLBACK_QUERY_ID: u32 = 0x7c1079d6;
-pub const UPDATE_EDIT_EPHEMERAL_MESSAGE_ID: u32 = 0x4bbb8f01;
-pub const UPDATE_DELETE_EPHEMERAL_MESSAGES_ID: u32 = 0x56dbfcf8;
-pub const UPDATE_NEW_EPHEMERAL_MESSAGE_ID: u32 = 0x20bcbba1;
-pub const UPDATE_WEB_BROWSER_EXCEPTION_ID: u32 = 0x140502d1;
-pub const UPDATE_WEB_BROWSER_SETTINGS_ID: u32 = 0xc39a2ade;
-pub const UPDATE_NEW_BOT_CONNECTION_ID: u32 = 0xb22083a6;
-pub const UPDATE_JOIN_CHAT_WEB_VIEW_DECISION_ID: u32 = 0xbdac7e70;
 pub const UPDATE_AI_COMPOSE_TONES_ID: u32 = 0x8c0f91fb;
 pub const UPDATE_BOT_GUEST_CHAT_QUERY_ID: u32 = 0xcdd4093d;
 pub const UPDATE_MANAGED_BOT_ID: u32 = 0x4880ed9a;
@@ -137,7 +125,7 @@ pub const UPDATE_BOT_MENU_BUTTON_ID: u32 = 0x14b85813;
 pub const UPDATE_WEB_VIEW_RESULT_SENT_ID: u32 = 0x1592b79d;
 pub const UPDATE_ATTACH_MENU_BOTS_ID: u32 = 0x17b7a20b;
 pub const UPDATE_MESSAGE_REACTIONS_ID: u32 = 0x1e297bfa;
-pub const UPDATE_BOT_CHAT_INVITE_REQUESTER_ID: u32 = 0x7cb34d79;
+pub const UPDATE_BOT_CHAT_INVITE_REQUESTER_ID: u32 = 0x11dfa986;
 pub const UPDATE_PENDING_JOIN_REQUESTS_ID: u32 = 0x7063c3db;
 pub const UPDATE_BOT_COMMANDS_ID: u32 = 0x4d712f2e;
 pub const UPDATE_GROUP_CALL_CONNECTION_ID: u32 = 0x0b783982;
@@ -240,64 +228,9 @@ pub const UPDATE_SHORT_CHAT_MESSAGE_ID: u32 = 0x4d6deea5;
 pub const UPDATE_SHORT_MESSAGE_ID: u32 = 0x313bc7f8;
 pub const UPDATES_TOO_LONG_ID: u32 = 0xe317af7e;
 
-/// Union `Update` (165 constructors).
+/// Union `Update` (156 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Update {
-    /// `updateBotStarsSubscription#6c0d8e23`
-    BotStarsSubscription {
-        flags: i32,
-        canceled: bool,
-        payment_failed: bool,
-        restored: bool,
-        user_id: UserId,
-        payload: Vec<u8>,
-        qts: i32,
-    },
-    /// `updateEphemeralBotCallbackQuery#7c1079d6`
-    EphemeralBotCallbackQuery {
-        flags: i32,
-        query_id: i64,
-        user_id: UserId,
-        peer: Option<Peer>,
-        msg_id: i32,
-        data: Vec<u8>,
-        chat_instance: Option<i64>,
-        message: EphemeralMessage,
-    },
-    /// `updateEditEphemeralMessage#4bbb8f01`
-    EditEphemeralMessage { message: EphemeralMessage },
-    /// `updateDeleteEphemeralMessages#56dbfcf8`
-    DeleteEphemeralMessages { peer: Peer, ids: Vec<i32> },
-    /// `updateNewEphemeralMessage#20bcbba1`
-    NewEphemeralMessage { message: EphemeralMessage },
-    /// `updateWebBrowserException#140502d1`
-    WebBrowserException {
-        flags: i32,
-        delete: bool,
-        open_external_browser: Option<bool>,
-        exception: WebDomainException,
-    },
-    /// `updateWebBrowserSettings#c39a2ade`
-    WebBrowserSettings {
-        flags: i32,
-        open_external_browser: bool,
-        display_close_button: bool,
-    },
-    /// `updateNewBotConnection#b22083a6`
-    NewBotConnection {
-        flags: i32,
-        confirmed: bool,
-        bot_id: i64,
-        date: Option<i32>,
-        device: Option<String>,
-        location: Option<String>,
-    },
-    /// `updateJoinChatWebViewDecision#bdac7e70`
-    JoinChatWebViewDecision {
-        peer: Peer,
-        query_id: i64,
-        result: JoinChatBotResult,
-    },
     /// `updateAiComposeTones#8c0f91fb`
     AiComposeTones,
     /// `updateBotGuestChatQuery#cdd4093d`
@@ -580,16 +513,14 @@ pub enum Update {
         saved_peer_id: Option<Peer>,
         reactions: MessageReactions,
     },
-    /// `updateBotChatInviteRequester#7cb34d79`
+    /// `updateBotChatInviteRequester#11dfa986`
     BotChatInviteRequester {
-        flags: i32,
         peer: Peer,
         date: i32,
         user_id: UserId,
         about: String,
         invite: ExportedChatInvite,
         qts: i32,
-        query_id: Option<i64>,
     },
     /// `updatePendingJoinRequests#7063c3db`
     PendingJoinRequests {
@@ -1121,141 +1052,6 @@ impl Update {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            UPDATE_BOT_STARS_SUBSCRIPTION_ID => {
-                let flags = r.read_i32()?;
-                let canceled = flags & (1 << 0) != 0;
-                let payment_failed = flags & (1 << 1) != 0;
-                let restored = flags & (1 << 2) != 0;
-                let user_id = r.read_i64()?;
-                let payload = r.read_bytes()?;
-                let qts = r.read_i32()?;
-                let user_id = UserId(user_id);
-                Ok(Update::BotStarsSubscription {
-                    flags,
-                    canceled,
-                    payment_failed,
-                    restored,
-                    user_id,
-                    payload,
-                    qts,
-                })
-            }
-            UPDATE_EPHEMERAL_BOT_CALLBACK_QUERY_ID => {
-                let flags = r.read_i32()?;
-                let query_id = r.read_i64()?;
-                let user_id = r.read_i64()?;
-                let peer = if flags & (1 << 0) != 0 {
-                    let peer = Peer::read_from(r)?;
-                    Some(peer)
-                } else {
-                    None
-                };
-                let msg_id = r.read_i32()?;
-                let data = r.read_bytes()?;
-                let chat_instance = if flags & (1 << 1) != 0 {
-                    let chat_instance = r.read_i64()?;
-                    Some(chat_instance)
-                } else {
-                    None
-                };
-                let message = EphemeralMessage::read_from(r)?;
-                let user_id = UserId(user_id);
-                Ok(Update::EphemeralBotCallbackQuery {
-                    flags,
-                    query_id,
-                    user_id,
-                    peer,
-                    msg_id,
-                    data,
-                    chat_instance,
-                    message,
-                })
-            }
-            UPDATE_EDIT_EPHEMERAL_MESSAGE_ID => {
-                let message = EphemeralMessage::read_from(r)?;
-                Ok(Update::EditEphemeralMessage { message })
-            }
-            UPDATE_DELETE_EPHEMERAL_MESSAGES_ID => {
-                let peer = Peer::read_from(r)?;
-                let n = r.read_vector_header()?;
-                let mut ids = Vec::with_capacity(n.max(0) as usize);
-                for _ in 0..n {
-                    ids.push(r.read_i32()?);
-                }
-                Ok(Update::DeleteEphemeralMessages { peer, ids })
-            }
-            UPDATE_NEW_EPHEMERAL_MESSAGE_ID => {
-                let message = EphemeralMessage::read_from(r)?;
-                Ok(Update::NewEphemeralMessage { message })
-            }
-            UPDATE_WEB_BROWSER_EXCEPTION_ID => {
-                let flags = r.read_i32()?;
-                let delete = flags & (1 << 1) != 0;
-                let open_external_browser = if flags & (1 << 0) != 0 {
-                    let open_external_browser = r.read_u32()? == 0x997275b5; // boolTrue
-                    Some(open_external_browser)
-                } else {
-                    None
-                };
-                let exception = WebDomainException::read_from(r)?;
-                Ok(Update::WebBrowserException {
-                    flags,
-                    delete,
-                    open_external_browser,
-                    exception,
-                })
-            }
-            UPDATE_WEB_BROWSER_SETTINGS_ID => {
-                let flags = r.read_i32()?;
-                let open_external_browser = flags & (1 << 0) != 0;
-                let display_close_button = flags & (1 << 1) != 0;
-                Ok(Update::WebBrowserSettings {
-                    flags,
-                    open_external_browser,
-                    display_close_button,
-                })
-            }
-            UPDATE_NEW_BOT_CONNECTION_ID => {
-                let flags = r.read_i32()?;
-                let confirmed = flags & (1 << 0) != 0;
-                let bot_id = r.read_i64()?;
-                let date = if flags & (1 << 1) != 0 {
-                    let date = r.read_i32()?;
-                    Some(date)
-                } else {
-                    None
-                };
-                let device = if flags & (1 << 1) != 0 {
-                    let device = String::from_utf8(r.read_bytes()?)?;
-                    Some(device)
-                } else {
-                    None
-                };
-                let location = if flags & (1 << 1) != 0 {
-                    let location = String::from_utf8(r.read_bytes()?)?;
-                    Some(location)
-                } else {
-                    None
-                };
-                Ok(Update::NewBotConnection {
-                    flags,
-                    confirmed,
-                    bot_id,
-                    date,
-                    device,
-                    location,
-                })
-            }
-            UPDATE_JOIN_CHAT_WEB_VIEW_DECISION_ID => {
-                let peer = Peer::read_from(r)?;
-                let query_id = r.read_i64()?;
-                let result = JoinChatBotResult::read_from(r)?;
-                Ok(Update::JoinChatWebViewDecision {
-                    peer,
-                    query_id,
-                    result,
-                })
-            }
             UPDATE_AI_COMPOSE_TONES_ID => Ok(Update::AiComposeTones {}),
             UPDATE_BOT_GUEST_CHAT_QUERY_ID => {
                 let flags = r.read_i32()?;
@@ -1817,29 +1613,20 @@ impl Update {
                 })
             }
             UPDATE_BOT_CHAT_INVITE_REQUESTER_ID => {
-                let flags = r.read_i32()?;
                 let peer = Peer::read_from(r)?;
                 let date = r.read_i32()?;
                 let user_id = r.read_i64()?;
                 let about = String::from_utf8(r.read_bytes()?)?;
                 let invite = ExportedChatInvite::read_from(r)?;
                 let qts = r.read_i32()?;
-                let query_id = if flags & (1 << 0) != 0 {
-                    let query_id = r.read_i64()?;
-                    Some(query_id)
-                } else {
-                    None
-                };
                 let user_id = UserId(user_id);
                 Ok(Update::BotChatInviteRequester {
-                    flags,
                     peer,
                     date,
                     user_id,
                     about,
                     invite,
                     qts,
-                    query_id,
                 })
             }
             UPDATE_PENDING_JOIN_REQUESTS_ID => {
@@ -2272,7 +2059,7 @@ impl Update {
                     version,
                 })
             }
-            UPDATE_MESSAGE_POLL_ID => {
+            0xaca1657b | UPDATE_MESSAGE_POLL_ID => {
                 let flags = r.read_i32()?;
                 let peer = if flags & (1 << 1) != 0 {
                     let peer = Peer::read_from(r)?;

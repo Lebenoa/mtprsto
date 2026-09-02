@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]
@@ -17,12 +17,11 @@
 
 use super::chat_gen::{
     BaseTheme, Chat, ChatAdminRights, ChatBannedRights, ChatPhoto, DataJSON, DocumentAttribute,
-    Game, GeoPointAddress, InlineButtonType, InlineQueryPeerType, InputGame, InputGroupCall,
-    InputMedia, InputNotifyPeer, InputWallPaper, InputWebDocument, Invoice, LabeledPrice,
-    MediaArea, MediaAreaCoordinates, MessageExtendedMedia, MessagesEmojiGameOutcome,
-    NotificationSound, Page, PageBlock, PageButton, PageCaption, PageListItem, PageListOrderedItem,
-    PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll, PollAnswer,
-    PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichButtonStyle, RichText,
+    Game, GeoPointAddress, InputGame, InputGroupCall, InputMedia, InputNotifyPeer, InputWallPaper,
+    InputWebDocument, Invoice, LabeledPrice, MediaArea, MediaAreaCoordinates, MessageExtendedMedia,
+    MessagesEmojiGameOutcome, NotificationSound, Page, PageBlock, PageCaption, PageListItem,
+    PageListOrderedItem, PageRelatedArticle, PageTableCell, PageTableRow, PeerNotifySettings, Poll,
+    PollAnswer, PollAnswerVoters, PollResults, PrivacyRule, Reaction, ReactionCount, RichText,
     StarGift, StarGiftAttribute, StarGiftAttributeRarity, StarGiftBackground, StarsAmount,
     StoryFwdHeader, StoryItem, StoryViews, ThemeSettings, TodoCompletion, TodoItem, TodoList,
     VideoSize, WallPaper, WallPaperSettings, WebPage, WebPageAttribute,
@@ -31,9 +30,7 @@ use super::input_gen::{
     InputChannel, InputDocument, InputFile, InputGeoPoint, InputPeer, InputPhoto, InputStickerSet,
     InputUser, MaskCoords, TextWithEntities,
 };
-use super::message_gen::{
-    DraftMessage, InputReplyTo, MessageEntity, MessageMedia, RichMessage, SuggestedPost,
-};
+use super::message_gen::{DraftMessage, InputReplyTo, MessageEntity, MessageMedia, SuggestedPost};
 use super::peer_gen::Peer;
 use super::photo_gen::{Document, GeoPoint, Photo, PhotoSize, WebDocument};
 use super::user_gen::{EmojiStatus, PeerColor, RecentStory, RestrictionReason, Username};
@@ -53,7 +50,6 @@ pub const TOP_PEER_CATEGORY_CORRESPONDENTS_ID: u32 = 0x0637b7ed;
 pub const TOP_PEER_CATEGORY_BOTS_INLINE_ID: u32 = 0x148677e2;
 pub const TOP_PEER_CATEGORY_BOTS_PM_ID: u32 = 0xab661b5b;
 pub const TOP_PEER_ID: u32 = 0xedcdc05b;
-pub const DIALOG_COMMUNITY_ID: u32 = 0xf78a0973;
 pub const DIALOG_FOLDER_ID: u32 = 0x71bd134c;
 pub const FOLDER_ID: u32 = 0xff544e65;
 pub const DIALOG_ID: u32 = 0xfc89f7f3;
@@ -164,16 +160,9 @@ impl TopPeer {
     }
 }
 
-/// Union `Dialog` (3 constructors).
+/// Union `Dialog` (2 constructors).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
-    /// `dialogCommunity#f78a0973`
-    DialogCommunity {
-        flags: i32,
-        pinned: bool,
-        community_id: i64,
-        notify_settings: PeerNotifySettings,
-    },
     /// `dialogFolder#71bd134c`
     DialogFolder {
         flags: i32,
@@ -212,18 +201,6 @@ impl Dialog {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            DIALOG_COMMUNITY_ID => {
-                let flags = r.read_i32()?;
-                let pinned = flags & (1 << 2) != 0;
-                let community_id = r.read_i64()?;
-                let notify_settings = PeerNotifySettings::read_from(r)?;
-                Ok(Dialog::DialogCommunity {
-                    flags,
-                    pinned,
-                    community_id,
-                    notify_settings,
-                })
-            }
             DIALOG_FOLDER_ID => {
                 let flags = r.read_i32()?;
                 let pinned = flags & (1 << 2) != 0;
@@ -246,7 +223,7 @@ impl Dialog {
                     unread_unmuted_messages_count,
                 })
             }
-            0xd58a08c6 | DIALOG_ID => {
+            DIALOG_ID => {
                 let flags = r.read_i32()?;
                 let pinned = flags & (1 << 2) != 0;
                 let unread_mark = flags & (1 << 3) != 0;
