@@ -924,9 +924,12 @@ impl Client {
                 let _fu_ctor = r.read_u32()?;
                 Self::skip_user_full(&mut r).map_err(|e| {
                     // A skip mismatch here desyncs every later field, so
-                    // the payload (bounded) is the useful diagnostic.
-                    let head = data.get(..96).unwrap_or(data);
-                    Error::Protocol(format!("{e}; userFull head {}", bytes_to_hex(head)))
+                    // the whole payload is the useful diagnostic.
+                    Error::Protocol(format!(
+                        "{e}; userFull payload ({} bytes) {}",
+                        data.len(),
+                        bytes_to_hex(data)
+                    ))
                 })?;
                 let chat_count = r.read_vector_header()?;
                 for _ in 0..chat_count {
