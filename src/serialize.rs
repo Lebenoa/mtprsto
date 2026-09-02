@@ -516,6 +516,12 @@ pub const MSGS_ALL_INFO: u32 = 0x8cc0d131;
 // msg_resend_req#7d861a08 msg_ids:Vector<long>
 pub const MSGS_RESEND_REQ: u32 = 0x7d861a08;
 
+// msg_detailed_info#276d3ec6 msg_id:long answer_msg_id:long bytes:int status:int
+pub const MSG_DETAILED_INFO: u32 = 0x276d3ec6;
+
+// msg_new_detailed_info#809db6df answer_msg_id:long bytes:int status:int
+pub const MSG_NEW_DETAILED_INFO: u32 = 0x809db6df;
+
 // rpc_result
 pub const RPC_RESULT: u32 = 0xf35c6d01;
 
