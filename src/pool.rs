@@ -560,10 +560,17 @@ impl SenderPool {
                 self.queue_ack(resp_msg_id).await;
                 let body = Self::unwrap_gzip(&plaintext)?;
                 let items = Self::container_items(&body)?;
+                // gzip_packed also wraps INDIVIDUAL items inside the
+                // container (large rpc payloads get compressed per-item
+                // while service messages ride along uncompressed).
+                let mut plain_items = Vec::with_capacity(items.len());
+                for item in items {
+                    plain_items.push(Self::unwrap_item_gzip(item)?);
+                }
 
                 let mut re_send = false;
                 let mut conclusive = false;
-                for item in &items {
+                for item in &plain_items {
                     if item.len() < 4 {
                         continue;
                     }
@@ -595,9 +602,30 @@ impl SenderPool {
                             return Err(classify_bad_msg(code, bad_msg_id));
                         }
                         crate::serialize::FUTURE_SALTS | crate::serialize::MSGS_STATE_INFO => {
-                            return Ok(item.to_vec());
+                            return Ok(item.clone());
                         }
-                        MSGS_ACK | PONG => {}
+                        // The server asks US to resend / report state. This
+                        // client keeps no outbound journal; ack (done above)
+                        // and hope the server re-asks or recovers.
+                        crate::serialize::MSGS_RESEND_REQ | crate::serialize::MSGS_STATE_REQ => {
+                            tracing::warn!(
+                                "server sent a resend/state request; no outbound journal, ignoring"
+                            );
+                        }
+                        // Everything below is informational and never the
+                        // RPC answer: acks/pongs, MTProto service info
+                        // about other messages' fate, and server-initiated
+                        // updates pushes that precede our answer on the
+                        // same connection. Drain (the frame is acked
+                        // above) and keep waiting for rpc_result.
+                        MSGS_ACK
+                        | PONG
+                        | crate::serialize::MSG_DETAILED_INFO
+                        | crate::serialize::MSG_NEW_DETAILED_INFO
+                        | crate::types::UPDATES
+                        | crate::types::UPDATES_COMBINED
+                        | crate::types::UPDATE_SHORT
+                        | crate::types::UPDATE_SHORT_SENT_MESSAGE => {}
                         RPC_RESULT => {
                             // rpc_result#f35c6d01 req_msg_id:long result
                             let req = u64::from_le_bytes(
@@ -611,7 +639,16 @@ impl SenderPool {
                             }
                             // Stale answer for an earlier msg_id — drain.
                         }
-                        _ => return Ok(item.to_vec()),
+                        other => {
+                            // Not an rpc_result — handing this back as the
+                            // answer produced "expected messages.Messages*,
+                            // got 0x…" upstream. Drain and keep reading;
+                            // the frame bound below ends a hopeless wait.
+                            tracing::debug!(
+                                "draining non-answer item {other:#010x} \
+                                 while waiting for msg {msg_id}"
+                            );
+                        }
                     }
                 }
                 if re_send {
@@ -859,6 +896,31 @@ impl SenderPool {
         std::io::Read::read_to_end(&mut decoder, &mut out)
             .map_err(|e| Error::Serialization(format!("gzip decompress: {e}")))?;
         Ok(out)
+    }
+
+    /// `unwrap_gzip` for one container item — the compressed payload
+    /// replaces the `gzip_packed` item in place. Bounded recursion for
+    /// the (hypothetical) nested-wrap case.
+    fn unwrap_item_gzip(item: &[u8]) -> Result<Vec<u8>> {
+        const MAX_NESTING: usize = 4;
+        let mut cur = item.to_vec();
+        for _ in 0..MAX_NESTING {
+            if cur.len() < 4 {
+                return Ok(cur);
+            }
+            let ctor = u32::from_le_bytes(
+                // invariant: the len guard above guarantees 4 bytes
+                #[allow(clippy::unwrap_used)]
+                cur[0..4].try_into().unwrap(),
+            );
+            if ctor != crate::serialize::GZIP_PACKED {
+                return Ok(cur);
+            }
+            cur = Self::unwrap_gzip(&cur)?;
+        }
+        Err(Error::Protocol(
+            "gzip_packed nested more than 4 deep".into(),
+        ))
     }
 
     /// Ask the server for its future salt windows

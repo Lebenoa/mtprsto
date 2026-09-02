@@ -156,6 +156,29 @@ fn messages_from_container(data: &[u8]) -> Result<Vec<Message>> {
             read_messages_body(&mut r)
         }
         MESSAGES_MESSAGES_NOT_MODIFIED => Ok(Vec::new()),
+        crate::types::UPDATES | crate::types::UPDATES_COMBINED | crate::types::UPDATE_SHORT => {
+            // channels.getMessages may answer with an Updates container
+            // (e.g. the requested messages were deleted — the deletions
+            // ride as updateDelete*Messages). Surface whatever live
+            // messages the container carries; deletions yield none.
+            let container = crate::types::Updates::parse(data)?;
+            let items: &[crate::types::Update] = match &container {
+                crate::types::Updates::Updates { updates, .. }
+                | crate::types::Updates::UpdatesCombined { updates, .. } => updates,
+                crate::types::Updates::UpdateShort { update, .. } => std::slice::from_ref(update),
+                crate::types::Updates::UpdateShortSentMessage { .. } => &[],
+            };
+            Ok(items
+                .iter()
+                .filter_map(|u| match u {
+                    crate::types::Update::NewMessage { message, .. }
+                    | crate::types::Update::NewChannelMessage { message, .. } => {
+                        Some(message.clone())
+                    }
+                    _ => None,
+                })
+                .collect())
+        }
         _ => Err(Error::Protocol(format!(
             "expected messages.Messages*, got {ctor:#x}"
         ))),
