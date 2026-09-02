@@ -229,6 +229,11 @@ pub struct SenderPool {
     protocol: ProtocolConfig,
     /// Next connection index for round-robin.
     next_index: Mutex<usize>,
+    /// Whether this session already sent `initConnection`. Real clients
+    /// init once per session; re-initializing on every RPC both wastes
+    /// bytes and reads to the DC as a stream of brand-new clients, which
+    /// production DCs answer by silently throttling.
+    initialized: std::sync::atomic::AtomicBool,
     /// Received `msg_ids` awaiting a batched `msgs_ack` (flushed at
     /// [`ProtocolConfig::ack_batch_max`] pending or after
     /// [`ProtocolConfig::ack_flush_interval`], per
@@ -266,6 +271,7 @@ impl SenderPool {
             config,
             protocol,
             next_index: Mutex::new(0),
+            initialized: std::sync::atomic::AtomicBool::new(false),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -483,18 +489,28 @@ impl SenderPool {
 
         // invokeWithLayer(initConnection(query)) — the server rejects bare
         // RPCs with INPUT_FETCH_ERROR / API_ID_* errors because it can't
-        // establish the client context.
-        let full_payload = crate::mtproto::build_invoke_with_layer(
-            crate::api::API_LAYER,
-            &crate::mtproto::build_init_connection(
-                self.api_id,
-                "mtprsto",
-                "unknown",
-                env!("CARGO_PKG_VERSION"),
-                "en",
-                method_bytes,
-            ),
-        );
+        // establish the client context. initConnection goes once per
+        // session: repeating it on every RPC reads to the DC as endless
+        // brand-new clients, which production DCs silently throttle.
+        let first_use = !self
+            .initialized
+            .swap(true, std::sync::atomic::Ordering::Relaxed);
+        let query = if first_use {
+            crate::mtproto::build_invoke_with_layer(
+                crate::api::API_LAYER,
+                &crate::mtproto::build_init_connection(
+                    self.api_id,
+                    "mtprsto",
+                    "unknown",
+                    env!("CARGO_PKG_VERSION"),
+                    "en",
+                    method_bytes,
+                ),
+            )
+        } else {
+            crate::mtproto::build_invoke_with_layer(crate::api::API_LAYER, method_bytes)
+        };
+        let full_payload = query;
 
         // Service notifications (bad_server_salt, new_session_created)
         // mean the request was NOT processed — adopt the announced state
@@ -651,7 +667,24 @@ impl SenderPool {
                                 item[4..12].try_into().unwrap(),
                             );
                             if req == msg_id {
-                                return Self::parse_rpc_result_body(item);
+                                let body = match Self::parse_rpc_result_body(item) {
+                                    Ok(body) => body,
+                                    // A fresh server session (DC migration,
+                                    // reconnect after a server restart) may
+                                    // not have seen our initConnection —
+                                    // re-init once and re-send.
+                                    Err(Error::Rpc {
+                                        ref error_message, ..
+                                    }) if error_message.contains("CONNECTION_NOT_INITED")
+                                        && attempt < 3 =>
+                                    {
+                                        self.initialized
+                                            .store(false, std::sync::atomic::Ordering::Relaxed);
+                                        continue 'outer;
+                                    }
+                                    Err(e) => return Err(e),
+                                };
+                                return Ok(body);
                             }
                             // Stale answer for an earlier msg_id — drain.
                         }
