@@ -417,8 +417,11 @@ impl SenderPool {
     }
 
     /// Send and receive one obfuscated frame on a single connection
-    /// (lock its codec, do I/O, unlock).
+    /// (lock its codec, do I/O, unlock). Holds the RPC permit so the
+    /// exchange can never interleave with `send_rpc` traffic or the
+    /// keepalive ping.
     async fn send_on_connection(conn: &PooledConnection, data: &[u8]) -> Result<Vec<u8>> {
+        let _permit = conn.rpc_permit.lock().await;
         let mut codec = conn.codec.lock().await;
         codec.send_frame(data).await?;
         codec.recv_frame().await
@@ -1053,9 +1056,15 @@ impl SenderPool {
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(protocol.ping_interval).await;
-                    // Only ping when the codec is idle; a locked codec means
-                    // an RPC exchange is in flight and traffic itself proves
-                    // liveness.
+                    // Only ping an idle connection. The permit — not just
+                    // the codec lock — is the liveness gate: grabbing the
+                    // codec alone could slip a ping between an RPC's
+                    // frame reads and swallow its answer as a
+                    // "non-pong". A held permit means an RPC exchange is
+                    // in flight and traffic itself proves liveness.
+                    let Ok(_permit) = conn.rpc_permit.try_lock() else {
+                        continue;
+                    };
                     let Ok(mut codec) = conn.codec.try_lock() else {
                         continue;
                     };
