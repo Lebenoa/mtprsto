@@ -137,6 +137,11 @@ struct PooledConnection {
     /// would otherwise be drained by the first waiter's frame loop
     /// (message ids correlate strictly per connection).
     rpc_permit: Mutex<()>,
+    /// Whether this socket already carried `initConnection`. The server
+    /// binds the client context per (auth key, connection): a fresh
+    /// connection's first RPC must carry initConnection, later RPCs on
+    /// the same socket must not repeat it.
+    initialized: std::sync::atomic::AtomicBool,
 }
 
 /// A codec over any supported wire transport. `send_frame`/`recv_frame`
@@ -233,7 +238,6 @@ pub struct SenderPool {
     /// init once per session; re-initializing on every RPC both wastes
     /// bytes and reads to the DC as a stream of brand-new clients, which
     /// production DCs answer by silently throttling.
-    initialized: std::sync::atomic::AtomicBool,
     /// Received `msg_ids` awaiting a batched `msgs_ack` (flushed at
     /// [`ProtocolConfig::ack_batch_max`] pending or after
     /// [`ProtocolConfig::ack_flush_interval`], per
@@ -271,7 +275,6 @@ impl SenderPool {
             config,
             protocol,
             next_index: Mutex::new(0),
-            initialized: std::sync::atomic::AtomicBool::new(false),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -322,6 +325,7 @@ impl SenderPool {
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
             rpc_permit: Mutex::new(()),
+            initialized: std::sync::atomic::AtomicBool::new(false),
         }));
 
         // Open additional aux connections in parallel — log failures but
@@ -345,6 +349,7 @@ impl SenderPool {
                     self.connections.push(Arc::new(PooledConnection {
                         codec: Mutex::new(codec),
                         rpc_permit: Mutex::new(()),
+                        initialized: std::sync::atomic::AtomicBool::new(false),
                     }));
                 }
                 Err(e) => {
@@ -489,28 +494,12 @@ impl SenderPool {
 
         // invokeWithLayer(initConnection(query)) — the server rejects bare
         // RPCs with INPUT_FETCH_ERROR / API_ID_* errors because it can't
-        // establish the client context. initConnection goes once per
-        // session: repeating it on every RPC reads to the DC as endless
-        // brand-new clients, which production DCs silently throttle.
-        let first_use = !self
-            .initialized
-            .swap(true, std::sync::atomic::Ordering::Relaxed);
-        let query = if first_use {
-            crate::mtproto::build_invoke_with_layer(
-                crate::api::API_LAYER,
-                &crate::mtproto::build_init_connection(
-                    self.api_id,
-                    "mtprsto",
-                    "unknown",
-                    env!("CARGO_PKG_VERSION"),
-                    "en",
-                    method_bytes,
-                ),
-            )
-        } else {
-            crate::mtproto::build_invoke_with_layer(crate::api::API_LAYER, method_bytes)
-        };
-        let full_payload = query;
+        // establish the client context. That context binds per (auth key,
+        // CONNECTION): each fresh socket carries initConnection on its
+        // first RPC and plain invokeWithLayer afterwards — repeating the
+        // init on every RPC reads as endless brand-new clients, which
+        // production DCs silently throttle. (The flag is per connection,
+        // read after the pick below.)
 
         // Service notifications (bad_server_salt, new_session_created)
         // mean the request was NOT processed — adopt the announced state
@@ -534,6 +523,24 @@ impl SenderPool {
         // re-sends) so a concurrent caller can never interleave frames
         // on the same socket — answers correlate strictly by msg_id.
         let _permit = conn.rpc_permit.lock().await;
+        let first_use = !conn
+            .initialized
+            .swap(true, std::sync::atomic::Ordering::Relaxed);
+        let full_payload = if first_use {
+            crate::mtproto::build_invoke_with_layer(
+                crate::api::API_LAYER,
+                &crate::mtproto::build_init_connection(
+                    self.api_id,
+                    "mtprsto",
+                    "unknown",
+                    env!("CARGO_PKG_VERSION"),
+                    "en",
+                    method_bytes,
+                ),
+            )
+        } else {
+            crate::mtproto::build_invoke_with_layer(crate::api::API_LAYER, method_bytes)
+        };
         // The scoped session/codec guards below drop at their last use —
         // clippy's drop-point model cannot see that through the async
         // block (significant_drop_tightening / _in_scrutinee).
@@ -678,7 +685,7 @@ impl SenderPool {
                                     }) if error_message.contains("CONNECTION_NOT_INITED")
                                         && attempt < 3 =>
                                     {
-                                        self.initialized
+                                        conn.initialized
                                             .store(false, std::sync::atomic::Ordering::Relaxed);
                                         continue 'outer;
                                     }
@@ -1374,6 +1381,7 @@ impl SenderPool {
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
             rpc_permit: Mutex::new(()),
+            initialized: std::sync::atomic::AtomicBool::new(false),
         }));
         tracing::info!(
             "scaled up: now {} connection(s) to DC {}",
