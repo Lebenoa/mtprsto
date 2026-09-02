@@ -807,6 +807,24 @@ impl Client {
         Ok(())
     }
 
+    /// Skip one `BotMenuButton` payload after its ctor: two bare ctors,
+    /// or `botMenuButton#c7b57ce6 text url`.
+    fn skip_menu_button_body(r: &mut TLReader, ctor: u32) -> Result<()> {
+        match ctor {
+            0x7533_a588 | 0x4258_c205 => {} // botMenuButtonDefault / Commands
+            0xc7b5_7ce6 => {
+                let _text = r.read_bytes()?;
+                let _url = r.read_bytes()?;
+            }
+            other => {
+                return Err(Error::Protocol(format!(
+                    "botInfo menu_button ctor {other:#x} not supported"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Skip a `botInfo#4d8a0299` payload (ctor included) — carried by
     /// every BOT account's `userFull`, so bot sign-back depends on it.
     ///
@@ -834,19 +852,18 @@ impl Client {
             }
         }
         if flags & (1 << 3) != 0 {
-            // BotMenuButton: two bare ctors, or text+url
+            // menu_button: the published 225 line declares a single
+            // BotMenuButton, but production servers wrap it in a vector
+            // (wire-observed Vector#1cb5c415) — accept both shapes.
             let ctor = r.read_u32()?;
-            match ctor {
-                0x7533_a588 | 0x4258_c205 => {} // botMenuButtonDefault / Commands
-                0xc7b5_7ce6 => {
-                    let _text = r.read_bytes()?;
-                    let _url = r.read_bytes()?;
+            if ctor == crate::serialize::VECTOR {
+                let n = r.read_vector_header()?;
+                for _ in 0..n {
+                    let mctor = r.read_u32()?;
+                    Self::skip_menu_button_body(r, mctor)?;
                 }
-                other => {
-                    return Err(Error::Protocol(format!(
-                        "botInfo menu_button ctor {other:#x} not supported"
-                    )));
-                }
+            } else {
+                Self::skip_menu_button_body(r, ctor)?;
             }
         }
         if flags & (1 << 4) != 0 {
