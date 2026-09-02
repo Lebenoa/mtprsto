@@ -675,9 +675,9 @@ impl Client {
         }
         crate::types::skip_peer_notify_settings_public(r)?;
         if flags & (1 << 3) != 0 {
-            return Err(Error::Protocol(
-                "userFull bot_info (BotInfo) parsing not supported".into(),
-            ));
+            // botInfo#4d8a0299 — every BOT account carries this in its
+            // userFull, so it must be skipped, not refused.
+            Self::skip_bot_info(r)?;
         }
         if flags & (1 << 6) != 0 {
             let _pinned = r.read_i32()?;
@@ -803,6 +803,94 @@ impl Client {
         }
         if flags2 & (1 << 25) != 0 {
             let _bot_manager_id = r.read_i64()?;
+        }
+        Ok(())
+    }
+
+    /// Skip a `botInfo#4d8a0299` payload (ctor included) — carried by
+    /// every BOT account's `userFull`, so bot sign-back depends on it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] for unknown nested constructors or
+    /// unsupported optional bodies, rather than desyncing the stream.
+    fn skip_bot_info(r: &mut TLReader) -> Result<()> {
+        use crate::types::{Document as TlDocument, Photo as TlPhoto};
+
+        let flags = r.read_i32()?;
+        if flags & (1 << 0) != 0 {
+            let _user_id = r.read_i64()?;
+        }
+        if flags & (1 << 1) != 0 {
+            let _description = r.read_bytes()?;
+        }
+        if flags & (1 << 2) != 0 {
+            // commands:Vector<botCommand#c27ac8c7 command description>
+            let n = r.read_vector_header()?;
+            for _ in 0..n {
+                let _ctor = r.read_u32()?;
+                let _command = r.read_bytes()?;
+                let _desc = r.read_bytes()?;
+            }
+        }
+        if flags & (1 << 3) != 0 {
+            // BotMenuButton: two bare ctors, or text+url
+            let ctor = r.read_u32()?;
+            match ctor {
+                0x7533_a588 | 0x4258_c205 => {} // botMenuButtonDefault / Commands
+                0xc7b5_7ce6 => {
+                    let _text = r.read_bytes()?;
+                    let _url = r.read_bytes()?;
+                }
+                other => {
+                    return Err(Error::Protocol(format!(
+                        "botInfo menu_button ctor {other:#x} not supported"
+                    )));
+                }
+            }
+        }
+        if flags & (1 << 4) != 0 {
+            TlPhoto::read_from(r)?;
+        }
+        if flags & (1 << 5) != 0 {
+            TlDocument::read_from(r)?;
+        }
+        if flags & (1 << 7) != 0 {
+            let _privacy_policy_url = r.read_bytes()?;
+        }
+        if flags & (1 << 8) != 0 {
+            // botAppSettings#c99b1950 flags:# + 5 optionals
+            let ctor = r.read_u32()?;
+            if ctor != 0xc99b_1950 {
+                return Err(Error::Protocol(format!(
+                    "botInfo app_settings ctor {ctor:#x} not supported"
+                )));
+            }
+            let aflags = r.read_i32()?;
+            if aflags & (1 << 0) != 0 {
+                let _placeholder_path = r.read_bytes()?;
+            }
+            for bit in [1, 2, 3, 4] {
+                if aflags & (1 << bit) != 0 {
+                    let _color = r.read_i32()?;
+                }
+            }
+        }
+        if flags & (1 << 9) != 0 {
+            // botVerifierSettings#b0cd6617 flags:# icon:long company:string
+            //   custom_description:flags.0?string
+            let ctor = r.read_u32()?;
+            if ctor != 0xb0cd_6617 {
+                return Err(Error::Protocol(format!(
+                    "botInfo verifier_settings ctor {ctor:#x} not supported"
+                )));
+            }
+            let vflags = r.read_i32()?;
+            let _icon = r.read_i64()?;
+            let _company = r.read_bytes()?;
+            if vflags & (1 << 0) != 0 {
+                let _custom_description = r.read_bytes()?;
+            }
         }
         Ok(())
     }
