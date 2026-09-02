@@ -359,42 +359,41 @@ impl Client {
     #[tracing::instrument(name = "mtprsto::read_history", skip(self), err)]
     pub async fn read_history(&self, peer: &str, max_id: i32) -> Result<AffectedMessages> {
         let input_peer = self.resolve_peer(peer).await?;
-        match &input_peer {
-            InputPeer::Channel {
-                channel_id: ChannelId(cid),
-                access_hash: AccessHash(hash),
-            } => {
-                let channel = InputChannel::Channel {
-                    channel_id: ChannelId(*cid),
-                    access_hash: AccessHash(*hash),
-                };
-                let result = self
-                    .invoke_raw(rpc::build_channels_read_history(&channel, max_id))
-                    .await?;
-                // channels.readHistory = Bool; false is a valid answer
-                // (nothing to mark read, e.g. max_id below the channel's
-                // read watermark) — only a foreign constructor is an error.
-                let ctor = u32::from_le_bytes(
-                    result[..4]
-                        .try_into()
-                        .map_err(|_| Error::Protocol("readHistory answer truncated".into()))?,
-                );
-                if ctor != crate::types::BOOL_TRUE && ctor != crate::types::BOOL_FALSE {
-                    return Err(Error::Protocol(format!(
-                        "expected Bool from channels.readHistory, got {ctor:#x}"
-                    )));
-                }
-                Ok(AffectedMessages {
-                    pts: 0,
-                    pts_count: 0,
-                })
-            }
-            _ => {
-                let payload = rpc::build_read_history(&input_peer, max_id);
-                let result = self.invoke_raw(payload).await?;
-                AffectedMessages::parse(&result)
-            }
+        // Channel peers route to channels.readHistory (the plain
+        // messages.readHistory refuses channels with PEER_ID_INVALID).
+        let InputPeer::Channel {
+            channel_id: ChannelId(cid),
+            access_hash: AccessHash(hash),
+        } = input_peer
+        else {
+            let payload = rpc::build_read_history(&input_peer, max_id);
+            let result = self.invoke_raw(payload).await?;
+            return AffectedMessages::parse(&result);
+        };
+        let channel = InputChannel::Channel {
+            channel_id: ChannelId(cid),
+            access_hash: AccessHash(hash),
+        };
+        let result = self
+            .invoke_raw(rpc::build_channels_read_history(&channel, max_id))
+            .await?;
+        // channels.readHistory = Bool; false is a valid answer (nothing
+        // to mark read, e.g. max_id below the channel's read watermark)
+        // — only a foreign constructor is an error.
+        let ctor = result
+            .get(..4)
+            .and_then(|b| <[u8; 4]>::try_from(b).ok())
+            .map(u32::from_le_bytes)
+            .ok_or_else(|| Error::Protocol("readHistory answer truncated".into()))?;
+        if ctor != crate::types::BOOL_TRUE && ctor != crate::types::BOOL_FALSE {
+            return Err(Error::Protocol(format!(
+                "expected Bool from channels.readHistory, got {ctor:#x}"
+            )));
         }
+        Ok(AffectedMessages {
+            pts: 0,
+            pts_count: 0,
+        })
     }
 
     /// Search messages in `peer` matching `query`.
