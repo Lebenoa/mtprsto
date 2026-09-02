@@ -159,6 +159,10 @@ impl<S: FrameStream> Obfuscated2Transport<S> {
             .to_le_bytes()
             .to_vec();
         frame.extend_from_slice(payload);
+        // The enc keystream applies to everything after the 64-byte init
+        // block — including the length word. Sending it plaintext would
+        // land as a garbage length on the server.
+        self.enc.crypt(&mut frame);
         self.stream.fs_write_all(&frame).await?;
         Ok(())
     }
@@ -490,6 +494,14 @@ pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> 
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_le_bytes(len_buf) as usize;
+    // Uncapped `vec![0u8; len]` from an attacker-chosen frame length is
+    // a trivial OOM; hold receivers to the same 2 MiB MTProto cap the
+    // obfuscated receivers enforce.
+    if len > IntermediateTransport::MAX_FRAME {
+        return Err(Error::Transport(format!(
+            "unencrypted frame of {len} bytes exceeds the 2 MiB cap"
+        )));
+    }
 
     let mut data = vec![0u8; len];
     stream.read_exact(&mut data).await?;
@@ -573,6 +585,13 @@ pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_le_bytes(len_buf) as usize;
+    // Same OOM cap as recv_unencrypted: never allocate from an
+    // unvalidated frame length.
+    if len > IntermediateTransport::MAX_FRAME {
+        return Err(Error::Transport(format!(
+            "encrypted frame of {len} bytes exceeds the 2 MiB cap"
+        )));
+    }
 
     let mut data = vec![0u8; len];
     stream.read_exact(&mut data).await?;

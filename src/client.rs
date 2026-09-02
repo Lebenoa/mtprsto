@@ -649,7 +649,11 @@ impl Client {
             )));
         }
         let ps_flags = r.read_i32()?;
-        for bit in [6, 9, 9, 13, 13, 14, 15, 16, 17, 18] {
+        // Each flag is consumed exactly once; flags 9 and 13 each carry
+        // TWO fields (title+date, bot_id+manage_url) handled in their
+        // single arm. Duplicating the bit here would double-read and
+        // shift every later field.
+        for bit in [6, 9, 13, 14, 15, 16, 17, 18] {
             if ps_flags & (1 << bit) != 0 {
                 if bit == 13 {
                     let _ = r.read_i64()?; // business_bot_id

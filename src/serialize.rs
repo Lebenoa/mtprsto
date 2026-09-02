@@ -405,7 +405,15 @@ impl TLReader<'_> {
                 "expected vector constructor, got {ctor:#x}"
             )));
         }
-        self.read_i32()
+        let count = self.read_i32()?;
+        // A negative count on a corrupt frame would wrap into a huge
+        // Vec::with_capacity in callers — refuse it at the source.
+        if count < 0 {
+            return Err(crate::error::Error::Serialization(format!(
+                "negative vector length {count}"
+            )));
+        }
+        Ok(count)
     }
 }
 
@@ -578,6 +586,26 @@ mod tests {
             constructor_id("vector t:Type # [ t ] = Vector t"),
             0x1cb5c415
         );
+    }
+
+    #[test]
+    fn test_read_vector_header_rejects_negative_count() {
+        // Regression: a corrupt frame with a negative count used to wrap
+        // into a huge Vec::with_capacity in callers (capacity overflow).
+        let mut w = TLWriter::new();
+        w.write_u32(VECTOR);
+        w.write_i32(-1);
+        let mut r = TLReader::new(w.as_bytes());
+        assert!(r.read_vector_header().is_err());
+    }
+
+    #[test]
+    fn test_read_vector_header_accepts_zero() {
+        let mut w = TLWriter::new();
+        w.write_u32(VECTOR);
+        w.write_i32(0);
+        let mut r = TLReader::new(w.as_bytes());
+        assert_eq!(r.read_vector_header().unwrap(), 0);
     }
 
     #[test]
