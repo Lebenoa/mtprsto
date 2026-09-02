@@ -1,8 +1,9 @@
-//! TL constructor ID constants (Layer 223).
+//! TL constructor ID constants (Layer 225 — the published schema:
+//! 223 + the layer 224/225 changelog re-issues).
 
-// Every id is quoted verbatim from the TL schema (tl223.json / the
-// published schema): underscores would break grep against docs and
-// wire captures.
+// Every id is quoted verbatim from the TL schema (tools/schema_l225.tl,
+// assembled from core.telegram.org): underscores would break grep
+// against docs and wire captures.
 #![allow(clippy::unreadable_literal)]
 
 #[allow(unused_imports)]
@@ -26,7 +27,7 @@ pub const INPUT_USER_SELF: u32 = 0xf7c1b13f;
 pub const INPUT_USER: u32 = 0xf21158c6;
 pub const INPUT_USER_FROM_ID: u32 = 0x1da448e2;
 
-pub const INPUT_REPLY_TO_MESSAGE: u32 = 0x869fbe10;
+pub const INPUT_REPLY_TO_MESSAGE: u32 = 0x3bd4b7c2;
 // --- Input channel (Layer 223) ---
 pub const INPUT_CHANNEL: u32 = 0xf35aec28;
 pub const INPUT_CHANNEL_FROM_MESSAGE: u32 = 0x5b934f9d; // inputChannelFromMessage
@@ -80,8 +81,12 @@ pub const CHAT_EMPTY: u32 = 0x29562865;
 pub const CHAT_FORBIDDEN: u32 = 0x6592a1a7;
 pub const CHAT_FULL: u32 = 0x2633421b;
 
-// --- Channel (Layer 223) ---
-/// `channel#d49f34c6` — live layer 225 (old 0x1c32b11c stale).
+// --- Channel (Layer 225) ---
+/// `channel#1c32b11c` — the 225-canonical id (unchanged since 223).
+///
+/// Production DCs have also been observed answering with the tdlib
+/// draft id `#d49f34c6`; the generated parser accepts both via the
+/// `CTOR_ALIASES` arm.
 pub const CHANNEL: u32 = 0x1c32b11c;
 /// `updateChannel#635b4c09 channel_id:long`
 pub const UPDATE_CHANNEL: u32 = 0x635b4c09;
@@ -98,6 +103,14 @@ pub const UPDATE_DELETE_CHANNEL_MESSAGES: u32 = 0xc32d5b12;
 /// `updatePinnedChannelMessages#5bb98608 flags:# pinned:flags.0?true
 ///   channel_id:long messages:Vector<int> pts:int pts_count:int`
 pub const UPDATE_PINNED_CHANNEL_MESSAGES: u32 = 0x5bb98608;
+/// `updateUserStatus#e5bdf8de user_id:long status:UserStatus`
+pub const UPDATE_USER_STATUS: u32 = 0xe5bdf8de;
+/// `updateUserTyping#2a17bf5c flags:# user_id:long top_msg_id:flags.0?int
+///   action:SendMessageAction`
+pub const UPDATE_USER_TYPING: u32 = 0x2a17bf5c;
+/// `updateChatUserTyping#83487af0 chat_id:long from_id:Peer
+///   action:SendMessageAction`
+pub const UPDATE_CHAT_USER_TYPING: u32 = 0x83487af0;
 /// `updateReadChannelOutbox#b75f99a9 channel_id:long max_id:int`
 pub const UPDATE_READ_CHANNEL_OUTBOX: u32 = 0xb75f99a9;
 pub const CHANNEL_FORBIDDEN: u32 = 0x17d493d5;
@@ -110,22 +123,23 @@ pub const CHAT_PHOTO_EMPTY: u32 = 0x37c1011c;
 pub const USER_PROFILE_PHOTO: u32 = 0x82d1f706;
 pub const USER_PROFILE_PHOTO_EMPTY: u32 = 0x4f11bae1;
 
-// --- Message (published layer 223: message#3ae56482) ---
-pub const MESSAGE: u32 = 0x3ae56482;
+// --- Message (published layer 225: message#95ef6f2b) ---
+pub const MESSAGE: u32 = 0x95ef6f2b;
 pub const MESSAGE_EMPTY: u32 = 0x90a6ca84;
 pub const MESSAGE_SERVICE: u32 = 0x7a800e0a;
-// messageReplyHeader#6917560b
-pub const MESSAGE_REPLY_HEADER: u32 = 0x6917560b;
-// Live layer 225 re-issued the reply-header ctor (wire-verified; same
-// field layout). Both IDs are accepted when parsing.
-pub const MESSAGE_REPLY_HEADER_V225: u32 = 0x1b97dd66;
+// messageReplyHeader#1b97dd66 (re-issued at 224)
+pub const MESSAGE_REPLY_HEADER: u32 = 0x1b97dd66;
+// The 223-era id `#6917560b` is kept as an accepted alternative; the
+// field layout is unchanged between the two.
+pub const MESSAGE_REPLY_HEADER_V223: u32 = 0x6917560b;
 /// `messageReplyStoryHeader#0e5af939 peer:Peer story_id:int`
 pub const MESSAGE_REPLY_STORY_HEADER: u32 = 0x0e5af939;
 
-// --- Message media (Layer 223) ---
+// --- Message media (Layer 225) ---
 pub const MESSAGE_MEDIA_EMPTY: u32 = 0x3ded6320;
-/// `messageMediaPhoto#e216eb63` (live layer 225; old 0x695150d7 stale)
-pub const MESSAGE_MEDIA_PHOTO: u32 = 0x695150d7;
+/// `messageMediaPhoto#e216eb63` (re-issued at 224; 223 id 0x695150d7
+/// is accepted by the generated alias arm)
+pub const MESSAGE_MEDIA_PHOTO: u32 = 0xe216eb63;
 /// `geoPoint#b2a2f663 flags:# long:double lat:double access_hash:long
 ///   accuracy_radius:flags.0?int` / `geoPointEmpty#1117dd5f`
 pub const GEO_POINT: u32 = 0xb2a2f663;
@@ -137,7 +151,8 @@ pub const MESSAGE_MEDIA_CONTACT: u32 = 0x70322949;
 pub const MESSAGE_MEDIA_DICE: u32 = 0x08cbec07;
 pub const MESSAGE_MEDIA_UNSUPPORTED: u32 = 0x9f84f49e;
 pub const MESSAGE_MEDIA_GAME: u32 = 0xfdb19008;
-pub const MESSAGE_MEDIA_POLL: u32 = 0x4bd6e798;
+/// `messageMediaPoll#773f4e66` (re-issued at 224)
+pub const MESSAGE_MEDIA_POLL: u32 = 0x773f4e66;
 pub const MESSAGE_MEDIA_INVOICE: u32 = 0xf6a548d3;
 pub const MESSAGE_MEDIA_STORY: u32 = 0x68cb6283;
 pub const MESSAGE_MEDIA_GIVEAWAY: u32 = 0xaa073beb;
@@ -278,15 +293,19 @@ pub const MESSAGES_MESSAGES_SLICE: u32 = 0x5f206716;
 pub const MESSAGES_CHANNEL_MESSAGES: u32 = 0xc776ba4e;
 pub const MESSAGES_MESSAGES_NOT_MODIFIED: u32 = 0x74535f21;
 
-// --- Dialog (published layer 223: dialog#d58a08c6 — no
-// unread_poll_votes_count; that field exists from layer 225) ---
-pub const DIALOG: u32 = 0xd58a08c6;
+// --- Dialog (published layer 225: dialog#fc89f7f3 — re-issued at
+// 224 to carry `unread_poll_votes_count`) ---
+pub const DIALOG: u32 = 0xfc89f7f3;
+/// 223-era id, accepted as an alternative when parsing.
+pub const DIALOG_V223: u32 = 0xd58a08c6;
 pub const DIALOG_FOLDER: u32 = 0x71bd134c;
 
 // --- Sent code (Layer 223) ---
 pub const AUTH_SENT_CODE: u32 = 0x5e002502;
 pub const AUTH_SENT_CODE_SUCCESS: u32 = 0x2390fe44;
-pub const AUTH_SENT_CODE_PAYMENT_REQUIRED: u32 = 0xe0955a3c;
+/// `auth.sentCodePaymentRequired#f8827ebf` (re-issued at 225: adds
+/// `premium_days:int`)
+pub const AUTH_SENT_CODE_PAYMENT_REQUIRED: u32 = 0xf8827ebf;
 pub const AUTH_SENT_CODE_TYPE_APP: u32 = 0x3dbb5986;
 pub const AUTH_SENT_CODE_TYPE_SMS: u32 = 0xc000bba2;
 /// `codeSettings#ad253d78 flags:# ...` — full TL object in modern layers
@@ -460,6 +479,9 @@ pub const CHANNELS_GET_PARTICIPANTS: u32 = 0x77ced9d0;
 /// set via `messages.editChatAbout#def60797 peer:InputPeer about:string`.
 pub const MESSAGES_EDIT_CHAT_ABOUT: u32 = 0xdef60797;
 pub const CHANNELS_LEAVE_CHANNEL: u32 = 0xf836aa95;
+/// `channels.deleteChannel#c0111fe3 channel:InputChannel = Updates` —
+/// deactivates the channel; the only way out for its creator.
+pub const CHANNELS_DELETE_CHANNEL: u32 = 0xc0111fe3;
 /// `channels.getMessages#ad8c9a23 channel:InputChannel id:Vector<InputMessage>`.
 ///
 /// The legacy `#e5906e3f` (`Vector<int>`) was dropped server-side — it now

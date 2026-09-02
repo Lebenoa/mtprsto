@@ -92,22 +92,48 @@ pub struct AffectedMessages {
 impl AffectedMessages {
     /// Decode from an `messages.affectedMessages` payload (ctor included).
     ///
+    /// The server also answers with an `updates` container wrapping the
+    /// delete as `updateDeleteMessages` / `updateDeleteChannelMessages`
+    /// whenever the delete generates pushable updates — dig the pts
+    /// pair out of the wrapped update in that case.
+    ///
     /// # Errors
     ///
-    /// Returns [`Error::Protocol`] for a foreign constructor and
-    /// serialization errors for truncated payloads.
+    /// Returns [`Error::Protocol`] for a foreign constructor without a
+    /// pts-bearing delete update, and serialization errors for
+    /// truncated payloads.
     pub fn parse(data: &[u8]) -> Result<Self> {
         let mut r = TLReader::new(data);
         let ctor = r.read_u32()?;
-        if ctor != MESSAGES_AFFECTED_MESSAGES {
-            return Err(Error::Protocol(format!(
-                "expected messages.affectedMessages, got {ctor:#x}"
-            )));
+        if ctor == MESSAGES_AFFECTED_MESSAGES {
+            return Ok(Self {
+                pts: r.read_i32()?,
+                pts_count: r.read_i32()?,
+            });
         }
-        Ok(Self {
-            pts: r.read_i32()?,
-            pts_count: r.read_i32()?,
-        })
+        let updates = crate::types::Updates::parse(data)?;
+        let items: &[crate::types::Update] = match &updates {
+            crate::types::Updates::Updates { updates, .. }
+            | crate::types::Updates::UpdatesCombined { updates, .. } => updates,
+            crate::types::Updates::UpdateShort { update, .. } => std::slice::from_ref(update),
+            crate::types::Updates::UpdateShortSentMessage { .. } => &[],
+        };
+        for u in items {
+            match u {
+                crate::types::Update::DeleteMessages { pts, pts_count, .. }
+                | crate::types::Update::DeleteChannelMessages { pts, pts_count, .. } => {
+                    return Ok(Self {
+                        pts: *pts,
+                        pts_count: *pts_count,
+                    });
+                }
+                _ => {}
+            }
+        }
+        Err(Error::Protocol(format!(
+            "expected messages.affectedMessages or a delete update, \
+             got {ctor:#x}"
+        )))
     }
 }
 
@@ -781,6 +807,18 @@ impl Client {
     #[tracing::instrument(name = "mtprsto::leave_channel", skip(self, channel), err)]
     pub async fn leave_channel(&self, channel: &InputChannel) -> Result<()> {
         let payload = rpc::build_leave_channel(channel);
+        self.invoke_raw(payload).await?;
+        Ok(())
+    }
+
+    /// Deactivate (delete) a channel/supergroup — the only exit for its
+    /// creator, whom `leave_channel` refuses with `USER_NOT_PARTICIPANT`.
+    ///
+    /// # Errors
+    /// Transport or RPC failure.
+    #[tracing::instrument(name = "mtprsto::delete_channel", skip(self, channel), err)]
+    pub async fn delete_channel(&self, channel: &InputChannel) -> Result<()> {
+        let payload = rpc::build_delete_channel(channel);
         self.invoke_raw(payload).await?;
         Ok(())
     }

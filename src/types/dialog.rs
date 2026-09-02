@@ -29,22 +29,9 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    /// Parse `dialog#fc89f7f3 flags:# pinned:flags.2?true
-    /// unread_mark:flags.3?true view_forum_as_messages:flags.6?true
-    /// peer:Peer top_message:int read_inbox_max_id:int
-    /// read_outbox_max_id:int unread_count:int unread_mentions_count:int
-    /// unread_reactions_count:int unread_poll_votes_count:int
-    /// notify_settings:PeerNotifySettings pts:flags.0?int
-    /// draft:flags.1?DraftMessage folder_id:flags.4?int
-    /// ttl_period:flags.5?int`.
-    /// Parse `dialog#d58a08c6 flags:# pinned:flags.2?true
-    /// unread_mark:flags.3?true view_forum_as_messages:flags.6?true
-    /// peer:Peer top_message:int read_inbox_max_id:int
-    /// read_outbox_max_id:int unread_count:int unread_mentions_count:int
-    /// unread_reactions_count:int notify_settings:PeerNotifySettings
-    /// pts:flags.0?int draft:flags.1?DraftMessage folder_id:flags.4?int
-    /// ttl_period:flags.5?int` (the published layer-223 shape — no
-    /// `unread_poll_votes_count`; that field exists only from layer 225).
+    /// Parse `dialog#fc89f7f3` (layer 225 — carries
+    /// `unread_poll_votes_count`) or the 223-era `dialog#d58a08c6`
+    /// (no such field), discriminating by constructor id.
     ///
     /// # Errors
     ///
@@ -53,7 +40,7 @@ impl Dialog {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         // consume the constructor before the flags word (its omission
         // misaligned the whole parse).
-        let _ctor = r.read_u32()?;
+        let ctor = r.read_u32()?;
         let flags = r.read_i32()?;
         let peer = Peer::read_from(r)?;
         let top_message = MsgId(i64::from(r.read_i32()?));
@@ -62,9 +49,13 @@ impl Dialog {
         let unread_count = r.read_i32()?;
         let _unread_mentions = r.read_i32()?;
         let _unread_reactions = r.read_i32()?;
-        // NOTE: layer 223 dialog has NO unread_poll_votes_count (that
-        // field appears from layer 225) — reading it here shifted every
-        // later field by 4 bytes and broke get_dialogs.
+        // dialog#fc89f7f3 (layer 225) inserts unread_poll_votes_count
+        // here; the 223-era dialog#d58a08c6 has no such field. Reading
+        // it for the wrong shape shifted every later field by 4 bytes
+        // and broke get_dialogs.
+        if ctor == crate::types::DIALOG {
+            let _unread_poll_votes = r.read_i32()?;
+        }
         // notify_settings:PeerNotifySettings — always present.
         crate::types::skip_peer_notify_settings_public(r)?;
         let pts = if flags & (1 << 0) != 0 {

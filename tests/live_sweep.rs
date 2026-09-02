@@ -591,13 +591,16 @@ async fn live_sweep() {
             wiped,
         );
 
-        let left = client.leave_channel(channel).await;
+        // The sweep account created this channel, and Telegram refuses
+        // leaveChannel for a creator (USER_NOT_PARTICIPANT) — delete
+        // (deactivate) it instead so no scratch shells accumulate.
+        let left = client.delete_channel(channel).await;
         let _ = step(
-            "leave_channel (channels.leaveChannel)",
+            "delete_channel (channels.deleteChannel#c0111fe3)",
             |(): &()| String::new(),
             left,
         );
-        println!("        scratch channel \"{title}\" wiped and left");
+        println!("        scratch channel \"{title}\" wiped and deleted");
     }
 
     // ------------------------------------------------------------------

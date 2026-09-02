@@ -2,8 +2,8 @@
 //! Field order and flags come straight from the schema — do not hand-edit.
 //! Unread/unused fields keep their reads so the stream stays aligned.
 #![allow(dead_code, unused_variables, unused_mut)]
-#![allow(clippy::enum_variant_names)]
 #![allow(unused_imports)]
+#![allow(clippy::enum_variant_names)]
 #![allow(clippy::clone_on_copy)]
 #![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::large_enum_variant)]

@@ -74,18 +74,34 @@ development trunk; the other branches are stable snapshots of it:
 |---|---|---|
 | `docs-layer` | 223 | development trunk; all wire fixes and the live sweep land here first |
 | `main` | 223 | release snapshot — tracks docs-layer; adopts a newer published layer only after a live-sweep pass proves it |
-| `dev-layer` | 223 | playground snapshot — schema-draft experiments start here; a dialect change is promoted to docs-layer only after live verification |
+| `dev-layer` | 225 | playground snapshot — adopts a newer published layer first; a dialect change is promoted to docs-layer only after live verification |
 
 Layer adoption path: the [layer changelog](https://core.telegram.org/api/layers)
 publishes an entry per layer, and **layer 225 is the current documentation
-release** (permalink `/schema?layer=225`; 224 has an entry too, and most of
-the ctor re-issues this codebase aliases happened there). Layers beyond the
-latest changelog entry exist only as drafts (tdlib master) — the retired
-per-branch dialect forks targeted one of those drafts, and the undocumented
-drift caused real parse bugs. To adopt 225 on `main`: fetch
-`/schema?layer=225`, regenerate with `gentl --all` / `--domain <name>`, seed
-`CTOR_ALIASES` with the 223→225 re-issues from the changelog diffs, and run
-the live sweep before promoting.
+release** (224 has an entry too, and most of the ctor re-issues this codebase
+aliases happened there). Layers beyond the latest changelog entry exist only
+as drafts (tdlib master) — the retired per-branch dialect forks targeted one
+of those drafts, and the undocumented drift caused real parse bugs.
+
+Note that core.telegram.org's `/schema` endpoints ignore `?layer=` and serve
+the last fully published dialect (223 today). The published schema for a
+documented layer is assembled instead by applying the per-layer diff dumps
+from the changelog page:
+
+```sh
+python tools/update_schema.py 225            # scrape base + diffs, verify
+python tools/update_schema.py --audit-aliases
+```
+
+Then regenerate the parsers
+(`python tools/gentl.py tools/schema_l225.tl --domain <name> --compat --out …`,
+`--all` for `gen_fns.rs`), set `API_LAYER`, reconcile the curated constants
+(`gentl --diff`), and run the live sweep before promoting. `CTOR_ALIASES` in
+`tools/gentl.py` stays minimal by design: an alias is kept only when the old
+id's shape is layout-compatible with the schema ctor it maps to, or when it
+is a wire-verified divergence (production DCs answer with the tdlib-draft
+`channel#d49f34c6` regardless of the negotiated layer);
+`python tools/update_schema.py --audit-aliases` re-checks that invariant.
 
 ## Installation
 
@@ -249,7 +265,7 @@ let client = Client::builder()
 | [`session`](src/session.rs) | `SessionData` + `SessionStorage` trait + JSON store |
 | [`api`](src/api.rs) | Auth-key creation and authorization flows |
 | [`file`](src/file.rs) | Chunked upload/download, `DownloadConfig`, `upload.file` parsing |
-| [`types`](src/types/) | TL types: generated unions + builders (`tools/gentl.py` from `tools/schema.tl`) plus curated models and dialect alias arms |
+| [`types`](src/types/) | TL types: generated unions + builders (`tools/gentl.py` from the assembled `tools/schema_l*.tl` — see `tools/update_schema.py`) plus curated models and dialect alias arms |
 | [`updates`](src/updates.rs) | Update dispatching (`UpdateDispatcher`) |
 | [`ergonomics`](src/ergonomics.rs) | Message/send-file builders, history iterator |
 | [`resilience`](src/resilience.rs) | Flood limiter, file-ref cache, DC rotator |

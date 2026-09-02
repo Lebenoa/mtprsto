@@ -1,0 +1,14 @@
+{
+  "base_layer": 223,
+  "base_source": "tl.json",
+  "applied_layers": [
+    224,
+    225
+  ],
+  "diff_file": null,
+  "generated_utc": "2026-09-02T02:03:46+00:00",
+  "bytes": 267993,
+  "constructors": 1574,
+  "methods": 783,
+  "replaced": 89
+}
