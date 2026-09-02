@@ -131,6 +131,12 @@ impl Default for PoolConfig {
 /// block the others.
 struct PooledConnection {
     codec: Mutex<PoolCodec>,
+    /// One-in-flight RPC permit: held for a whole send→answer exchange.
+    /// Concurrent callers that round-robin onto a busy connection wait
+    /// here instead of interleaving frames — a second request's answer
+    /// would otherwise be drained by the first waiter's frame loop
+    /// (message ids correlate strictly per connection).
+    rpc_permit: Mutex<()>,
 }
 
 /// A codec over any supported wire transport. `send_frame`/`recv_frame`
@@ -309,6 +315,7 @@ impl SenderPool {
         let codec = res?;
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
+            rpc_permit: Mutex::new(()),
         }));
 
         // Open additional aux connections in parallel — log failures but
@@ -331,6 +338,7 @@ impl SenderPool {
                 Ok(codec) => {
                     self.connections.push(Arc::new(PooledConnection {
                         codec: Mutex::new(codec),
+                        rpc_permit: Mutex::new(()),
                     }));
                 }
                 Err(e) => {
@@ -502,6 +510,11 @@ impl SenderPool {
             .connections
             .get(idx)
             .ok_or_else(|| Error::Transport("pool has no connections".into()))?;
+        // One in-flight RPC per connection: the permit is held across
+        // every attempt of this exchange (including service-state
+        // re-sends) so a concurrent caller can never interleave frames
+        // on the same socket — answers correlate strictly by msg_id.
+        let _permit = conn.rpc_permit.lock().await;
         // The scoped session/codec guards below drop at their last use —
         // clippy's drop-point model cannot see that through the async
         // block (significant_drop_tightening / _in_scrutinee).
@@ -1318,6 +1331,7 @@ impl SenderPool {
         let codec = res?;
         self.connections.push(Arc::new(PooledConnection {
             codec: Mutex::new(codec),
+            rpc_permit: Mutex::new(()),
         }));
         tracing::info!(
             "scaled up: now {} connection(s) to DC {}",
