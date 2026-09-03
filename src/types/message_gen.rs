@@ -237,6 +237,9 @@ pub const PHONE_CALL_EMPTY_ID: u32 = 0x5366c915;
 pub const PAYMENT_REQUESTED_INFO_ID: u32 = 0x909c3f94;
 pub const POST_ADDRESS_ID: u32 = 0x1e8caaeb;
 pub const DRAFT_MESSAGE_ID: u32 = 0x96eaa5eb;
+/// Alias kept for the parser arm: on this branch the live-wire 225 id
+/// equals the 223-shape id (same layout; 0x60fe3294 also accepted below).
+pub const DRAFT_MESSAGE_223_ID: u32 = 0x96eaa5eb;
 pub const DRAFT_MESSAGE_EMPTY_ID: u32 = 0x1b0c841a;
 pub const MESSAGES_SET_BOT_GUEST_CHAT_RESULT_ID: u32 = 0xb8f106e3;
 pub const INPUT_BOT_INLINE_RESULT_GAME_ID: u32 = 0x4fa417f2;
@@ -7317,6 +7320,19 @@ impl MessageMedia {
                     game_outcome,
                 })
             }
+            // 223 dialect: {poll, results} — NO flags word, no
+            // attached_media (H10: aliasing into the 229 arm read a
+            // phantom flags word and desynced).
+            0x4bd6e798 => {
+                let poll = Box::new(Poll::read_from(r)?);
+                let results = Box::new(PollResults::read_from(r)?);
+                Ok(MessageMedia::Poll {
+                    flags: 0,
+                    poll,
+                    results,
+                    attached_media: None,
+                })
+            }
             MESSAGE_MEDIA_POLL_ID => {
                 let flags = r.read_i32()?;
                 let poll = Box::new(Poll::read_from(r)?);
@@ -9700,7 +9716,10 @@ impl Message {
                     ttl_period,
                 })
             }
-            MESSAGE_ID => {
+            // 0x3ae56482: layer-223 message (negotiated docs layer);
+            // 0x95ef6f2b: live-wire 225 re-issue (wire-verified — both
+            // share the 229 layout modulo flags-gated 229-only fields).
+            0x3ae56482 | MESSAGE_ID => {
                 let flags = r.read_i32()?;
                 let flags2 = r.read_i32()?;
                 let out = flags & (1 << 1) != 0;

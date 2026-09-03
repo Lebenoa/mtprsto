@@ -391,6 +391,23 @@ impl TLReader<'_> {
         Ok(())
     }
 
+    /// Rewind the read position by `n` bytes (undo a previous read).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Serialization`] when fewer than `n` bytes precede
+    /// the current position.
+    pub fn rewind(&mut self, n: usize) -> Result<()> {
+        if n > self.pos {
+            return Err(Error::Serialization(format!(
+                "cannot rewind {n} bytes at position {}",
+                self.pos
+            )));
+        }
+        self.pos -= n;
+        Ok(())
+    }
+
     /// Read a TL `Vector<T>` header and return the element count.
     /// The caller then reads `count` elements directly from this reader.
     ///

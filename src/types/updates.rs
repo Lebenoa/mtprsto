@@ -530,7 +530,16 @@ impl Update {
                     constructor: UPDATE_CHAT_USER_TYPING,
                 })
             }
-            other => Ok(Self::Other { constructor: other }),
+            other => {
+                // Unknown ctor: rewind and delegate to the generated union
+                // parser so the variant's payload bytes are consumed exactly
+                // (M1: leaving them unread desyncs every later update in
+                // Vector<Update>). A ctor outside the schema entirely fails
+                // there with a precise error.
+                r.rewind(4)?;
+                let _ = crate::types::updates_gen::Update::read_from(&mut *r)?;
+                Ok(Self::Other { constructor: other })
+            }
         }
     }
 }
@@ -617,11 +626,6 @@ impl Difference {
                 //   other_updates chats users state
                 let new_messages = read_msg_vector(&mut r)?;
                 let enc_count = r.read_vector_header()?; // new_encrypted_messages
-                if enc_count > 0 {
-                    return Err(Error::Serialization(
-                        "EncryptedMessage parsing not supported".into(),
-                    ));
-                }
                 if enc_count > 0 {
                     return Err(Error::Serialization(
                         "EncryptedMessage parsing not supported".into(),

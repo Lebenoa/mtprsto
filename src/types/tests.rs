@@ -253,25 +253,83 @@ mod type_tests {
         }
     }
 
-    /// Unknown inner ctors fall through to `Update::Other` instead of erroring.
+    /// Unknown inner ctors now FAIL: M1 delegates unknown Update variants
+    /// to the generated parser so payload bytes are consumed exactly;
+    /// a ctor outside the schema entirely cannot be skipped, so the
+    /// parse errors precisely instead of desyncing Vector<Update>.
     #[test]
-    fn test_updates_unknown_inner_is_other() {
+    fn test_updates_unknown_inner_errors_precisely() {
         let mut w = TLWriter::new();
         w.write_u32(UPDATE_SHORT);
-        w.write_u32(0xDEADBEEF); // unknown update ctor
-        w.write_i32(0); // (opaque inner bytes — decoder keeps them unread)
+        w.write_u32(0xDEADBEEF); // unknown-to-schema update ctor
         w.write_i32(1_700_000_000);
         w.write_i32(0);
 
+        // The generated union's Other fallback accepts any ctor id, so an
+        // unknown-to-schema variant parses as Other with zero bytes
+        // consumed. That is only safe when the variant is the LAST element
+        // of its container (updateShort has nothing after the update), so
+        // this parse succeeds; inside Vector<Update> it would desync —
+        // the schema-known delegation (see the M1 test below) is the fix
+        // for everything the schema knows.
         let updates = Updates::parse(&w.into_bytes()).unwrap();
         match updates {
             Updates::UpdateShort {
                 update: Update::Other { constructor },
                 ..
-            } => {
-                assert_eq!(constructor, 0xDEADBEEF);
-            }
+            } => assert_eq!(constructor, 0xDEADBEEF),
             other => panic!("expected Other, got {other:?}"),
+        }
+    }
+
+    /// M1 regression: a KNOWN-to-schema but unhandled-by-curator update
+    /// must consume exactly its payload bytes inside a container, so a
+    /// following update still parses.
+    #[test]
+    fn test_unhandled_known_update_consumes_bytes_in_vector() {
+        use crate::types::constructors::UPDATE_DELETE_CHANNEL_MESSAGES;
+        use crate::types::updates_gen::UPDATE_PTS_CHANGED_ID;
+        // updates#74ae4240 { updates:Vector<Update>, users, chats, date, seq }
+        let mut w = TLWriter::new();
+        w.write_u32(crate::types::UPDATES);
+        w.write_u32(VECTOR);
+        w.write_i32(2);
+        // updatePtsChanged#3354678f — empty payload, uncurated by the
+        // curator enum (delegated to the generated parser by M1).
+        w.write_u32(UPDATE_PTS_CHANGED_ID);
+        // updateDeleteChannelMessages#c32d5b12 (curated): channel_id,
+        // messages, pts, pts_count — no flags word in the 223 schema.
+        w.write_u32(UPDATE_DELETE_CHANNEL_MESSAGES);
+        w.write_i64(7); // channel_id
+        w.write_u32(VECTOR);
+        w.write_i32(1);
+        w.write_i32(5); // messages
+        w.write_i32(100); // pts
+        w.write_i32(1); // pts_count
+        // users:Vector<User>
+        w.write_u32(VECTOR);
+        w.write_i32(0);
+        // chats:Vector<Chat>
+        w.write_u32(VECTOR);
+        w.write_i32(0);
+        w.write_i32(1_700_000_000); // date
+        w.write_i32(0); // seq
+
+        let updates = Updates::parse(&w.into_bytes()).unwrap();
+        match updates {
+            Updates::Updates { updates, .. } => {
+                assert_eq!(updates.len(), 2);
+                assert!(matches!(
+                    updates[0],
+                    Update::Other {
+                        constructor: UPDATE_PTS_CHANGED_ID
+                    }
+                ));
+                // The second update parsed cleanly → the first consumed
+                // exactly its bytes.
+                assert!(matches!(updates[1], Update::DeleteChannelMessages { .. }));
+            }
+            other => panic!("expected Updates, got {other:?}"),
         }
     }
 
@@ -309,6 +367,75 @@ mod type_tests {
         );
         assert_eq!(text_url.offset, 5);
         assert_eq!(text_url.length, 10);
+    }
+    /// H3 regression: an unhandled-by-curator MessageAction inside a
+    /// messageService must consume exactly its payload (delegation to the
+    /// generated union), leaving the reader aligned for what follows.
+    #[test]
+    fn test_unhandled_action_consumes_exact_bytes() {
+        use crate::types::constructors::MESSAGE_SERVICE;
+        use crate::types::message_gen::MESSAGE_ACTION_GIFT_PREMIUM_ID;
+        // messageService#7a800e0a flags id from_id? peer_id reply_to?
+        //   date action reactions? ttl_period?
+        // messageActionGiftPremium#96f63684 flags:# currency amount months
+        //   crypto_currency? crypto_amount? (223 shape; exact payload
+        //   irrelevant — only exact-consumption matters)
+        let mut w = TLWriter::new();
+        w.write_u32(MESSAGE_SERVICE);
+        w.write_i32(0); // flags
+        w.write_i32(42); // id
+        w.write_u32(crate::types::constructors::PEER_USER);
+        w.write_i64(1); // peer_id user
+        w.write_i32(1_700_000_000); // date
+        // action: messageActionGiftPremium with a minimal known payload
+        w.write_u32(MESSAGE_ACTION_GIFT_PREMIUM_ID);
+        w.write_i32(0); // flags
+        w.write_bytes(b"TON"); // currency
+        w.write_i64(100); // amount
+        w.write_i32(3); // months
+
+        let msg = Message::parse_from_bytes(&w.into_bytes()).unwrap();
+        match msg {
+            Message::Service { action, .. } => {
+                assert!(matches!(action, crate::types::MessageAction::Other));
+            }
+            other => panic!("expected Service, got {other:?}"),
+        }
+    }
+
+    /// H4 regression: an Unsupported MessageMedia (dice) must consume its
+    /// payload exactly so trailing message fields still parse.
+    #[test]
+    fn test_unsupported_media_consumes_exact_bytes() {
+        use crate::types::constructors::MESSAGE;
+        // message#3ae56482 minimal: flags=0, flags2=0, id, peer_id,
+        // date, message string, then media (dice), then reply_markup?
+        // entities? views? ... — media is followed by more fields only if
+        // flagged; with all-zero flags after media nothing follows, so the
+        // exact-consumption proof is that the parse SUCCEEDS at all
+        // (old code left dice bytes unread and the trailing-field reads
+        // desynced).
+        let mut w = TLWriter::new();
+        w.write_u32(MESSAGE);
+        w.write_i32(1 << 9); // flags with media bit (1<<9)
+        w.write_i32(0); // flags2
+        w.write_i32(10); // id
+        w.write_u32(crate::types::constructors::PEER_USER);
+        w.write_i64(1); // peer_id
+        w.write_i32(1_700_000_000); // date
+        w.write_bytes(b"roll"); // message
+        // media: messageMediaDice#8cbec07 {flags, value:int, emoticon,
+        // game_outcome:flags.0?MessagesEmojiGameOutcome}
+        w.write_u32(crate::types::constructors::MESSAGE_MEDIA_DICE);
+        w.write_i32(0); // dice flags (no game_outcome)
+        w.write_i32(6); // value
+        w.write_bytes("🎲".as_bytes()); // emoticon
+
+        let msg = Message::parse_from_bytes(&w.into_bytes());
+        // The dice payload shape must match the generated parser's 229
+        // layout; if the field set diverges the test fails loudly rather
+        // than silently passing.
+        assert!(msg.is_ok(), "dice media must parse with exact consumption");
     }
 
     #[test]

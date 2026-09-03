@@ -255,7 +255,7 @@ async fn get_file_chunk(
     offset: i64,
     limit: usize,
 ) -> Result<Vec<u8>> {
-    let payload = rpc::build_get_file(location, offset, i32::try_from(limit).unwrap_or(i32::MAX));
+    let payload = rpc::build_get_file(location, offset, i32::try_from(limit).unwrap_or(i32::MAX))?;
     let raw = pool.send_rpc(&payload).await?;
     match parse_get_file(&raw)? {
         GetFile::File { bytes, .. } => Ok(bytes),

@@ -134,7 +134,10 @@ impl TelegramClient {
 
         // Step 5: Send req_DH_params
         let mut stream = transport::connect(self.dc_id).await?;
-        transport::send_unencrypted(&mut stream, 0, &req_dh).await?;
+        // L8: spec-compliant msg_ids (unix time * 2^32) instead of 0;
+        // production servers tolerate 0 today, but correctness first.
+        transport::send_unencrypted(&mut stream, crate::crypto::next_msg_id(0), &req_dh)
+            .await?;
         let (_, dh_response) = transport::recv_unencrypted(&mut stream).await?;
 
         // Step 6: Parse server_DH_params_ok
@@ -150,7 +153,12 @@ impl TelegramClient {
             let set_dh = auth.build_set_client_dh_params()?;
 
             // Step 8: Send set_client_DH_params
-            transport::send_unencrypted(&mut stream, 0, &set_dh).await?;
+            transport::send_unencrypted(
+                &mut stream,
+                crate::crypto::next_msg_id(0),
+                &set_dh,
+            )
+            .await?;
             let (_, dh_gen_response) = transport::recv_unencrypted(&mut stream).await?;
 
             // Step 9: Parse the answer
@@ -313,13 +321,14 @@ impl TelegramClient {
                         if off + 4 > plaintext.len() {
                             break;
                         }
-                        let len = i32::from_le_bytes({
+                        let len = u32::from_le_bytes({
                             // off+4 <= len was checked just above
                             #[allow(clippy::unwrap_used)]
                             plaintext[off..off + 4].try_into().unwrap()
                         }) as usize;
                         off += 4;
-                        if off + len > plaintext.len() {
+                        // u32 cast: no negative sign-extension; exact bound.
+                        if off.checked_add(len).is_none_or(|end| end > plaintext.len()) {
                             break;
                         }
                         items.push(&plaintext[off..off + len]);
@@ -1294,8 +1303,8 @@ mod tests {
     #[test]
     fn test_srp_check_password_is_deterministic_shape() {
         // SRP mixes a random `a`, so `M1` differs run to run — but the
-        // answer must always be well-formed: `A` padded to 255 bytes,
-        // `M1` = 32 bytes.
+        // answer must always be well-formed: `A` padded to 256 bytes
+        // (2048-bit, per the SRP spec), `M1` = 32 bytes.
         let params = crate::crypto::SrpParams {
             salt1: vec![1, 2, 3],
             salt2: vec![4, 5, 6],
@@ -1313,7 +1322,7 @@ mod tests {
         };
         let ans = crate::crypto::srp_check_password(b"hunter2", &params);
         assert_eq!(ans.srp_id, 77);
-        assert_eq!(ans.a.len(), 255);
+        assert_eq!(ans.a.len(), 256);
         assert_eq!(ans.m1.len(), 32);
     }
 }

@@ -261,7 +261,14 @@ impl SessionStorage for SessionStore {
                 ),
             ))
         })?;
-        if let Ok(handle) = std::fs::File::open(&tmp_path) {
+        // M10: open with write access (a read-only handle fails sync_all
+        // on Windows, making the durability claim a silent no-op there).
+        // Errors still degrade to best-effort: the rename below is the
+        // crash-safety boundary that matters for process crashes.
+        if let Ok(handle) = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&tmp_path)
+        {
             let _ = handle.sync_all(); // best-effort durability
         }
         std::fs::rename(&tmp_path, &self.path).map_err(|e| {

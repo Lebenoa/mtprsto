@@ -243,6 +243,10 @@ pub struct SenderPool {
     /// [`ProtocolConfig::ack_flush_interval`], per
     /// SPEC §5.4).
     pending_acks: Arc<Mutex<Vec<u64>>>,
+    /// Pushed update containers (updates#/updatesCombined#/updateShort#/
+    /// updateShortSentMessage#) observed while draining frames — forwarded
+    /// raw to the client's update pump instead of being discarded (H9).
+    update_tx: tokio::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
 }
 
 /// Flush pending acks once this many are queued (SPEC §5.4: "16 pending").
@@ -276,7 +280,21 @@ impl SenderPool {
             protocol,
             next_index: Mutex::new(0),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
+            update_tx: tokio::sync::Mutex::new(None),
         }
+    }
+
+    /// Register the receiver side for pushed update containers (H9).
+    /// The pool forwards the raw bytes of every `updates#`,
+    /// `updatesCombined#`, `updateShort#`, `updateShortSentMessage#`
+    /// item it observes while draining frames; parse via
+    /// `types::Updates::parse`. Re-registering replaces the previous
+    /// sender; `None` detaches.
+    pub async fn set_update_sender(
+        &self,
+        tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+    ) {
+        *self.update_tx.lock().await = tx;
     }
 
     /// Create a pool with just a DC ID and config (no session yet).
@@ -584,6 +602,9 @@ impl SenderPool {
                 Ok(v) => v,
                 Err(Error::Network(e)) => {
                     tracing::warn!("I/O error on connection {idx} to DC {}: {e}", self.dc_id);
+                    if attempt >= 3 {
+                        return Err(Error::Network(e));
+                    }
                     self.reconnect_connection(conn).await?;
                     continue; // same encrypted bytes re-sent; server dedupes
                 }
@@ -592,6 +613,9 @@ impl SenderPool {
                         "read timed out on connection {idx} to DC {}: {msg}",
                         self.dc_id
                     );
+                    if attempt >= 3 {
+                        return Err(Error::Transport(msg));
+                    }
                     self.reconnect_connection(conn).await?;
                     continue; // re-send on a fresh connection
                 }
@@ -691,20 +715,26 @@ impl SenderPool {
                                 "server sent a resend/state request; no outbound journal, ignoring"
                             );
                         }
+                        // Server-initiated update pushes (H9): forward the
+                        // raw container to the registered update pump
+                        // (acked above) and keep waiting for rpc_result.
+                        crate::types::UPDATES
+                        | crate::types::UPDATES_COMBINED
+                        | crate::types::UPDATE_SHORT
+                        | crate::types::UPDATE_SHORT_SENT_MESSAGE => {
+                            let guard = self.update_tx.lock().await;
+                            if let Some(tx) = guard.as_ref() {
+                                let _ = tx.send(item.to_vec());
+                            }
+                        }
                         // Everything below is informational and never the
-                        // RPC answer: acks/pongs, MTProto service info
-                        // about other messages' fate, and server-initiated
-                        // updates pushes that precede our answer on the
-                        // same connection. Drain (the frame is acked
-                        // above) and keep waiting for rpc_result.
+                        // RPC answer: acks/pongs and MTProto service info
+                        // about other messages' fate. Drain (the frame is
+                        // acked above) and keep waiting for rpc_result.
                         MSGS_ACK
                         | PONG
                         | crate::serialize::MSG_DETAILED_INFO
-                        | crate::serialize::MSG_NEW_DETAILED_INFO
-                        | crate::types::UPDATES
-                        | crate::types::UPDATES_COMBINED
-                        | crate::types::UPDATE_SHORT
-                        | crate::types::UPDATE_SHORT_SENT_MESSAGE => {}
+                        | crate::serialize::MSG_NEW_DETAILED_INFO => {}
                         RPC_RESULT => {
                             // rpc_result#f35c6d01 req_msg_id:long result
                             let req = u64::from_le_bytes(
@@ -847,14 +877,16 @@ impl SenderPool {
             if off + 4 > data.len() {
                 break;
             }
-            let len = i32::from_le_bytes(
+            let len = u32::from_le_bytes(
                 // invariant: the `off + 4 > data.len()` guard above
                 // guarantees this full 4-byte length field
                 #[allow(clippy::unwrap_used)]
                 data[off..off + 4].try_into().unwrap(),
             ) as usize;
             off += 4;
-            if off + len > data.len() {
+            // `len` is u32-cast, so no negative sign-extension can make
+            // `off + len` overflow; the compare is exact.
+            if off.checked_add(len).is_none_or(|end| end > data.len()) {
                 break;
             }
             items.push(&data[off..off + len]);
@@ -894,14 +926,16 @@ impl SenderPool {
             if off + 4 > bytes.len() {
                 break;
             }
-            let len = i32::from_le_bytes(
+            let len = u32::from_le_bytes(
                 // invariant: the `off + 4 > bytes.len()` guard above
                 // guarantees this full 4-byte length field
                 #[allow(clippy::unwrap_used)]
                 bytes[off..off + 4].try_into().unwrap(),
             ) as usize;
             off += 4;
-            if off + len > bytes.len() {
+            // u32 cast: negative lengths cannot sign-extend; checked add
+            // plus exact compare bounds the slice.
+            if off.checked_add(len).is_none_or(|end| end > bytes.len()) {
                 break;
             }
             let item = &bytes[off..off + len];
@@ -1223,12 +1257,12 @@ impl SenderPool {
                         }
                         // codec + permit guards drop here, before reconnect.
                     };
-                    if matches!(pong, PingOutcome::Dead) {
-                        if let Err(e) = pool_arc.reconnect_connection(&conn).await {
-                            tracing::warn!("keepalive reconnect failed: {e}");
-                            // Back off so a dead DC doesn't spin this task hot.
-                            tokio::time::sleep(protocol.pong_timeout).await;
-                        }
+                    if matches!(pong, PingOutcome::Dead)
+                        && let Err(e) = pool_arc.reconnect_connection(&conn).await
+                    {
+                        tracing::warn!("keepalive reconnect failed: {e}");
+                        // Back off so a dead DC doesn't spin this task hot.
+                        tokio::time::sleep(protocol.pong_timeout).await;
                     }
                 }
             });

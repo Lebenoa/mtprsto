@@ -107,6 +107,9 @@ pub const INPUT_MEDIA_STORY_ID: u32 = 0x89fdd778;
 pub const INPUT_MEDIA_DICE_ID: u32 = 0xe66fbf7b;
 pub const INPUT_MEDIA_POLL_ID: u32 = 0x883a4108;
 pub const POLL_ID: u32 = 0x966e2dbf;
+/// docs-layer (223) re-issue of `poll#58747131` — same fields minus
+/// `countries_iso2` and the trailing `hash:long`.
+pub const POLL_223_ID: u32 = 0x58747131;
 pub const INPUT_POLL_ANSWER_ID: u32 = 0x199fed96;
 pub const POLL_ANSWER_ID: u32 = 0x4b7d786a;
 pub const INPUT_MEDIA_GEO_LIVE_ID: u32 = 0x971fa843;
@@ -3356,6 +3359,49 @@ pub struct Poll {
 impl Poll {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
+        // 223 dialect poll#58747131: same field order as 229 minus
+        // countries_iso2 (flags.12) and the trailing hash:long (H10 —
+        // the strict 229-only check rejected the negotiated layer's id).
+        if ctor == POLL_223_ID {
+            let flags = r.read_i32()?;
+            let id = r.read_i64()?;
+            let question = TextWithEntities::read_from(r)?;
+            let n = r.read_vector_header()?;
+            let mut answers = Vec::with_capacity(n.max(0) as usize);
+            for _ in 0..n {
+                answers.push(PollAnswer::read_from(r)?);
+            }
+            let close_period = if flags & (1 << 4) != 0 {
+                Some(r.read_i32()?)
+            } else {
+                None
+            };
+            let close_date = if flags & (1 << 5) != 0 {
+                Some(r.read_i32()?)
+            } else {
+                None
+            };
+            return Ok(Poll {
+                id,
+                flags,
+                closed: flags & (1 << 0) != 0,
+                public_voters: flags & (1 << 1) != 0,
+                multiple_choice: flags & (1 << 2) != 0,
+                quiz: flags & (1 << 3) != 0,
+                open_answers: false,
+                revoting_disabled: false,
+                shuffle_answers: false,
+                hide_results_until_close: false,
+                creator: false,
+                subscribers_only: false,
+                question,
+                answers,
+                close_period,
+                close_date,
+                countries_iso2: None,
+                hash: 0,
+            });
+        }
         if ctor != POLL_ID {
             return Err(Error::Serialization(format!(
                 "expected poll, got {ctor:#x}"
