@@ -423,14 +423,12 @@ impl<'a> MessagesIter<'a> {
             let want = i32::try_from(remaining.min(self.page_size_us()))
                 .unwrap_or(i32::MAX)
                 .clamp(1, 100);
-            // NOTE: errors are swallowed into an empty page so a broken
-            // history read still returns what we collected so far; use
-            // `page_size` and pagination fields for finer control later.
+            // L6: surface page errors instead of silently ending
+            // iteration with a short result.
             let mut page: Vec<types::MessageFull> = self
                 .client
                 .get_history_page(&self.peer, offset_id, want)
-                .await
-                .unwrap_or_default();
+                .await?;
             if page.is_empty() {
                 break; // history exhausted
             }

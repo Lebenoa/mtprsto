@@ -539,12 +539,15 @@ impl MessageAction {
                 Ok(Self::MessageActionGameScore { game_id, score })
             }
             _ => {
-                // Unknown action: no safe way to know its length — drain the
-                // rest of the frame (only safe because callers treat the
-                // messageService tail as terminal after this).
-                while r.remaining() > 0 {
-                    let _ = r.read_i32()?;
-                }
+                // Unknown action: rewind the ctor and delegate to the
+                // generated union parser, which consumes the variant's
+                // exact payload bytes (the old drain-to-end corrupted
+                // Vector<Message> contexts).
+                // A truly unknown-to-the-schema ctor still fails there with
+                // a precise error instead of silently truncating history.
+                r.rewind(4)?;
+                let _ =
+                    crate::types::message_gen::MessageAction::read_from(&mut *r)?;
                 Ok(Self::Other)
             }
         }
@@ -742,14 +745,24 @@ impl MessageMedia {
             | MESSAGE_MEDIA_GIVEAWAY_RESULTS
             | MESSAGE_MEDIA_PAID_MEDIA
             | MESSAGE_MEDIA_GAME => {
-                // Variable-length nested payloads without per-field skip
-                // support. Mark as present-but-unsupported; the enclosing
-                // message parse completes because we stop consuming here.
+                // Variable-length nested payloads. Rewind and delegate to
+                // the generated union parser so the variant's bytes are
+                // consumed exactly — leaving them unread desynced every
+                // later element in Vector<Message> (H4).
+                r.rewind(4)?;
+                let _ =
+                    crate::types::message_gen::MessageMedia::read_from(&mut *r)?;
                 Ok(Self::Unsupported)
             }
             other => {
-                // Do NOT drain the reader (old behaviour corrupted the
-                // stream); surface the ctor to the caller instead.
+                // Unknown ctor: delegate as well — the generated parser
+                // consumes known-schema payloads exactly; a ctor outside
+                // the schema entirely cannot be skipped (its length is
+                // unknowable), so fail precisely rather than corrupting
+                // the stream position.
+                r.rewind(4)?;
+                let _ =
+                    crate::types::message_gen::MessageMedia::read_from(&mut *r)?;
                 Ok(Self::Unknown(other))
             }
         }

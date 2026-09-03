@@ -357,6 +357,15 @@ impl AbridgedTransport {
             let len = (buf[0] as usize) | ((buf[1] as usize) << 8) | ((buf[2] as usize) << 16);
             len * 4
         };
+        // L1: cap untrusted lengths like every other transport — a 3-byte
+        // 0xFFFFFF header otherwise allocates ~64 MiB before any content
+        // byte is read.
+        if len > IntermediateTransport::MAX_FRAME {
+            return Err(Error::Transport(format!(
+                "abridged frame length {len} exceeds maximum {}",
+                IntermediateTransport::MAX_FRAME
+            )));
+        }
 
         let mut data = vec![0u8; len];
         self.stream.read_exact(&mut data).await?;
@@ -539,7 +548,9 @@ pub async fn recv_unencrypted(stream: &mut TcpStream) -> Result<(u64, Vec<u8>)> 
     }
 
     let msg_id = match <[u8; 8]>::try_from(&data[8..16]) {
-        Ok(b) => u64::from_be_bytes(b),
+        // L2: the write path (build_unencrypted → TLWriter::write_u64)
+        // serializes little-endian; parse the same way.
+        Ok(b) => u64::from_le_bytes(b),
         // unreachable: `data.len() >= 20` was just checked
         Err(_) => return Err(Error::Transport("message too short".into())),
     };
@@ -628,7 +639,9 @@ pub async fn recv_encrypted(stream: &mut TcpStream) -> Result<Vec<u8>> {
 /// Returns transport errors from the connect/send/receive chain.
 pub async fn exchange_unencrypted(dc_id: i32, send_payload: &[u8]) -> Result<(u64, Vec<u8>)> {
     let mut stream = connect(dc_id).await?;
-    let msg_id = 0xdeadbeef; // Can be anything for unencrypted
+    // L8: spec-compliant msg_id (unix time * 2^32) instead of a constant;
+    // production servers tolerate constants today, but correctness first.
+    let msg_id = crate::crypto::next_msg_id(0);
     send_unencrypted(&mut stream, msg_id, send_payload).await?;
     recv_unencrypted(&mut stream).await
 }

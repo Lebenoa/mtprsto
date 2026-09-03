@@ -483,7 +483,16 @@ impl Update {
                 let max_id = MsgId(i64::from(r.read_i32()?));
                 Ok(Self::ReadChannelOutbox { channel_id, max_id })
             }
-            other => Ok(Self::Other { constructor: other }),
+            other => {
+                // Unknown ctor: rewind and delegate to the generated union
+                // parser so the variant's payload bytes are consumed exactly
+                // (M1: leaving them unread desyncs every later update in
+                // Vector<Update>). A ctor outside the schema entirely fails
+                // there with a precise error.
+                r.rewind(4)?;
+                let _ = crate::types::updates_gen::Update::read_from(&mut *r)?;
+                Ok(Self::Other { constructor: other })
+            }
         }
     }
 }
@@ -570,11 +579,6 @@ impl Difference {
                 //   other_updates chats users state
                 let new_messages = read_msg_vector(&mut r)?;
                 let enc_count = r.read_vector_header()?; // new_encrypted_messages
-                if enc_count > 0 {
-                    return Err(Error::Serialization(
-                        "EncryptedMessage parsing not supported".into(),
-                    ));
-                }
                 if enc_count > 0 {
                     return Err(Error::Serialization(
                         "EncryptedMessage parsing not supported".into(),
@@ -756,8 +760,10 @@ fn read_dialog_skip(r: &mut TLReader) -> Result<Option<i32>> {
     let dflags = r.read_i32()?;
     let _peer = Peer::read_from(r)?;
     // top_message, read_inbox_max_id, read_outbox_max_id, unread_count,
-    // unread_mentions_count, unread_reactions_count, unread_poll_votes_count
-    for _ in 0..7 {
+    // unread_mentions_count, unread_reactions_count — six counters.
+    // (H8: layer-223 dialog#d58a08c6 has no unread_poll_votes_count;
+    // reading a 7th shifted every later field by 4 bytes.)
+    for _ in 0..6 {
         let _ = r.read_i32()?;
     }
     skip_peer_notify_settings(r)?;

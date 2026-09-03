@@ -52,7 +52,13 @@ impl WsTransport {
                 Message::Close(c) => {
                     return Err(Error::Transport(format!("ws closed by peer: {c:?}")));
                 }
-                Message::Ping(_) | Message::Pong(_) | Message::Text(_) => {}
+                Message::Ping(p) => {
+                    // M7: a split stream does NOT auto-reply to pings —
+                    // queue the Pong explicitly or the server kills an
+                    // idle connection on its ping timeout.
+                    self.sink.send(Message::Pong(p)).await.map_err(ws_err)?;
+                }
+                Message::Pong(_) | Message::Text(_) => {}
                 Message::Frame(_) => unreachable!("raw frames handled by tungstenite"),
             }
         }

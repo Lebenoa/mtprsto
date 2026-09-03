@@ -423,17 +423,13 @@ pub fn read_document_attribute(r: &mut TLReader) -> Result<DocumentAttribute> {
             } else {
                 None
             };
+            // video_codec:flags.5?string — read exactly once (H5: the
+            // duplicated block consumed the NEXT attribute's bytes).
             let _video_codec = if flags & (1 << 5) != 0 {
                 Some(String::from_utf8(r.read_bytes()?)?)
             } else {
                 None
             };
-            let video_codec = if flags & (1 << 5) != 0 {
-                String::from_utf8(r.read_bytes()?)?
-            } else {
-                String::new()
-            };
-            let _ = video_codec;
             DocumentAttribute::Video {
                 duration,
                 w,

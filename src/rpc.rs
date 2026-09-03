@@ -507,8 +507,13 @@ pub fn build_save_big_file_part(
 /// Schema: `upload.getFile#be5335be flags:# precise:flags.0?true
 /// cdn_supported:flags.1?true location:InputFileLocation offset:long
 /// limit:int = upload.File;`
-#[must_use]
-pub fn build_get_file(location: &FileLocation, offset: i64, limit: i32) -> Vec<u8> {
+///
+/// # Errors
+///
+/// Returns [`Error::Other`] for `FileLocation` variants that cannot be
+/// mapped to a valid `InputFileLocation` (M6: the old ctor-0 fallback sent
+/// a malformed request to the server).
+pub fn build_get_file(location: &FileLocation, offset: i64, limit: i32) -> Result<Vec<u8>> {
     let mut w = TLWriter::new();
     w.write_u32(UPLOAD_GET_FILE);
     w.write_i32(0); // flags (no precise / cdn_supported)
@@ -558,14 +563,15 @@ pub fn build_get_file(location: &FileLocation, offset: i64, limit: i32) -> Vec<u
             w.write_bytes(reference);
             w.write_bytes(thumb_size.as_bytes());
         }
-        _ => {
-            // Unsupported location type — write empty
-            w.write_u32(0);
+        other => {
+            return Err(Error::Other(format!(
+                "unsupported file location variant for upload.getFile: {other:?}"
+            )));
         }
     }
     w.write_i64(offset);
     w.write_i32(limit);
-    w.into_bytes()
+    Ok(w.into_bytes())
 }
 
 // ===========================================================================
@@ -637,7 +643,7 @@ impl InputMedia {
             Self::GeoPoint { lat, long } => {
                 w.write_u32(INPUT_MEDIA_GEO_POINT);
                 w.write_i32(0); // flags (no accuracy_radius)
-                // TL `double` is 8-byte IEEE 754 big-endian on the wire.
+                // TL `double` is 8-byte IEEE 754 little-endian on the wire.
                 w.write_double(*lat);
                 w.write_double(*long);
             }
@@ -1576,7 +1582,7 @@ mod tests {
             reference: vec![1, 2, 3],
             dc_id: 2,
         };
-        let payload = build_get_file(&loc, 0, 1024 * 1024);
+        let payload = build_get_file(&loc, 0, 1024 * 1024).unwrap();
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), UPLOAD_GET_FILE);
     }
@@ -2066,7 +2072,7 @@ mod tests {
             size: 12345,
             dc_id: 2,
         };
-        let payload = build_get_file(&loc, 4096, 1024 * 1024);
+        let payload = build_get_file(&loc, 4096, 1024 * 1024).unwrap();
         let mut r = TLReader::new(&payload);
         assert_eq!(r.read_u32().unwrap(), UPLOAD_GET_FILE);
         assert_eq!(r.read_i32().unwrap(), 0); // flags

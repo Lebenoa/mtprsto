@@ -102,17 +102,27 @@ impl ReplyMarkup {
     pub fn read_from(r: &mut TLReader) -> Result<Self> {
         let ctor = r.read_u32()?;
         match ctor {
-            0x48a30254 | REPLY_INLINE_MARKUP_ID => {
-                let flags = r.read_i32()?;
-                let force_reply = flags & (1 << 5) != 0;
+            0x48a30254 => {
+                // 223 dialect replyInlineMarkup: rows of keyboardButtonRow#
+                // KeyboardButton (H10: sharing the 229 arm read
+                // KeyboardInlineButtonRow-shaped bytes and desynced).
+                // Consume exactly via the 223-shaped parser, then map
+                // each button lossily to the 229 model (text preserved;
+                // exotic 223-only button payloads drop to Disabled).
                 let n = r.read_vector_header()?;
                 let mut rows = Vec::with_capacity(n.max(0) as usize);
                 for _ in 0..n {
-                    rows.push(KeyboardInlineButtonRow::read_from(r)?);
+                    let row = crate::types::gen_fns::KeyboardButtonRow::read_from(r)?;
+                    let buttons = row
+                        .buttons
+                        .into_iter()
+                        .map(map_223_button_to_inline)
+                        .collect();
+                    rows.push(KeyboardInlineButtonRow { buttons });
                 }
                 Ok(ReplyMarkup::InlineKeyboard {
-                    flags,
-                    force_reply,
+                    flags: 0,
+                    force_reply: false,
                     rows,
                 })
             }
@@ -171,5 +181,89 @@ impl ReplyMarkup {
                 "unknown ReplyMarkup constructor {other:#x}"
             ))),
         }
+    }
+}
+
+/// Map a 223-dialect `keyboardButton` to the 229 `keyboardInlineButton`
+/// model. Text is preserved; action payloads map where a 229 counterpart
+/// exists, otherwise the button renders as disabled (H10 conversion is
+/// intentionally lossy — the goal is exact byte consumption plus a
+/// usable text surface, not full fidelity).
+fn map_223_button_to_inline(
+    button: crate::types::gen_fns::KeyboardButton,
+) -> KeyboardInlineButton {
+    use crate::types::gen_fns::KeyboardButton as K;
+    use crate::types::chat_gen::InlineButtonType as T;
+    let (text, r#type) = match button {
+        K::Url { text, url, .. } => (text, T::InlineButtonTypeUrl { url }),
+        K::Callback { text, data, .. } => (
+            text,
+            T::InlineButtonTypeCallback {
+                flags: 0,
+                requires_password: false,
+                data,
+            },
+        ),
+        K::KeyboardButtonBuy { text, .. } => (text, T::InlineButtonTypeBuy),
+        K::KeyboardButtonGame { text, .. } => (text, T::InlineButtonTypeGame),
+        K::KeyboardButtonCopy { text, copy_text, .. } => {
+            (text, T::InlineButtonTypeCopy { copy_text })
+        }
+        K::KeyboardButtonWebView { text, url, .. }
+        | K::KeyboardButtonSimpleWebView { text, url, .. } => {
+            (text, T::InlineButtonTypeWebView { url })
+        }
+        K::KeyboardButtonSwitchInline {
+            text,
+            query,
+            same_peer,
+            ..
+        } => (
+            text,
+            T::InlineButtonTypeSwitchInline {
+                flags: i32::from(same_peer),
+                same_peer,
+                query,
+                peer_types: None, // lossy: 223 peer-type filters dropped
+            },
+        ),
+        K::KeyboardButtonUserProfile { text, user_id, .. } => {
+            (text, T::InlineButtonTypeUserProfile { user_id })
+        }
+        K::KeyboardButtonUrlAuth { text, url, .. } => {
+            (text, T::InlineButtonTypeUrl { url })
+        }
+        other => (button_text(&other), T::InlineButtonTypeDisabled),
+    };
+    KeyboardInlineButton {
+        flags: 0,
+        style: None,
+        text,
+        r#type,
+    }
+}
+
+/// Extract the label from any 223 keyboard button variant.
+fn button_text(button: &crate::types::gen_fns::KeyboardButton) -> String {
+    use crate::types::gen_fns::KeyboardButton as K;
+    match button {
+        K::KeyboardButtonCopy { text, .. }
+        | K::InputKeyboardButtonRequestPeer { text, .. }
+        | K::KeyboardButtonRequestPeer { text, .. }
+        | K::KeyboardButtonSimpleWebView { text, .. }
+        | K::KeyboardButtonWebView { text, .. }
+        | K::KeyboardButtonUserProfile { text, .. }
+        | K::InputKeyboardButtonUserProfile { text, .. }
+        | K::KeyboardButtonRequestPoll { text, .. }
+        | K::InputKeyboardButtonUrlAuth { text, .. }
+        | K::KeyboardButtonUrlAuth { text, .. }
+        | K::KeyboardButtonBuy { text, .. }
+        | K::KeyboardButtonGame { text, .. }
+        | K::KeyboardButtonSwitchInline { text, .. }
+        | K::KeyboardButtonRequestGeoLocation { text, .. }
+        | K::KeyboardButtonRequestPhone { text, .. }
+        | K::Callback { text, .. }
+        | K::Url { text, .. } => text.clone(),
+        _ => String::new(),
     }
 }
