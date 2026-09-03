@@ -764,7 +764,10 @@ impl AuthKeyCreation {
         for i in 0..8 {
             salt_bytes[i] = new_nonce[i] ^ server_nonce[i];
         }
-        Ok(u64::from_be_bytes(salt_bytes))
+        // M2: every salt path is little-endian (TLWriter::write_u64, the
+        // bad_server_salt adoption, new_session_created) — parse the XOR
+        // the same way or the handshake salt reaches the wire byte-swapped.
+        Ok(u64::from_le_bytes(salt_bytes))
     }
 }
 

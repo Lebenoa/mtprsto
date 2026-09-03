@@ -219,8 +219,9 @@ impl Default for FileRefCache {
 
 /// DC migration + config refresh bookkeeping (BS-6).
 ///
-/// The background refresh task itself lives in `Client::spawn_dc_refresher`;
-/// this struct is the shared state it mutates.
+/// Standalone shared state: the crate's `Client` does not currently wire
+/// a background refresh loop to this struct — consumers that want config
+/// refresh drive it themselves via [`DcRotator::update_config`].
 #[derive(Debug)]
 pub struct DcRotator {
     inner: Mutex<DcRotatorInner>,

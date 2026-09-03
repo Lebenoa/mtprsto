@@ -61,27 +61,33 @@ impl PtsState {
         }
     }
 
-    /// Check if the update's pts is the next one to process.
+    /// Check if the update's pts is exactly the next one to process.
     ///
-    /// In Telegram, `pts` is the state counter BEFORE the update,
-    /// and `pts_count` is how much it advances. So the update
-    /// matches our expected next state when `pts == self.pts`.
+    /// Telegram sends `pts` as the POST-update counter value (tdlib:
+    /// `update.pts == get_pts() + update.pts_count` is the in-order
+    /// condition — M5: the old pre-state reading treated every real
+    /// update as a gap).
     #[must_use]
-    pub(crate) const fn is_ahead(&self, pts: i32, _pts_count: i32) -> bool {
-        pts == self.pts
+    pub(crate) const fn is_next(&self, pts: i32, pts_count: i32) -> bool {
+        pts == self.pts.saturating_add(pts_count)
+    }
+    /// Check if we have a gap (update's post-state pts is beyond next).
+    /// (Used by the gap tests to pin the boundary; keep alongside is_next.)
+    #[cfg_attr(not(test), allow(dead_code))]
+    #[must_use]
+    pub(crate) const fn is_ahead(&self, pts: i32, pts_count: i32) -> bool {
+        pts > self.pts.saturating_add(pts_count)
     }
 
-    /// Check if we have a gap (update's pts is behind ours).
+    /// Check if we have a stale update (post-state pts at or before ours).
     #[must_use]
     pub(crate) const fn is_behind(&self, pts: i32, _pts_count: i32) -> bool {
-        pts < self.pts
+        pts <= self.pts
     }
 
-    /// Update the tracked pts after processing an update.
-    const fn advance(&mut self, pts: i32, pts_count: i32) {
-        // pts counters are bounded by Telegram's update windows; the
-        // server order (and clippy) are informed this cannot wrap
-        self.pts = pts.saturating_add(pts_count);
+    /// Adopt the update's post-state pts.
+    const fn advance(&mut self, pts: i32, _pts_count: i32) {
+        self.pts = pts;
     }
 }
 
@@ -232,11 +238,11 @@ impl UpdateDispatcher {
                     return Vec::new();
                 }
 
-                if self.account_pts.is_ahead(pts, pts_count) {
+                if self.account_pts.is_next(pts, pts_count) {
                     // Normal: this is the next update to process
                     self.account_pts.advance(pts, pts_count);
                 } else {
-                    // pts > self.account_pts.pts → gap detected!
+                    // pts beyond the next expected value → gap detected!
                     tracing::warn!(
                         pts,
                         expected = self.account_pts.pts,
@@ -445,10 +451,12 @@ mod tests {
 
     #[test]
     fn test_pts_advance() {
+        // Post-state pts: an update carrying pts=11, pts_count=1 means
+        // "counter is now 11" when we were at 10.
         let mut state = PtsState::new();
         state.pts = 10;
-        assert!(state.is_ahead(10, 1)); // next expected = 10+1
-        state.advance(10, 1);
+        assert!(state.is_next(11, 1));
+        state.advance(11, 1);
         assert_eq!(state.pts, 11);
     }
 
@@ -456,24 +464,28 @@ mod tests {
     fn test_pts_gap_detection() {
         let mut state = PtsState::new();
         state.pts = 10;
-        // Update with pts=15 means a gap (expected 11)
-        assert!(!state.is_ahead(15, 1));
+        // Update with post-state pts=15 means a gap (next expected = 11)
+        assert!(!state.is_next(15, 1));
+        assert!(state.is_ahead(15, 1));
         assert!(!state.is_behind(15, 1));
     }
 
     #[test]
     fn test_pts_behind() {
+        // Post-state pts at or below ours = already processed.
         let mut state = PtsState::new();
         state.pts = 10;
         assert!(state.is_behind(5, 1));
+        assert!(state.is_behind(10, 1));
+        assert!(!state.is_behind(11, 1));
     }
 
     #[test]
     fn test_dispatch_normal() {
         let mut dispatcher = UpdateDispatcher::noop();
-        // pts=0 means "state was 0 before this update" — first update
+        // First update: post-state pts=1, pts_count=1 from pts=0.
         let updates = Updates::UpdateShort {
-            update: make_text_update(1, 0, 1),
+            update: make_text_update(1, 1, 1),
             date: 1000,
             seq: 0,
         };
@@ -487,7 +499,7 @@ mod tests {
         let mut dispatcher = UpdateDispatcher::noop();
         dispatcher.init_state(10, 0, 1000);
 
-        // pts=5 is behind pts=10 → stale
+        // post-state pts=5 is behind tracked pts=10 → stale
         let updates = Updates::UpdateShort {
             update: make_text_update(1, 5, 1),
             date: 1000,
@@ -501,9 +513,9 @@ mod tests {
     #[test]
     fn test_dispatch_with_channel() {
         let (mut dispatcher, mut rx) = UpdateDispatcher::with_channel();
-        // pts=0 matches the initial dispatcher state
+        // First update: post-state pts=1 from initial pts=0.
         let updates = Updates::UpdateShort {
-            update: make_text_update(1, 0, 1),
+            update: make_text_update(1, 1, 1),
             date: 1000,
             seq: 0,
         };
@@ -511,7 +523,7 @@ mod tests {
 
         let received = rx.try_recv().unwrap();
         match received {
-            Update::NewMessage { pts, .. } => assert_eq!(pts, 0),
+            Update::NewMessage { pts, .. } => assert_eq!(pts, 1),
             _ => panic!("expected NewMessage"),
         }
     }
@@ -549,12 +561,12 @@ mod tests {
     #[test]
     fn test_multiple_dispatch() {
         let mut dispatcher = UpdateDispatcher::noop();
-        // Sequential updates: pts 0→1→2→3
+        // Sequential updates: post-state pts 1→2→3
         let updates = Updates::Updates {
             updates: vec![
-                make_text_update(1, 0, 1), // state was 0, becomes 1
-                make_text_update(2, 1, 1), // state was 1, becomes 2
-                make_text_update(3, 2, 1), // state was 2, becomes 3
+                make_text_update(1, 1, 1), // counter becomes 1
+                make_text_update(2, 2, 1), // counter becomes 2
+                make_text_update(3, 3, 1), // counter becomes 3
             ],
             users: Vec::new(),
             chats: Vec::new(),

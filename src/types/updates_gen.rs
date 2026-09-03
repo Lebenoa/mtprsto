@@ -148,6 +148,9 @@ pub const UPDATE_DIALOG_FILTERS_ID: u32 = 0x3504914f;
 pub const UPDATE_DIALOG_FILTER_ORDER_ID: u32 = 0xa5d72105;
 pub const UPDATE_DIALOG_FILTER_ID: u32 = 0x26ffde7d;
 pub const UPDATE_MESSAGE_POLL_VOTE_ID: u32 = 0x7699f014;
+/// docs-layer (223) re-issue of `updateMessagePollVote#24f40e77` — no
+/// 229-only positions vector.
+pub const UPDATE_MESSAGE_POLL_VOTE_223_ID: u32 = 0x24f40e77;
 pub const UPDATE_LOGIN_TOKEN_ID: u32 = 0x564fe691;
 pub const UPDATE_GEO_LIVE_VIEWED_ID: u32 = 0x871fb939;
 pub const UPDATE_THEME_ID: u32 = 0x8216fba3;
@@ -158,6 +161,9 @@ pub const UPDATE_PEER_SETTINGS_ID: u32 = 0x6a7e7366;
 pub const UPDATE_FOLDER_PEERS_ID: u32 = 0x19360dc0;
 pub const UPDATE_CHAT_DEFAULT_BANNED_RIGHTS_ID: u32 = 0x54c01850;
 pub const UPDATE_MESSAGE_POLL_ID: u32 = 0xd64c522b;
+/// docs-layer (223) re-issue of `updateMessagePoll#aca1657b` — no
+/// 229-only peer/msg_id/top_msg_id fields.
+pub const UPDATE_MESSAGE_POLL_223_ID: u32 = 0xaca1657b;
 pub const UPDATE_DIALOG_UNREAD_MARK_ID: u32 = 0xb658f23e;
 pub const UPDATE_CHANNEL_AVAILABLE_MESSAGES_ID: u32 = 0xb23fc698;
 pub const UPDATE_CONTACTS_RESET_ID: u32 = 0x7084a7be;
@@ -1961,6 +1967,25 @@ impl Update {
                 };
                 Ok(Update::DialogFilter { flags, id, filter })
             }
+            // 223 dialect updateMessagePollVote#24f40e77: {poll_id, peer,
+            // options, qts} — no 229-only positions:Vector<int>.
+            UPDATE_MESSAGE_POLL_VOTE_223_ID => {
+                let poll_id = r.read_i64()?;
+                let peer = Peer::read_from(r)?;
+                let n = r.read_vector_header()?;
+                let mut options = Vec::with_capacity(n.max(0) as usize);
+                for _ in 0..n {
+                    options.push(r.read_bytes()?);
+                }
+                let qts = r.read_i32()?;
+                Ok(Update::MessagePollVote {
+                    poll_id,
+                    peer,
+                    options,
+                    positions: Vec::new(),
+                    qts,
+                })
+            }
             UPDATE_MESSAGE_POLL_VOTE_ID => {
                 let poll_id = r.read_i64()?;
                 let peer = Peer::read_from(r)?;
@@ -2059,7 +2084,30 @@ impl Update {
                     version,
                 })
             }
-            0xaca1657b | UPDATE_MESSAGE_POLL_ID => {
+            // 223 dialect updateMessagePoll#aca1657b:
+            //   flags:# poll_id:long poll:flags.0?Poll results:PollResults
+            // — no 229-only peer/msg_id/top_msg_id conditionals.
+            UPDATE_MESSAGE_POLL_223_ID => {
+                let flags = r.read_i32()?;
+                let poll_id = r.read_i64()?;
+                let poll = if flags & (1 << 0) != 0 {
+                    let poll = Poll::read_from(r)?;
+                    Some(poll)
+                } else {
+                    None
+                };
+                let results = PollResults::read_from(r)?;
+                Ok(Update::MessagePoll {
+                    flags,
+                    peer: None,
+                    msg_id: None,
+                    top_msg_id: None,
+                    poll_id,
+                    poll,
+                    results,
+                })
+            }
+            UPDATE_MESSAGE_POLL_ID => {
                 let flags = r.read_i32()?;
                 let peer = if flags & (1 << 1) != 0 {
                     let peer = Peer::read_from(r)?;

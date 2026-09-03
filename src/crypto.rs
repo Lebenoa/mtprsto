@@ -490,14 +490,48 @@ pub struct SrpParams {
 pub struct SrpAnswer {
     /// Server-provided SRP session id.
     pub srp_id: i64,
-    /// Client public value A (255 bytes big-endian).
+    /// Client public value A (256 bytes big-endian).
     pub a: Vec<u8>,
     /// Proof M1 (SHA-256, 32 bytes).
     pub m1: [u8; 32],
 }
 
+/// SHA-256 over a growable input, helper local to the SRP block.
+fn srp_sha256(parts: &[&[u8]]) -> [u8; 32] {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    for part in parts {
+        hasher.update(part);
+    }
+    hasher.finalize().into()
+}
+
+/// Derive the SRP secret exponent `x` per the Telegram SRP spec
+/// (<https://core.telegram.org/api/srp>, mirrored by tdlib's
+/// `PasswordManager::calc_password_hash`):
+///
+/// ```text
+/// SH(data, salt) = SHA256(salt || data || salt)
+/// PH1 = SH(SH(password, salt1), salt2)
+/// x   = PH2 = SH(PBKDF2-HMAC-SHA512(PH1, salt1, 100000), salt2)
+/// ```
+fn srp_derive_x(password: &[u8], salt1: &[u8], salt2: &[u8]) -> [u8; 32] {
+    // PH1 = H(salt2 || H(salt1 || password || salt1) || salt2)
+    let inner = srp_sha256(&[salt1, password, salt1]);
+    let ph1 = srp_sha256(&[salt2, &inner, salt2]);
+
+    // x = H(salt2 || PBKDF2-HMAC-SHA512(PH1, salt1, 100000) || salt2)
+    let mut pbkdf2_out = [0u8; 64];
+    let _ = pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha512>>(&ph1, salt1, 100_000, &mut pbkdf2_out);
+    srp_sha256(&[salt2, &pbkdf2_out, salt2])
+}
+
 /// Run the client side of Telegram's SRP: derive the password hash, run the
 /// SRP handshake with the server's `B`, and compute the proof `M1`.
+///
+/// Follows <https://core.telegram.org/api/srp> exactly (mirrored by tdlib's
+/// `PasswordManager::get_input_check_password`): numbers hash in big-endian
+/// form padded to 2048 bits; all math is modulo `p`.
 ///
 /// The local bindings (`x`, `p`, `g`, `k`, `u`, `v`, `e`, `s`, `a`, `b`)
 /// mirror the variable names in Telegram's SRP documentation; renaming
@@ -505,114 +539,79 @@ pub struct SrpAnswer {
 #[allow(clippy::many_single_char_names)]
 #[must_use]
 pub fn srp_check_password(password: &[u8], params: &SrpParams) -> SrpAnswer {
-    use sha2::Digest as _;
-
-    // Telegram SRP password derivation (<https://core.telegram.org/api/srp>):
-    //   PH1 = SHA256(salt1 || password)
-    //   PH2 = PBKDF2-SHA256(PH1, salt1 || salt2, 100000)
-    //   x   = SHA256(salt2 || PH2)
-    let ph1 = sha256_concat(&params.salt1, password);
-    let mut pbkdf_salt = params.salt1.clone();
-    pbkdf_salt.extend_from_slice(&params.salt2);
-    let mut ph2 = [0u8; 32];
-    let _ = pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(&ph1, &pbkdf_salt, 100_000, &mut ph2);
-    let mut x_seed = params.salt2.clone();
-    x_seed.extend_from_slice(&ph2);
-    let x = sha2::Sha256::digest(&x_seed);
+    let x_bytes = srp_derive_x(password, &params.salt1, &params.salt2);
+    let x_bn = BigUint::from_bytes_be(&x_bytes);
 
     let p = BigUint::from_bytes_be(&params.p);
     let g_bn = BigUint::from(params.g);
-    let g_pad = biguint_min_bytes(params.g);
+    // Spec: "numbers must be used in big-endian form, padded to 2048 bits".
+    let g_pad = biguint_to_256_bytes(&g_bn);
 
-    // k = SHA256(g_pad | p)
-    let mut k_buf = g_pad.clone();
-    k_buf.extend_from_slice(&params.p);
-    let k = BigUint::from_bytes_be(&sha256(&k_buf));
+    // k = H(p | g), both padded to 2048 bits.
+    let k = BigUint::from_bytes_be(&srp_sha256(&[&params.p, &g_pad]));
 
-    // a = random 256 bytes in (1, p-1); A = g^a mod p
+    // a = random 2048-bit number; A = g^a mod p
     let mut rng = rng();
+    let a_pad;
+    let a;
     loop {
-        let a_bytes = {
-            let mut buf = vec![0u8; 256];
-            rng.fill_bytes(&mut buf);
-            buf[0] &= 0x7F; // keep < 2^2048
-            buf
-        };
-        let a = BigUint::from_bytes_be(&a_bytes);
-        if a == BigUint::ZERO {
+        let mut a_bytes = vec![0u8; 256];
+        rng.fill_bytes(&mut a_bytes);
+        let a_try = BigUint::from_bytes_be(&a_bytes);
+        if a_try == BigUint::ZERO || a_try >= p {
             continue;
         }
-        let big_a = g_bn.modpow(&a, &p);
-
-        // u = SHA256(A_pad | B_pad)
-        let a_pad = biguint_to_255_bytes(&big_a);
-        let b_pad = biguint_to_255_bytes(&BigUint::from_bytes_be(&params.b));
-        let mut u_buf = a_pad.clone();
-        u_buf.extend_from_slice(&b_pad);
-        let u = BigUint::from_bytes_be(&sha256(&u_buf));
-
-        // x for SRP — computed from the password per Telegram's recipe:
-        //   x = PH1(salt2 || PH1(salt1 || password))
-        let x_bn = BigUint::from_bytes_be(&x);
-
-        // v = g^x mod p; S = (B - k*v)^(a + u*x) mod p
-        let v = g_bn.modpow(&x_bn, &p);
-        let kv = (&k * &v) % &p;
-        let b_bn = BigUint::from_bytes_be(&params.b);
-        let diff = if b_bn >= kv {
-            (b_bn - kv) % &p
-        } else {
-            // (B - k*v) mod p with p added to keep it non-negative
-            let mut d = b_bn + &p - kv;
-            d %= &p;
-            d
-        };
-        let e = a + (&u * &x_bn);
-        let s = diff.modpow(&e, &p);
-
-        // K = SHA256(S_pad)
-        let s_pad = biguint_to_255_bytes(&s);
-        let k_final = sha256(&s_pad);
-
-        // M1 = SHA256(xor(H, H(P)) | g_pad | salt1 | salt2 | A_pad | B_pad | K)
-        let h1 = sha256(&params.salt1);
-        let h2 = sha256(&params.salt2);
-        let mut xor = [0u8; 32];
-        for (i, (a_i, b_i)) in h1.iter().zip(h2.iter()).enumerate() {
-            xor[i] = a_i ^ b_i;
-        }
-        let mut m1_buf: Vec<u8> = xor.to_vec();
-        m1_buf.extend_from_slice(&g_pad);
-        m1_buf.extend_from_slice(&params.salt1);
-        m1_buf.extend_from_slice(&params.salt2);
-        m1_buf.extend_from_slice(&a_pad);
-        m1_buf.extend_from_slice(&b_pad);
-        m1_buf.extend_from_slice(&k_final);
-        let m1 = sha256(&m1_buf);
-
-        return SrpAnswer {
-            srp_id: params.srp_id,
-            a: a_pad,
-            m1,
-        };
+        a = a_try;
+        a_pad = biguint_to_256_bytes(&g_bn.modpow(&a, &p));
+        break;
     }
-}
 
-fn biguint_min_bytes(g: u32) -> Vec<u8> {
-    g.to_be_bytes()[4 - (g.leading_zeros() as usize / 8 + 1)..].to_vec()
-}
+    // B arrives as its natural-length serialization; pad to 256 bytes for
+    // hashing (tdlib: B_pad = 256 - B.len() zero bytes prepended).
+    let b_bn = BigUint::from_bytes_be(&params.b);
+    let b_pad = biguint_to_256_bytes(&b_bn);
 
-/// Big-endian bytes of `n`, left-padded to 255 bytes (per the SRP spec,
-/// values serialize with their natural length but A/B pad to 255).
-fn biguint_to_255_bytes(n: &BigUint) -> Vec<u8> {
-    let bytes = n.to_bytes_be();
-    let mut out = vec![0u8; 255];
-    if bytes.len() > 255 {
-        out.copy_from_slice(&bytes[bytes.len() - 255..]);
-    } else {
-        out[255 - bytes.len()..].copy_from_slice(&bytes);
+    // u = H(A | B)
+    let u = BigUint::from_bytes_be(&srp_sha256(&[&a_pad, &b_pad]));
+
+    // v = g^x mod p; k_v = (k*v) mod p
+    let v = g_bn.modpow(&x_bn, &p);
+    let kv = (&k * &v) % &p;
+
+    // t = (B - k_v) mod p (positive modulo, increment by p if negative)
+    let t = (b_bn + &p - kv) % &p;
+
+    // s_a = t^(a + u*x) mod p
+    let e = &a + (&u * &x_bn);
+    let s = t.modpow(&e, &p);
+
+    // k_a = H(s_a)
+    let s_pad = biguint_to_256_bytes(&s);
+    let k_final = srp_sha256(&[&s_pad]);
+
+    // M1 = H( H(p)^H(g) | H(salt1) | H(salt2) | A | B | k_a )
+    let hp = srp_sha256(&[&params.p]);
+    let hg = srp_sha256(&[&g_pad]);
+    let mut xor = [0u8; 32];
+    for (i, (p_i, g_i)) in hp.iter().zip(hg.iter()).enumerate() {
+        xor[i] = p_i ^ g_i;
     }
-    out
+    let h_salt1 = srp_sha256(&[&params.salt1]);
+    let h_salt2 = srp_sha256(&[&params.salt2]);
+    let m1 = srp_sha256(&[
+        &xor,
+        &h_salt1,
+        &h_salt2,
+        &a_pad,
+        &b_pad,
+        &k_final,
+    ]);
+
+    SrpAnswer {
+        srp_id: params.srp_id,
+        a: a_pad,
+        m1,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -968,6 +967,53 @@ mod tests {
 
         assert_eq!(aes_key.as_slice(), want_key.as_slice());
         assert_eq!(aes_iv.as_slice(), want_iv.as_slice());
+    }
+
+    /// C1 regression guard: pins the PH1/PH2/x pipeline to the Telegram
+    /// SRP spec formulas (<https://core.telegram.org/api/srp>) and the
+    /// 256-byte A pad, recomputed independently of the production code.
+    #[test]
+    fn test_srp_derivation_spec_formulas() {
+        // Independent recomputation per tdlib PasswordManager::calc_password_hash:
+        //   SH(data, salt) = H(salt | data | salt)
+        //   PH1 = SH(SH(password, salt1), salt2)
+        //   x   = SH(PBKDF2-HMAC-SHA512(PH1, salt1, 100000), salt2)
+        use sha2::Digest as _;
+        let h = |parts: &[&[u8]]| -> [u8; 32] {
+            let mut hasher = sha2::Sha256::new();
+            for p in parts {
+                hasher.update(p);
+            }
+            hasher.finalize().into()
+        };
+        let inner = h(&[b"s1", b"pw", b"s1"]);
+        let ph1 = h(&[b"s2", &inner, b"s2"]);
+        let mut pbkdf_out = [0u8; 64];
+        let _ = pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha512>>(&ph1, b"s1", 100_000, &mut pbkdf_out);
+        let x = h(&[b"s2", &pbkdf_out, b"s2"]);
+
+        // Production helper must match byte-for-byte.
+        assert_eq!(srp_derive_x(b"pw", b"s1", b"s2"), x);
+        assert_ne!(x, ph1); // sanity: the PBKDF2 stage changes the result
+
+        // g pads to 256 bytes (2048 bits) for k and H(g), not minimal bytes.
+        let g_pad = biguint_to_256_bytes(&BigUint::from(3u32));
+        assert_eq!(g_pad.len(), 256);
+        assert_eq!(&g_pad[254..], &[0, 3]);
+
+        // Structural contract: A padded to 256 bytes, M1 32 bytes.
+        let params = SrpParams {
+            salt1: b"s1".to_vec(),
+            salt2: b"s2".to_vec(),
+            g: 3,
+            p: DH_PRIME.to_vec(),
+            b: vec![0xFF; 256],
+            srp_id: 7,
+        };
+        let ans = srp_check_password(b"pw", &params);
+        assert_eq!(ans.srp_id, 7);
+        assert_eq!(ans.a.len(), 256);
+        assert_eq!(ans.m1.len(), 32);
     }
 
     #[test]

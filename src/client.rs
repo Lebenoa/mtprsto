@@ -1176,23 +1176,57 @@ impl Client {
         let pool = self.pool_handle()?;
         let (dispatcher, rx) = UpdateDispatcher::with_channel();
         let (feed_tx, _keep_open) = tokio::sync::mpsc::unbounded_channel::<types::Updates>();
-        *update_task = Some(feed_tx);
+        *update_task = Some(feed_tx.clone());
+        // H9: subscribe the pool's frame walker so server-pushed
+        // updates# containers are forwarded instead of drained-and-dropped.
+        let (push_tx, mut push_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let register_pool = std::sync::Arc::clone(&pool);
+        tokio::spawn(async move {
+            register_pool
+                .set_update_sender(Some(push_tx))
+                .await;
+        });
         let pool = std::sync::Arc::clone(&pool);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(std::time::Duration::from_secs(poll_interval_secs.max(1)));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             let mut dispatcher = dispatcher;
-            let mut last_pts = 0i32;
             let mut have_pts = false;
             // Channel access hashes harvested from Updates/Difference chat
             // vectors, keyed by channel id — needed to build InputChannel
             // for getChannelDifference.
             let mut channel_hashes: std::collections::HashMap<i64, i64> =
                 std::collections::HashMap::new();
-
             loop {
+                // H9: server-pushed update containers arrive between
+                // polls — consume everything queued since the last tick
+                // before (and in addition to) the getState poll.
+                while let Ok(raw) = push_rx.try_recv() {
+                    match types::Updates::parse(&raw) {
+                        Ok(container) => {
+                            dispatcher.process_updates(container);
+                        }
+                        Err(e) => {
+                            tracing::debug!("dropping unparseable pushed update: {e}");
+                        }
+                    }
+                }
+
                 interval.tick().await;
+
+                // Drain again after the tick — pushes that raced the sleep.
+                while let Ok(raw) = push_rx.try_recv() {
+                    match types::Updates::parse(&raw) {
+                        Ok(container) => {
+                            dispatcher.process_updates(container);
+                        }
+                        Err(e) => {
+                            tracing::debug!("dropping unparseable pushed update: {e}");
+                        }
+                    }
+                }
 
                 // Poll state to observe server-side pts drift.
                 let Some(state) = pool
@@ -1204,6 +1238,15 @@ impl Client {
                     continue;
                 };
                 dispatcher.set_qts(state.qts);
+                // Seed local tracking on the first observation; afterwards
+                // the dispatcher's pts (fed by pushes + differences) is
+                // the local cursor — the server snapshot only informs the
+                // gap check below (M4).
+                if !have_pts {
+                    dispatcher.gap_resolved(state.pts, state.seq, state.date);
+                    have_pts = true;
+                    continue;
+                }
 
                 // ChannelTooLong surfaced by the dispatcher → resync each
                 // queued channel via updates.getChannelDifference (SPEC §6.1).
@@ -1278,20 +1321,33 @@ impl Client {
                     }
                 }
 
-                // Gap detected — recover the missed range. `state.pts >
-                // last_pts` was checked above; the +1 walk stays within
-                // the observed range.
-                if have_pts && state.pts > last_pts.saturating_add(1) {
-                    // Gap detected — recover the missed range.
-                    let payload = rpc::build_get_difference(last_pts, state.date, state.qts);
+                // Gap detected — the server's pts jumped past our LOCAL
+                // cursor (dispatcher pts, fed by pushes + earlier
+                // recoveries; M4: the old code compared the server
+                // snapshot against itself, never reconciling skipped-
+                // ahead local state).
+                let local_pts = dispatcher.account_pts();
+                if state.pts > local_pts.saturating_add(1) {
+                    let payload =
+                        rpc::build_get_difference(local_pts, state.date, state.qts);
                     if let Ok(bytes) = pool.send_rpc(&payload).await
-                        && let Ok(types::Difference::Difference {
-                            new_messages,
-                            other_updates,
-                            chats,
-                            ..
-                        }) = types::Difference::parse(&bytes)
+                        && let Ok(diff) = types::Difference::parse(&bytes)
                     {
+                        let (new_messages, other_updates, chats) = match diff {
+                            types::Difference::Difference {
+                                new_messages,
+                                other_updates,
+                                chats,
+                                ..
+                            } => (new_messages, other_updates, chats),
+                            types::Difference::Slice {
+                                new_messages,
+                                other_updates,
+                                chats,
+                                ..
+                            } => (new_messages, other_updates, chats),
+                            _ => (Vec::new(), Vec::new(), Vec::new()),
+                        };
                         for chat in chats {
                             if let types::Chat::Channel {
                                 id,
@@ -1302,28 +1358,31 @@ impl Client {
                                 channel_hashes.insert(id.0, h.0);
                             }
                         }
+                        // Recovered updates adopt the server's absolute
+                        // state: feed them as a difference batch so the
+                        // dispatcher's cursor lands on the returned
+                        // messages without re-triggering a gap.
+                        let mut batch = Vec::with_capacity(new_messages.len());
                         for msg in new_messages {
-                            dispatcher.process_updates(types::Updates::UpdateShort {
-                                update: types::Update::NewMessage {
-                                    message: msg,
-                                    pts: last_pts.saturating_add(1),
-                                    pts_count: 1,
-                                },
-                                date: state.date,
-                                seq: state.seq,
+                            batch.push(types::Update::NewMessage {
+                                message: msg,
+                                pts: i32::MAX,
+                                pts_count: 0,
                             });
                         }
-                        for u in other_updates {
-                            dispatcher.process_updates(types::Updates::UpdateShort {
-                                update: u,
-                                date: state.date,
-                                seq: state.seq,
-                            });
-                        }
+                        batch.extend(other_updates);
+                        dispatcher.process_updates(types::Updates::Updates {
+                            updates: batch,
+                            users: Vec::new(),
+                            chats: Vec::new(),
+                            date: state.date,
+                            seq: state.seq,
+                        });
+                        // The difference response is authoritative: adopt
+                        // its end state as the local cursor.
+                        dispatcher.gap_resolved(state.pts, state.seq, state.date);
                     }
                 }
-
-                last_pts = state.pts;
                 have_pts = true;
             }
         });
@@ -1677,12 +1736,15 @@ impl Client {
         // sometimes wraps the whole answer in a bare updates# container
         // (observed on the live wire) — those carry the same
         // chats+users vectors to mine for access hashes.
-        let results = if ctor == CONTACTS_RESOLVED_PEER {
+        let (results, users, chats) = if ctor == CONTACTS_RESOLVED_PEER {
             // resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat> users:Vector<User>
             let peer = types::Peer::read_from(&mut r)?;
-            vec![peer]
+            let chats = types::read_chat_vector_public(&mut r)?;
+            let users = types::read_user_vector_public(&mut r)?;
+            (vec![peer], users, chats)
         } else if ctor == CONTACTS_FOUND {
-            // found#b3134d19 my_results:Vector<Peer> results:Vector<Peer> ...
+            // found#b3134d19 my_results:Vector<Peer> results:Vector<Peer>
+            //   chats:Vector<Chat> users:Vector<User>
             let n = r.read_vector_header()?;
             for _ in 0..n {
                 let _ = types::Peer::read_from(&mut r)?;
@@ -1693,12 +1755,23 @@ impl Client {
             for _ in 0..n {
                 results.push(types::Peer::read_from(&mut r)?);
             }
-            results
+            let chats = types::read_chat_vector_public(&mut r)?;
+            let users = types::read_user_vector_public(&mut r)?;
+            (results, users, chats)
         } else if ctor == types::UPDATES {
             // updates#74ae4240: updates:Vector<Update> users:Vector<User>
             //   chats:Vector<Chat> date:int seq:int — no direct peer;
-            // fall through to username matching over the vectors.
-            Vec::new()
+            //   fall through to username matching over the vectors.
+            // (H7: wire order is updates, USERS, CHATS — the old code
+            // read chats first and never consumed the updates vector,
+            // desyncing on the very first read.)
+            let update_count = r.read_vector_header()?;
+            for _ in 0..update_count {
+                let _ = types::Update::read_from(&mut r)?;
+            }
+            let users = types::read_user_vector_public(&mut r)?;
+            let chats = types::read_chat_vector_public(&mut r)?;
+            (Vec::new(), users, chats)
         } else if ctor == types::UPDATE_SHORT {
             // updateShort#78d4dec1 { update:Update date:int } — carries
             // no user vectors at all; transient (retry resolves it).
@@ -1710,19 +1783,6 @@ impl Client {
                 "unexpected resolveUsername response constructor {ctor:#x}"
             )));
         };
-        // chats:Vector<Chat>
-        let chat_count = r.read_vector_header()?;
-        let mut chats = Vec::with_capacity(chat_count as usize);
-        for _ in 0..chat_count {
-            chats.push(types::Chat::read_from(&mut r)?);
-        }
-        // users:Vector<User>
-        let user_count = r.read_vector_header()?;
-        let mut users = Vec::with_capacity(user_count as usize);
-        for _ in 0..user_count {
-            users.push(types::User::read_from(&mut r)?);
-        }
-
         // The username may match a user OR a channel. Find the first
         // entity whose username matches (case-insensitive).
         for user in &users {
@@ -1817,41 +1877,6 @@ impl Client {
             return Ok(peer);
         }
         Err(Error::Other(format!("username @{key} not found")))
-    }
-
-    /// Spawn the BS-1 adaptive pool scaler: every `interval_secs` it counts
-    /// pool connections against `PoolConfig::min/max_connections` and scales
-    /// up when demand outstrips capacity (currently demand = pending RPC
-    /// rate proxy: pool under `min` connections).
-    ///
-    /// Off by default; calling this twice replaces nothing (idempotent per
-    /// client instance is the caller's job).
-    ///
-    /// # Panics
-    ///
-    /// Never panics — the scaler exits quietly when the pool is absent.
-    #[tracing::instrument(name = "mtprsto::adaptive_scaler", skip(self))]
-    pub fn spawn_adaptive_scaler(&self, interval_secs: u64) {
-        let Some(pool) = self.pool_handle() else {
-            return;
-        };
-        let min = self.pool_config.min_connections;
-        let max = self.pool_config.max_connections;
-        tokio::spawn(async move {
-            let mut tick =
-                tokio::time::interval(std::time::Duration::from_secs(interval_secs.max(1)));
-            loop {
-                tick.tick().await;
-                let have = pool.connection_count();
-                if have < min {
-                    // needs &mut pool — scale_up is &mut self; a cloned Arc
-                    // cannot grow. Log the intent until SenderPool grows an
-                    // interior-mutable scale path.
-                    tracing::debug!(have, min, "pool below min — scale deferred");
-                    let _ = max;
-                }
-            }
-        });
     }
 
     /// Typed invoke: run a raw TL request and decode the result as `T`.
